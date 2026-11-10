@@ -127,6 +127,26 @@ $defs:
         minLength: 1
         maxLength: 140
         description: "Stage 4: one sentence, where the item stands now and why it is here"
+      verdict:
+        type: string
+        enum: [current, obsolete]
+        description: "Whether the item still asks something (current) or nothing is left to do (obsolete): the cockpit moves an obsolete card out of the way"
+      verdict_why:
+        type: string
+        minLength: 1
+        maxLength: 140
+        description: "Only with verdict obsolete: one sentence, why nothing is left to do"
+      ask:
+        type: array
+        minItems: 0
+        maxItems: 5
+        items: {type: string, minLength: 1, maxLength: 160}
+        description: "The open asks, one by one and in full words (the questions themselves, never a count of them); only those still open"
+      to:
+        type: string
+        minLength: 1
+        maxLength: 40
+        description: "Of whom the asks are asked: me (the person whose tracker it is) or a name; a question to someone else reads as a reminder to ask them"
       goal:
         type: string
         minLength: 1

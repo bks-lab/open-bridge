@@ -55,10 +55,10 @@ GATE_OWNER = {"only-you": "me", "your-yes": "bridge_then_me", "free": "bridge"}
 TASK_KINDS = ("task", "stream", "done_task", "done_stream")
 FOLDER_KINDS = {"tasks": "task", "streams": "stream"}
 
-EN = {"story": "As {as}, I want {want}, so that {so_that}.",
+EN = {"story": "As {as}, I want {want}, so that {so_that}.", "task_closed": "its task is closed",
       "next": {"decide": "decide", "answer": "answer", "yes": "give your yes", "read": "read",
                "check": "check the result", "closes": "closes by itself when {probe}", "review": "review it",
-               "task": "make it a task"},
+               "task": "make it a task", "ask_of": "ask {to}"},
       "probe": {"and": "and", "or": "or", "unknown": "a check the page cannot describe",
                 "gh_pr": "pull request {ref} is {state}", "gh_issue": "issue {ref} is {state}",
                 "task_status": "task {slug} reaches {status}", "path_exists": "{path} exists", "after": "after {when}",
@@ -399,7 +399,27 @@ def task_card(slug: str, title: Any, ctx: Ctx, *, kind: str | None = None, row: 
                 written=written, gaps=gaps, name=(brief or {}).get("name"), stand=(brief or {}).get("stand"))
 
 
-def _inbox_next(kind: Any, gate: Any, facts: Mapping, ctx: Ctx) -> dict | None:
+#: how a brief's `to` names the person whose tracker it is (the prompt asks for `me`)
+ME_WORDS = frozenset(("me", "myself", "ich", "mich", "du", "dich", "you"))
+
+
+def _to_other(to: Any) -> str | None:
+    """The name a question is asked of when it is not the person themself, else None"""
+    to = _s(to)
+    return to if to and to.casefold() not in ME_WORDS else None
+
+
+def _verdict(brief: Any, closed_task: bool, ctx: Ctx) -> dict | None:
+    """{word, why}: a closed task makes the card obsolete whatever its brief says; else the brief's verdict"""
+    if closed_task:
+        return {"word": "obsolete", "why": _tx(ctx).get("task_closed") or EN["task_closed"]}
+    word = _s((brief or {}).get("verdict"))
+    if word is None:
+        return None
+    return {"word": word, "why": _s((brief or {}).get("verdict_why")) if word == "obsolete" else None}
+
+
+def _inbox_next(kind: Any, gate: Any, facts: Mapping, ctx: Ctx, to: Any = None) -> dict | None:
     words = _d(_tx(ctx).get("next")) or EN["next"]
     owner = GATE_OWNER.get(gate)
     who = "me" if owner in ("me", "bridge_then_me") else owner
@@ -409,6 +429,8 @@ def _inbox_next(kind: Any, gate: Any, facts: Mapping, ctx: Ctx) -> dict | None:
                      facts.get("state_at") or facts.get("created"))
     if kind == "decision":
         what = words["decide"]
+    elif kind == "question" and _to_other(to):
+        what = (words.get("ask_of") or EN["next"]["ask_of"]).format(to=_to_other(to))
     elif kind == "question":
         what = words["answer"]
     elif gate == "your-yes":
@@ -456,15 +478,18 @@ def inbox_card(item_id: str, title: Any, ctx: Ctx, *, facts: Mapping | None = No
     parts, unresolved = _brief_refs(brief, key, ctx)
     return _new(kind="inbox", subkind=kind, title=_s(title), summary=summary, goal=(brief or {}).get("goal"),
                 story=(brief or {}).get("story"), acceptance=(brief or {}).get("acceptance"), brief_refs=parts,
-                next=_inbox_next(kind, gate, f, ctx),
+                next=_inbox_next(kind, gate, f, ctx, (brief or {}).get("to")),
                 state=_state(_s(state) or _s(row.get("inbox_state")) or "open", None,
                              f.get("state_at") or f.get("created")),
-                owner=GATE_OWNER.get(gate), priority=_s(row.get("priority")), due=_s(f.get("due")),
+                owner=GATE_OWNER.get(gate),
+                priority=_s(row.get("priority")) or (_s(_d(ctx.tasks.get(slug)).get("priority")) if slug else None),
+                due=_s(f.get("due")),
                 area=_s(row.get("area")) or _s(f.get("area")), updated=_s(f.get("updated")) or _s(f.get("created")),
                 source=origin, links=links, written=written,
                 gaps=_gaps(("no_goal", not (brief or {}).get("goal")), ("task_closed", closed_task),
                            ("no_content", empty and not brief), ("unresolved_ref", unresolved)),
-                name=(brief or {}).get("name"), stand=(brief or {}).get("stand"))
+                name=(brief or {}).get("name"), stand=(brief or {}).get("stand"),
+                verdict=_verdict(brief, closed_task, ctx), ask=(brief or {}).get("ask") or None, to=_s((brief or {}).get("to")))
 
 
 def github_card(it: Mapping, ctx: Ctx) -> dict:

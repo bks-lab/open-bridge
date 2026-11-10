@@ -53,16 +53,23 @@ from typing import Any
 CARD_FIELDS = ("kind", "subkind", "title", "summary", "goal", "story", "acceptance", "brief_refs", "next", "state",
                "owner", "priority", "due", "area", "updated", "source", "links", "progress", "written", "gaps",
                # stage 4 of the one point view: the brief's short name and its one sentence of where the item stands
-               "name", "stand")
+               "name", "stand",
+               # a useful card: verdict {word: current | obsolete, why}, the open asks, of whom they are asked
+               "verdict", "ask", "to")
 #: what a card's `gaps` can name (card.py): what the card misses, for the page to offer a fix
 GAPS = ("no_goal", "no_next", "placeholder_next", "task_closed", "no_content", "unresolved_ref")
 NEXT_FIELDS = ("what", "who", "due", "from", "since", "check")
 STATE_FIELDS = ("word", "blocked_by", "since")
 PROGRESS_FIELDS = ("done", "total")
 STORY_FIELDS = ("as", "want", "so_that")
-BRIEF_FIELDS = ("goal", "story", "acceptance", "by", "at", "basis", "edited", "name", "stand")
+BRIEF_FIELDS = ("goal", "story", "acceptance", "by", "at", "basis", "edited", "name", "stand",
+                # a useful card: whether the item still holds, the open asks one by one, and of whom they are asked
+                "verdict", "verdict_why", "ask", "to")
+#: what a brief's `verdict` can say: the item still asks something (`current`) or nothing is left to do (`obsolete`)
+VERDICTS = ("current", "obsolete")
 #: characters; `acceptance_items` is the most criteria a brief keeps (a stream has none)
-BRIEF_LIMITS = {"goal": 140, "story": 80, "acceptance_items": 5, "acceptance_len": 120, "name": 60, "name_words": 8, "stand": 140}
+BRIEF_LIMITS = {"goal": 140, "story": 80, "acceptance_items": 5, "acceptance_len": 120, "name": 60, "name_words": 8, "stand": 140,
+                "verdict_why": 140, "ask_items": 5, "ask_len": 160, "to": 40}
 # what a name never holds (stage 4): a path, an issue or pull request number, a file name; the rules of the prompt
 # say the rest (no ids, host names, status words, day counts), the gate checks what it can tell for sure
 _NAME_PATH_RE = re.compile(r"(?:^|\s)(?:~|\.{0,2})/\S|\S/\S+/|\w/[\w.-]+#\d")
@@ -147,6 +154,32 @@ def validate_brief(obj: Any) -> tuple[dict | None, list[str]]:
         stand = _text(obj["stand"], "stand", BRIEF_LIMITS["stand"], errors)
         if stand is not None:
             clean["stand"] = stand
+    if "verdict" in obj:
+        verdict = obj["verdict"].strip().lower() if isinstance(obj["verdict"], str) else None
+        if verdict in VERDICTS:
+            clean["verdict"] = verdict
+        else:
+            errors.append(f"verdict: {obj['verdict']!r} is none of {', '.join(VERDICTS)}")
+    if "verdict_why" in obj:
+        why = _text(obj["verdict_why"], "verdict_why", BRIEF_LIMITS["verdict_why"], errors)
+        if why is not None and clean.get("verdict") == "obsolete":
+            clean["verdict_why"] = why
+        elif why is not None:
+            errors.append("verdict_why: only an obsolete verdict has a reason")
+    if "ask" in obj:
+        items = obj["ask"]
+        if not isinstance(items, list):
+            errors.append("ask: not a list")
+        else:
+            most = BRIEF_LIMITS["ask_items"]
+            if len(items) > most:
+                errors.append(f"ask: {len(items)} asks, kept the first {most}")
+            kept = [_text(x, f"ask[{n}]", BRIEF_LIMITS["ask_len"], errors) for n, x in enumerate(items[:most])]
+            clean["ask"] = [x for x in kept if x is not None]
+    if "to" in obj:
+        to = _text(obj["to"], "to", BRIEF_LIMITS["to"], errors)
+        if to is not None:
+            clean["to"] = to
     if "story" in obj:
         story = obj["story"]
         if not isinstance(story, dict):

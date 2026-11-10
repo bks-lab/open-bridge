@@ -603,3 +603,38 @@ def test_the_references_of_a_brief_become_links_and_an_unresolved_one_a_gap():
     # without a describe view nothing says what the text points at: plain text, no gap
     plain = cd.card_of(row(), ctx(tasks=tasks))
     assert plain["brief_refs"] is None and "unresolved_ref" not in plain["gaps"]
+
+
+# ---------------------------------------------------------------- a useful card: still holds, the asks, of whom
+
+def test_a_question_to_someone_else_reads_as_asking_them_with_its_asks_on_the_card():
+    brief = {**BRIEF, "verdict": "current", "to": "Sam", "ask": ["May open-bridge name you?", "Is the deadline fixed?"]}
+    c = cd.card_of(inbox_row(gate="only-you"), inbox_ctx({"kind": "question", "gate": "only-you", "brief": brief}))
+    assert_shape(c)
+    assert c["to"] == "Sam" and c["ask"] == brief["ask"]
+    assert c["next"]["what"] == "ask Sam" and c["next"]["who"] == "me"
+    assert c["verdict"] == {"word": "current", "why": None}
+
+
+def test_a_question_to_me_stays_a_question_to_answer():
+    brief = {**BRIEF, "to": "me", "ask": ["Keep the raise or object?"]}
+    c = cd.card_of(inbox_row(gate="only-you"), inbox_ctx({"kind": "question", "gate": "only-you", "brief": brief}))
+    assert c["next"]["what"] == "answer" and c["to"] == "me"
+
+
+def test_an_obsolete_brief_or_a_closed_task_makes_the_card_obsolete_with_a_reason():
+    brief = {**BRIEF, "verdict": "obsolete", "verdict_why": "The meeting was this morning."}
+    c = cd.card_of(inbox_row(), inbox_ctx({"brief": brief}))
+    assert c["verdict"] == {"word": "obsolete", "why": "The meeting was this morning."}
+    c = cd.card_of(inbox_row(task="old-task"), inbox_ctx({"task": "old-task"}, work={"old-task": "done_task"}))
+    assert c["verdict"] == {"word": "obsolete", "why": "its task is closed"}
+
+
+def test_an_inbox_card_takes_the_priority_of_its_task_when_its_row_has_none():
+    c = cd.card_of(inbox_row(task="invoices", priority=None), inbox_ctx({"task": "invoices"}))
+    assert c["priority"] == "P1"
+
+
+def test_a_card_without_a_verdict_says_none():
+    c = cd.card_of(inbox_row(), inbox_ctx())
+    assert c["verdict"] is None and c["ask"] is None and c["to"] is None

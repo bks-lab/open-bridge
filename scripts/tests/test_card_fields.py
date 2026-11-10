@@ -33,12 +33,13 @@ GOOD = {"goal": "Invoices reach the customer without a manual resend",
 def test_card_fields_name_the_whole_wire_shape_in_order():
     assert cf.CARD_FIELDS == ("kind", "subkind", "title", "summary", "goal", "story", "acceptance", "brief_refs", "next", "state",
                               "owner", "priority", "due", "area", "updated", "source", "links", "progress",
-                              "written", "gaps", "name", "stand")
+                              "written", "gaps", "name", "stand", "verdict", "ask", "to")
     assert cf.NEXT_FIELDS == ("what", "who", "due", "from", "since", "check")
     assert cf.STATE_FIELDS == ("word", "blocked_by", "since")
     assert cf.PROGRESS_FIELDS == ("done", "total")
     assert cf.STORY_FIELDS == ("as", "want", "so_that")
-    assert cf.BRIEF_FIELDS == ("goal", "story", "acceptance", "by", "at", "basis", "edited", "name", "stand")
+    assert cf.BRIEF_FIELDS == ("goal", "story", "acceptance", "by", "at", "basis", "edited", "name", "stand",
+                               "verdict", "verdict_why", "ask", "to")
 
 
 def test_the_limits_are_the_ones_both_schemas_declare():
@@ -54,6 +55,11 @@ def test_the_limits_are_the_ones_both_schemas_declare():
         assert brief["properties"]["story"]["properties"][part]["maxLength"] == cf.BRIEF_LIMITS["story"]
     assert brief["properties"]["name"]["maxLength"] == cf.BRIEF_LIMITS["name"]
     assert brief["properties"]["stand"]["maxLength"] == cf.BRIEF_LIMITS["stand"]
+    assert brief["properties"]["verdict"]["enum"] == list(cf.VERDICTS)
+    assert brief["properties"]["verdict_why"]["maxLength"] == cf.BRIEF_LIMITS["verdict_why"]
+    assert brief["properties"]["ask"]["maxItems"] == cf.BRIEF_LIMITS["ask_items"]
+    assert brief["properties"]["ask"]["items"]["maxLength"] == cf.BRIEF_LIMITS["ask_len"]
+    assert brief["properties"]["to"]["maxLength"] == cf.BRIEF_LIMITS["to"]
     item = yaml.safe_load((ROOT / "work/templates/_schema.inbox-item.yaml").read_text(encoding="utf-8"))
     assert item["$defs"]["brief"] == brief, "the inbox describe event carries the same brief as STATUS.md"
 
@@ -328,3 +334,42 @@ def test_a_real_text_that_holds_such_a_word_passes():
     for goal in ("The placeholder images on the site are replaced by photos", "Every TODO in the parser is resolved",
                  "Invoices for n/a customers go to the default address", "A goal of the team <with a note>"):
         assert cf.validate_brief({**GOOD, "goal": goal})[0]["goal"] == goal, goal
+
+
+# ---------------------------------------------------------------- a useful card: whether it still holds, what exactly is asked, of whom
+
+def test_a_brief_may_say_whether_the_item_still_holds_what_is_asked_and_of_whom():
+    brief = {**GOOD, "verdict": "current", "ask": ["May the page name you as its model?", "Is the deadline fixed?"], "to": "Sam"}
+    clean, errors = cf.validate_brief(brief)
+    assert errors == [] and clean["verdict"] == "current" and clean["to"] == "Sam"
+    assert clean["ask"] == ["May the page name you as its model?", "Is the deadline fixed?"]
+    assert cf.BRIEF_LIMITS["ask_items"] == 5 and cf.BRIEF_LIMITS["ask_len"] == 160 and cf.BRIEF_LIMITS["to"] == 40
+
+
+def test_an_obsolete_item_says_why_in_one_sentence():
+    clean, errors = cf.validate_brief({**GOOD, "verdict": "obsolete", "verdict_why": "The meeting it prepares was this morning."})
+    assert errors == [] and clean["verdict"] == "obsolete" and clean["verdict_why"].startswith("The meeting")
+
+
+@pytest.mark.parametrize("value", ["maybe", "", 3, None, "OBSOLETE "])
+def test_a_verdict_outside_current_and_obsolete_is_left_out(value):
+    clean, errors = cf.validate_brief({**GOOD, "verdict": value})
+    if value == "OBSOLETE ":
+        assert clean["verdict"] == "obsolete" and errors == []
+    else:
+        assert "verdict" not in clean and any(e.startswith("verdict:") for e in errors)
+
+
+def test_an_ask_over_its_limits_keeps_what_passes_and_a_wrong_to_is_left_out():
+    asks = ["one?", "x" * 161, "three?", "four?", "five?", "six?", "seven?"]
+    clean, errors = cf.validate_brief({**GOOD, "ask": asks, "to": "y" * 41})
+    assert clean["ask"] == ["one?", "three?", "four?", "five?"] and "to" not in clean
+    assert any(e.startswith("ask:") for e in errors) and any(e.startswith("ask[1]") for e in errors)
+    assert any(e.startswith("to:") for e in errors)
+
+
+def test_an_obsolete_verdict_without_a_reason_still_holds_and_a_reason_alone_is_dropped():
+    clean, _ = cf.validate_brief({**GOOD, "verdict": "obsolete"})
+    assert clean["verdict"] == "obsolete" and "verdict_why" not in clean
+    clean, errors = cf.validate_brief({**GOOD, "verdict": "current", "verdict_why": "Nothing changed."})
+    assert "verdict_why" not in clean and any(e.startswith("verdict_why:") for e in errors)

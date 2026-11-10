@@ -65,7 +65,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import brief_refs as refs_
-from .card_fields import BRIEF_LIMITS, brief_basis, validate_brief
+from .card_fields import BRIEF_LIMITS, VERDICTS, brief_basis, validate_brief
 from .quick import MODELS, result_of
 from .text import TABLES
 
@@ -97,7 +97,7 @@ SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")
 INBOX_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{4}-[a-z0-9][a-z0-9-]{0,119}\Z")
 FRONT_KEYS = ("type", "status", "origin", "headline", "next", "blocked_by")
 #: the version of SYSTEM and its rules; a brief describe wrote from an older one is stale (module doc)
-PROMPT_VERSION = 3
+PROMPT_VERSION = 4
 #: the writes of one text a brief with an unresolved reference gets: the first and one more try of the pass
 REF_TRIES = 2
 FOLDER_FILES_MAX = 12    # files of a task folder offered as references
@@ -106,14 +106,21 @@ _STORY = {"type": "object", "additionalProperties": False, "required": ["as", "w
           "properties": {k: {"type": "string", "maxLength": BRIEF_LIMITS["story"]} for k in ("as", "want", "so_that")}}
 #: the answer's shape, passed as --json-schema, with the limits, so an answer over one is sent back to the model
 #: rather than left out after the call; card_fields.validate_brief is the gate after it
-SCHEMA = json.dumps({"type": "object", "additionalProperties": False, "required": ["name", "stand", "goal", "story", "acceptance"],
+SCHEMA = json.dumps({"type": "object", "additionalProperties": False,
+                     "required": ["name", "stand", "goal", "story", "acceptance", "verdict", "verdict_why", "ask", "to"],
                      "properties": {"name": {"type": "string", "maxLength": BRIEF_LIMITS["name"]},
                                     "stand": {"type": "string", "maxLength": BRIEF_LIMITS["stand"]},
                                     "goal": {"type": "string", "maxLength": BRIEF_LIMITS["goal"]},
                                     "story": {"anyOf": [_STORY, {"type": "null"}]},
                                     "acceptance": {"type": "array",
                                                    "items": {"type": "string", "maxLength": BRIEF_LIMITS["acceptance_len"]},
-                                                   "maxItems": BRIEF_LIMITS["acceptance_items"]}}},
+                                                   "maxItems": BRIEF_LIMITS["acceptance_items"]},
+                                    "verdict": {"type": "string", "enum": list(VERDICTS)},
+                                    "verdict_why": {"anyOf": [{"type": "string", "maxLength": BRIEF_LIMITS["verdict_why"]},
+                                                              {"type": "null"}]},
+                                    "ask": {"type": "array", "items": {"type": "string", "maxLength": BRIEF_LIMITS["ask_len"]},
+                                            "maxItems": BRIEF_LIMITS["ask_items"]},
+                                    "to": {"type": "string", "maxLength": BRIEF_LIMITS["to"]}}},
                     separators=(",", ":"))
 #: the fewest criteria a task's brief should have; one with fewer is written all the same, with a warning
 MIN_CRITERIA = 2
@@ -128,13 +135,17 @@ def keep_criteria(new: dict, old: Any, kind: str) -> tuple[dict, int]:
     return {**new, "acceptance": list(before)}, len(before)
 
 SYSTEM = """You write the brief of one item of a personal work tracker: what it is for and when it is done, never how to do it.
-Answer with JSON only, with the fields name, stand, goal, story (an object with as, want and so_that, or null) and acceptance (a list), each as the rules below say.
+Answer with JSON only, with the fields name, stand, goal, story (an object with as, want and so_that, or null), acceptance (a list), verdict, verdict_why, ask (a list) and to, each as the rules below say.
 - Every text says something about this item. A placeholder is no answer: never "placeholder", "TODO", "TBD", "n/a", an ellipsis, a word in angle brackets or the field's name as its text.
 - name: what the item is, as a person names it in a list: at most {name} characters and about 7 words, everyday words. Never ids, paths, file names, host names, process names, issue, pull request or ticket numbers, never a status ("waits for", "done", "park?"), never a count of days.
 - stand: one sentence of at most {stand} characters: where it stands now and why it is here. No step to take, the step stands apart.
 - goal: one sentence of at most {goal} characters saying what is different once the item is done. Never repeat the title word for word.
 - story: only when it fits naturally (someone who gains something from it), else null. Each part at most {story} characters, without the words "as", "I want" or "so that" in front.
 - acceptance: {criteria}
+- verdict: "obsolete" when nothing is left to do: the task it belongs to (task_now) is done or already shows the answer, a meeting or date it prepares has passed (today's date and the time of day stand above the data: a meeting at 09:30 today is over at 17:50), or the open asks are all answered. Else "current". When unsure, "current".
+- verdict_why: only with verdict "obsolete", one sentence of at most {verdict_why} characters saying why, else null.
+- ask: the asks still open, one by one in full words, at most {ask_items}, each at most {ask_len} characters: the questions themselves or what exactly must be done, never a count of them ("five open points"). Leave out what task_now shows as answered or done. An empty list when the item asks nothing.
+- to: of whom the asks are asked: "me" for the person who keeps this tracker, else the first name of the one to ask (an item "ask Sam ..." has to "Sam"). A question to someone else is a reminder for the person to ask them, never a question to answer.
 - Every criterion is understandable on its own from the card: someone who sees only the goal and the criteria knows what each one means.
 - Point only at the references listed in "references" of the data (an issue as owner/repo#n, a path, a task slug, a URL), written exactly as listed there. Never a bare #n, never "the list", "the report §6" or "the review list" without naming what it is and where it lives.
 - When the text names something only vaguely, say in words what it is instead of pointing at it. With no references listed, point at none.
@@ -231,14 +242,18 @@ def argv_ok(argv_: list[str], claude: str | None) -> bool:
             and isinstance(argv_[18], str) and 0 < len(argv_[18]) <= PROMPT_MAX)
 
 
-def prompt(item: dict, language: str) -> tuple[str, str]:
+def prompt(item: dict, language: str, today: str | None = None) -> tuple[str, str]:
     """(system text, prompt): the rules, and the item as JSON under a label that calls it data"""
     stream = item.get("kind") == "stream"
     criteria = CRITERIA_STREAM if stream else CRITERIA_TASK.format(n=BRIEF_LIMITS["acceptance_items"],
                                                                    len=BRIEF_LIMITS["acceptance_len"])
     system = SYSTEM.format(goal=BRIEF_LIMITS["goal"], story=BRIEF_LIMITS["story"], criteria=criteria,
-                           name=BRIEF_LIMITS["name"], stand=BRIEF_LIMITS["stand"], language=language or "English")
-    return system, f"{DATA_LABEL}\n{item['data']}"
+                           name=BRIEF_LIMITS["name"], stand=BRIEF_LIMITS["stand"], language=language or "English",
+                           verdict_why=BRIEF_LIMITS["verdict_why"], ask_items=BRIEF_LIMITS["ask_items"],
+                           ask_len=BRIEF_LIMITS["ask_len"])
+    # today stands apart from the data: it is no part of the basis, so a new day alone never makes a brief stale
+    head = f"Today is {today}.\n" if today else ""
+    return system, f"{head}{DATA_LABEL}\n{item['data']}"
 
 
 def brief_sha(brief: Any) -> str | None:
@@ -246,7 +261,8 @@ def brief_sha(brief: Any) -> str | None:
     changes. A brief without a name or a stand hashes as before stage 4, so none looks edited by the new fields"""
     if not isinstance(brief, dict):
         return None
-    keys = ("goal", "story", "acceptance", *(k for k in ("name", "stand") if brief.get(k) is not None))
+    keys = ("goal", "story", "acceptance",
+            *(k for k in ("name", "stand", "verdict", "verdict_why", "ask", "to") if brief.get(k) is not None))
     text = json.dumps({k: brief.get(k) for k in keys}, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
@@ -292,9 +308,13 @@ def parse(out: str, item: dict, requested: str, today: str) -> dict:
         return res
     raw: dict = {"goal": answer.get("goal"), "acceptance": [] if item.get("kind") == "stream" else
                  (answer.get("acceptance") if isinstance(answer.get("acceptance"), list) else [])}
-    for key in ("name", "stand"):          # stage 4: the gate leaves out a wrong one, the brief stays
+    for key in ("name", "stand", "verdict", "to"):     # the gate leaves out a wrong one, the brief stays
         if isinstance(answer.get(key), str) and answer[key].strip():
             raw[key] = answer[key]
+    if raw.get("verdict") == "obsolete" and isinstance(answer.get("verdict_why"), str) and answer["verdict_why"].strip():
+        raw["verdict_why"] = answer["verdict_why"]
+    if isinstance(answer.get("ask"), list):
+        raw["ask"] = [x for x in answer["ask"] if isinstance(x, str) and x.strip()]
     story = answer.get("story")
     if isinstance(story, dict) and all(isinstance(story.get(k), str) and story[k].strip() for k in ("as", "want", "so_that")):
         raw["story"] = {k: story[k] for k in ("as", "want", "so_that")}
@@ -492,6 +512,77 @@ def task_item(root: Path, slug: str, scrub: Callable[[str], str] = lambda s: s, 
             "edited": bool(brief and brief.get("edited")), "raw_brief": isinstance(raw, dict), "reach": reach}
 
 
+TASK_NOW_MAX = 2400       # the task's last sections an inbox item carries along, their end kept
+
+
+def task_now(root: Path, slug: Any, scrub: Callable[[str], str] = lambda s: s) -> dict | None:
+    """Where the task an inbox item belongs to stands now: its status, next step, whether it is closed and its
+    two last sections (its steps, its notes), so the model can tell an ask already answered or a task already done.
+    Part of the item's data and so of its basis: a change to the task makes the item's brief stale."""
+    from .details import split_front
+    if not isinstance(slug, str) or not SLUG_RE.match(slug):
+        return None
+    work = Path(root) / "work"
+    paths = [(work / "tasks" / slug / "STATUS.md", False), (work / "streams" / slug / "STATUS.md", False)]
+    paths += [(p, True) for p in sorted(work.glob(f"done/*/{slug}/STATUS.md"), reverse=True)]
+    for path, closed in paths:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        front, body = split_front(text)
+        rest = re.sub(r"(?m)\A\s*# .+\n", "", body, count=1)
+        now = {"status": _plain(front.get("status")), "closed": closed, "next": _plain(front.get("next")),
+               "recent_sections": _tail(_sections(rest)[-2:], TASK_NOW_MAX)}
+        return _clean_tree({k: v for k, v in now.items() if v is not None}, scrub, cap=TASK_NOW_MAX)
+    return None
+
+
+def _tail(sections: list, most: int) -> list:
+    """The sections within `most` characters, the latest kept: a long one keeps its heading and its end, where its
+    newest steps and notes stand, and an earlier one goes first"""
+    out, left = [], most
+    for sec in reversed(sections):
+        if left <= 0:
+            break
+        if len(sec) > left:
+            head = sec.split("\n", 1)[0]
+            sec = f"{head}\n(...)\n{sec[-max(left - len(head) - 8, 0):]}"
+        out.insert(0, sec)
+        left -= len(sec)
+    return out
+
+
+_DATE_DOTS_RE = re.compile(r"(?<![\d.])(\d{1,2})\.(\d{1,2})\.(\d{4})?(?![\d])")
+_DATE_ISO_RE = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
+
+
+def date_passed(texts: list, at: Any, today: Any) -> bool:
+    """Whether a text names a day after the day its brief was written (`at`) that is today or before: a meeting the
+    item prepares took place since, so its brief is looked at again; a brief written on that very day is looked at once
+    more on a later day (it may have been written before the hour). A day without a year takes the year of `at`."""
+    try:
+        written, now = dt.date.fromisoformat(str(at)), dt.date.fromisoformat(str(today))
+    except ValueError:
+        return False
+    for text in texts:
+        if not isinstance(text, str):
+            continue
+        days = []
+        for d, m, y in _DATE_DOTS_RE.findall(text):
+            days.append((int(y) if y else written.year, int(m), int(d)))
+        days += [(int(y), int(m), int(d)) for y, m, d in _DATE_ISO_RE.findall(text)]
+        for y, m, d in days:
+            try:
+                day = dt.date(y, m, d)
+            except ValueError:
+                continue
+            # a day after the brief was written that came, or the very day it was written once that day is over
+            if day <= now and (written < day or (day == written and now > written)):
+                return True
+    return False
+
+
 def _inbox_reach(root: Path | None, fields: dict, scrub: Callable[[str], str]) -> dict:
     """What an inbox item's card reaches: its detail, its closes_when probe, its task and that task's repository"""
     if root is None:
@@ -518,14 +609,20 @@ def inbox_item(item: Any, scrub: Callable[[str], str] = lambda s: s, root: Path 
     fields = item.data if isinstance(getattr(item, "data", None), dict) else {}
     title = _clean_tree(str(fields.get("summary") or item.id), scrub)
     data = {"kind": "inbox", "title": title,
-            "front": {k: _plain(fields[k]) for k in ("kind", "from", "due", "task", "closes_when") if fields.get(k) is not None},
+            "front": {k: _plain(fields[k]) for k in ("kind", "from", "due", "task", "closes_when", "created")
+                      if fields.get(k) is not None},
             "heading": None, "body_start": str(fields.get("detail") or "")[:HEAD_MAX], "recent_sections": [],
             "open_inbox": []}
     data = _clean_tree(data, scrub, cap=HEAD_MAX)
+    now = task_now(root, fields.get("task"), scrub) if root is not None else None
+    if now:
+        data["task_now"] = now
     reach = _inbox_reach(root, fields, scrub)
     brief = item.brief
     # the basis is the data without the references, so what the disk holds besides never makes a brief stale
-    return {"key": f"inbox:{item.id}", "kind": "inbox", "id": item.id, "title": title, "data": fit(_with_refs(data, reach)),
+    return {"key": f"inbox:{item.id}", "kind": "inbox", "id": item.id, "title": title, "detail": str(fields.get("detail") or ""),
+            "task": fields.get("task") if isinstance(fields.get("task"), str) else None,
+            "data": fit(_with_refs(data, reach)),
             "basis": brief_basis(fit(data)), "path": None, "brief": brief, "writable": True,
             "edited": bool(brief and brief.get("edited")), "raw_brief": brief is not None, "reach": reach}
 
@@ -680,18 +777,33 @@ class Describer:
             return None
         return inbox_item(found, self.app.scrub, self.app.root) if found.state in INBOX_STATES else None
 
+    def _task_stamp(self, slug: Any) -> tuple:
+        """What says the task an inbox item belongs to changed (task_now is part of the item's basis): its STATUS.md
+        under work/tasks or work/streams, else that it is not there (closed or gone)"""
+        if not isinstance(slug, str) or not SLUG_RE.match(slug):
+            return ()
+        for kind in ("tasks", "streams"):
+            try:
+                st = (Path(self.app.root) / "work" / kind / slug / "STATUS.md").stat()
+            except OSError:
+                continue
+            return (kind, st.st_mtime_ns, st.st_size)
+        return ("gone",)
+
     def _inbox_cached(self, iid: str) -> dict | None:
-        """An inbox item read again only once its item.yaml or its events changed (a new event file changes the
-        folder); a closed item is remembered as None, so describe.json's old entries cost a stat per build"""
+        """An inbox item read again only once its item.yaml, its events (a new event file changes the folder) or the
+        STATUS.md of its task changed; a closed item is remembered as None, so describe.json's old entries cost a stat
+        per build"""
         folder = Path(self.app.root) / "work" / "inbox" / iid
-        try:
-            st, ev = (folder / "item.yaml").stat(), (folder / "events").stat()
-            stamp = ("inbox", st.st_mtime_ns, st.st_size, ev.st_mtime_ns, sum(1 for _ in (folder / "events").iterdir()))
-        except (OSError, ValueError):
-            stamp = None
         cache_key = f"inbox:{iid}"
         with self.lock:
             hit = self._cache.get(cache_key)
+        try:
+            st, ev = (folder / "item.yaml").stat(), (folder / "events").stat()
+            stamp = ("inbox", st.st_mtime_ns, st.st_size, ev.st_mtime_ns, sum(1 for _ in (folder / "events").iterdir()),
+                     self._task_stamp(((hit[1] or {}) if hit else {}).get("task")))
+        except (OSError, ValueError):
+            stamp = None
         if stamp is not None and hit and hit[0] == stamp:
             return dict(hit[1]) if hit[1] else None
         found = self._inbox_read(iid)
@@ -764,6 +876,9 @@ class Describer:
             return "fields" if not (brief.get("name") and brief.get("stand")) else None
         if entry.get("prompt_version") != PROMPT_VERSION:
             return "prompt"
+        brief = item.get("brief") or {}
+        if (item.get("kind") == "inbox" and brief.get("verdict") != "obsolete" and date_passed([item.get("title"), item.get("detail")], brief.get("at"), self.today())):
+            return "date"
         tries = entry.get("ref_tries") if isinstance(entry.get("ref_tries"), int) else REF_TRIES
         # only where a pass writes stale briefs again: elsewhere nothing would come of it, the gap says enough
         if (self.cfg().get("auto") == "stale" and entry.get("unresolved") and entry.get("ref_basis") == item["basis"]
@@ -781,7 +896,7 @@ class Describer:
         """{written: 'ai'|'human'|None, stale, stale_why, proposal, running, last_error, warnings, model_mismatch,
         by, at, refs} for a card; `warnings` are what the gate left out of the brief last written or proposed (a text
         over its limit) and the references of it a reader cannot reach, `by` and `at` the model and the day of the
-        stored brief (what the page's AI mark names), `stale_why` basis, prompt or refs (Describer.stale_why), `refs`
+        stored brief (what the page's AI mark names), `stale_why` basis, prompt, refs or date (Describer.stale_why), `refs`
         what the stored brief names, resolved (brief_refs.resolutions; card.py draws it as links)"""
         with self.lock:
             running = self.running
@@ -926,7 +1041,7 @@ class Describer:
             raise _error(503, "describe_unavailable", tx["unavailable"]) from None
         if not ai.supports(SERVICE, chosen.provider) or chosen.model not in MODELS.values() or not app.runner.claude:
             raise _error(503, "describe_unavailable", tx["unavailable"])
-        system, text = prompt(item, language(app.root))
+        system, text = prompt(item, language(app.root), f"{self.today()} {dt.datetime.now().strftime('%H:%M')}")
         argv_ = argv(app.runner.claude, chosen.model, system, text, self.cfg().get("effort", DEFAULT_EFFORT))
         if not argv_ok(argv_, app.runner.claude):
             raise _error(409, "describe_too_big", tx["too_big"])

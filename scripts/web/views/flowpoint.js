@@ -67,7 +67,53 @@ function cardKind(x) {
     const r = x.row ?? {}
     return x.readOnly ? t.item.stateName[r.inbox_state] ?? t.taskState[r.status] ?? r.inbox_state ?? r.status ?? f.one.solo : f.one.solo
   }
+  if (x.group === 'question' && reminderTo(x.row)) return f.kind.reminder
   return f.kind[kindKey(x)]
+}
+
+// how the AI that writes a card names the person who keeps the tracker in `to` (card.py ME_WORDS)
+const ME_WORDS = new Set(['me', 'myself', 'ich', 'mich', 'du', 'dich', 'you'])
+
+/** Of whom a point's asks are asked when it is someone else (its card's `to`): a question to them is a reminder to
+ *  ask them, never a question for you; null when the asks are yours */
+export function reminderTo(row) {
+  const to = String(row?.card?.to ?? '').trim()
+  return to && !ME_WORDS.has(to.toLowerCase()) ? to : null
+}
+
+const dayOf = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+
+/** The three signals of a point (cockpit-useful-cards): how important (its priority, else its task's), by when (its due
+ *  day, overdue or none) and what for (its goal); a point with none of them shows nothing */
+function Signals({ row, s }) {
+  const u = T().flow.useful
+  const card = row?.card ?? {}
+  const prio = card.priority ?? row?.priority ?? null
+  const due = String(card.due ?? row?.due ?? '').slice(0, 10)
+  const today = dayOf(s?.now || Date.now())
+  const lang = language()
+  const dueWord = !/^\d{4}-\d{2}-\d{2}$/.test(due) ? u.noDue : due < today ? u.overdue(formatDay(due, lang)) : due === today ? u.today : formatDay(due, lang)
+  const goal = card.goal ?? null
+  if (!prio && !due && !goal) return null
+  const hot = prio === 'P0' || prio === 'P1'
+  const late = /^\d{4}-\d{2}-\d{2}$/.test(due) && due <= today
+  return html`<div class="flow-signals">
+    <span class=${`flow-signal${hot ? ' is-hot' : ''}`} data-signal="importance"><b>${u.importance}:</b> ${prio ? u.prio[prio] ?? prio : u.noPrio}</span>
+    <span class=${`flow-signal${late ? ' is-hot' : ''}`} data-signal="due"><b>${u.due}:</b> ${dueWord}</span>
+    ${goal ? html`<span class="flow-signal flow-signal-goal" data-signal="goal"><b>${u.goal}:</b> ${goal}</span>` : null}
+  </div>`
+}
+
+/** What exactly a point asks, one by one (its card's `ask`), headed by whom to ask when that is someone else */
+function Asks({ row }) {
+  const u = T().flow.useful
+  const asks = Array.isArray(row?.card?.ask) ? row.card.ask.filter(Boolean) : []
+  if (!asks.length) return null
+  const to = reminderTo(row)
+  return html`<div class="flow-asks">
+    <span class="flow-asks-head">${to ? html`<span class="flow-asks-to">${u.asksTo(to)}</span>` : u.asks}</span>
+    <ol>${asks.map(a => html`<li>${a}</li>`)}</ol>
+  </div>`
 }
 
 /** The key of a card's kind (cardKind): a quiet start and one ended with a note by its stage, a tab that waits at its
@@ -351,7 +397,7 @@ export function PointCard({ x, n = 1, s, c }) {
   const sub = pointStand(row, s) ?? (x.task ? f.forTask(pointName(x.task)) : null)
   return html`<${Hero} x=${{ kind: 'row', id: row.key, row }} n=${n} tabOf=${() => tab} s=${s} c=${c} kindWord=${cardKind(x)} title=${pointName(row)}
     sub=${sub} openable=${false} foot=${false} facts=${false} screen=${SCREEN_LINES} headEnd=${html`<${HeadEnd} row=${row} s=${s} c=${c} />`}
-    lead=${html`<${StepLine} row=${row} next=${file.next} s=${s} />`} />`
+    lead=${html`<${Signals} row=${row} s=${s} /><${Asks} row=${row} /><${StepLine} row=${row} next=${file.next} s=${s} />`} />`
 }
 
 /** The detail a point of its own is read from (logic.js soloSource: a task's STATUS.md, a closed copy by its folder,

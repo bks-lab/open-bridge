@@ -438,6 +438,18 @@
 
 /* stage 4, simpler: a point says its name, where it stands and its next step (views/flowpoint.js StepLine), who as a chip */
 .flow-step { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin: 4px 0 0; }
+/* a useful card (cockpit-useful-cards): the three signals and the asks one by one, above the next step */
+.flow-signals { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 0; }
+.flow-signal { font-size: var(--text-sm); padding: 2px 10px; border-radius: var(--radius-full); border: 1px solid var(--border);
+  background: var(--surface-muted); color: var(--on-surface-muted); }
+.flow-signal b { font-weight: 600; color: var(--on-surface); }
+.flow-signal.is-hot { border-color: var(--danger); color: var(--danger); background: transparent; }
+.flow-signal.is-hot b { color: var(--danger); }
+.flow-signal-goal { flex-basis: 100%; border-radius: var(--radius-md); background: transparent; border-color: transparent; padding-left: 0; }
+.flow-asks { margin: 6px 0 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--accent-subtle); font-size: var(--text-body); }
+.flow-asks-head { display: block; font-weight: 600; margin-bottom: 4px; }
+.flow-asks ol { margin: 0; padding-left: 22px; list-style: decimal; }
+.flow-asks li + li { margin-top: 2px; }
 .flow-step .label-caps { color: var(--on-surface-muted); }
 .flow-step-what { font-weight: 600; color: var(--on-surface); }
 .flow-who { font-weight: 600; }

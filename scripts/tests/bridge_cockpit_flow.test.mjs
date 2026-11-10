@@ -151,7 +151,7 @@ test('flowParts: what is put off, waits, rests, is a stream or an idea stands in
   assert.deepEqual(laterGroup.rows.map(e => e.kind), ['later', 'resting'])
   assert.equal(laterGroup.rows[0].until, '2026-10-20')
   assert.equal(parts.leftOut.total, 6)
-  assert.deepEqual(parts.leftOut.groups.map(g => g.reason), logic.FLOW_LEFT_OUT.filter(k => k !== 'github'))
+  assert.deepEqual(parts.leftOut.groups.map(g => g.reason), logic.FLOW_LEFT_OUT.filter(k => k !== 'github' && k !== 'obsolete'))
   // the ideas and the backlog come back only on the calm card, at most three: by rank, else the priority first
   assert.deepEqual(logic.restSuggestions(s, 3).map(r => r.key), ['task:backlog-one', 'inbox:20261009-0900-a-idea'])
   assert.deepEqual(logic.restSuggestions(s, 1).map(r => r.key), ['task:backlog-one'])
@@ -2793,7 +2793,7 @@ test('flowParts rules: hidden, put off, approved, idea, waiting and resting, rep
   assert.deepEqual(parts.doing.map(x => x.id), ['task:doing-one'])
   // an issue or PR in Now, by bucket do or urgency now, is a point of Issues and PRs, the soonest due first
   assert.deepEqual(parts.issue.map(x => x.row.key), ['ref:acme/app#1', 'ref:acme/app#9'])
-  assert.deepEqual(logic.FLOW_LEFT_OUT, ['running', 'later', 'idea', 'stream', 'github'])
+  assert.deepEqual(logic.FLOW_LEFT_OUT, ['running', 'later', 'obsolete', 'idea', 'stream', 'github'])
   assert.deepEqual(logic.FLOW_GROUPS, ['checkin', 'back', 'asks', 'result', 'lost', 'question', 'doing', 'task', 'issue', 'reports'])
   assert.deepEqual(logic.FLOW_BANDS, ['checkin', 'you', 'bridge'])
   assert.deepEqual(logic.FLOW_CHIPS.tasks, ['task', 'issue'])
@@ -2890,7 +2890,7 @@ test('leftPlan: Back on per entry, the other verbs as a batch plans them', () =>
   const rows = [e(ref('acme/app', 1)), e(task('st', { stream: true }))]
   assert.deepEqual(logic.leftPlan(rows, 'done', s).calls, logic.batchPlan(rows.map(x => x.row), 'done', s).calls)
   assert.deepEqual(logic.LEFT_VERBS, { running: ['back', 'later', 'done', 'drop'], later: ['back', 'later', 'done', 'drop'],
-    idea: ['do', 'later', 'done', 'drop'], stream: ['later'] })
+    idea: ['do', 'later', 'done', 'drop'], stream: ['later'], obsolete: ['done', 'drop'] })
 })
 
 test('B, merge: only open finite tasks, the one with more activity stays, then the newest move, then the state', () => {
@@ -3751,7 +3751,7 @@ test('R6B 2f, stage 4: Running elsewhere holds what waits on others, Later what 
   later: [ask('20261009-0904-a-w', { bucket: 'waiting' }), ask('20261009-0903-a-ok', { inbox_state: 'approved' })],
   hidden: [task('put-off', { hidden_until: '2026-10-20' })] })
   const parts = logic.flowParts(s)
-  assert.deepEqual(logic.FLOW_LEFT_OUT, ['running', 'later', 'idea', 'stream', 'github'])
+  assert.deepEqual(logic.FLOW_LEFT_OUT, ['running', 'later', 'obsolete', 'idea', 'stream', 'github'])
   assert.deepEqual(parts.leftOut.groups.map(g => g.reason), ['running', 'later'])
   const [running, later] = parts.leftOut.groups.map(g => g.rows)
   assert.deepEqual(running.map(e => [e.row.key, e.kind]), [['task:waits', 'waiting'], ['inbox:20261009-0903-a-ok', 'waiting'], ['inbox:20261009-0904-a-w', 'waiting']])
@@ -3997,4 +3997,37 @@ test('6d: a record open in the files tab carries the right column of Work throug
   assert.deepEqual(words(files), words(flow))
   // the list opens a record beside it, the walk off (app.js)
   assert.match(APP, /openRecord: \(slug, path\) => setUi\(\{ dossierOpen: String\(path \?\? ''\)\.startsWith\('work\/done\/'\) \? path : slug, filesWalk: false \}\)/)
+})
+
+// ---------------------------------------------------------------- a useful card (cockpit-useful-cards)
+
+test('flowParts: an item the AI found obsolete leaves the queue for Out of date, with the reason', () => {
+  const gone = ask('20261009-0900-gone', { card: { verdict: { word: 'obsolete', why: 'The meeting was this morning.' } } })
+  const s = state({ now: [gone, ask('20261009-0901-open')] })
+  const parts = logic.flowParts(s)
+  assert.deepEqual(queueOf(s).map(x => x.id), ['inbox:20261009-0901-open'])
+  const g = parts.leftOut.groups.find(x => x.reason === 'obsolete')
+  assert.deepEqual(g.rows.map(e => [e.row.key, e.why]), [['inbox:20261009-0900-gone', 'The meeting was this morning.']])
+  assert.ok(logic.FLOW_LEFT_OUT.includes('obsolete') && en.flow.notnow.group.obsolete && text.TABLES.de.flow.notnow.group.obsolete === 'Überholt')
+})
+
+test('a question to someone else reads as a reminder, with the asks and the three signals on the card', () => {
+  const card = { to: 'Sam', ask: ['May open-bridge name you?', 'Is the deadline fixed?'], goal: 'The slides hold no unchecked claim.',
+    priority: 'P2', due: null, verdict: { word: 'current', why: null } }
+  const el = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ now: [ask('20261009-0900-sam', { card, priority: 'P2' })] }))} c=${recorder()} />`)
+  assert.equal(el.$('.flow-card .fx-kind').text(), en.flow.kind.reminder)
+  assert.equal(text.TABLES.de.flow.kind.reminder, 'Erinnerung')
+  const asks = el.$$('.flow-card .flow-asks li').map(li => li.text())
+  assert.deepEqual(asks, card.ask)
+  assert.match(el.$('.flow-card .flow-asks-to').text(), /Sam/)
+  const sig = el.$$('.flow-card .flow-signal').map(x => x.getAttribute('data-signal'))
+  assert.deepEqual(sig, ['importance', 'due', 'goal'])
+  assert.match(el.$('.flow-card [data-signal=goal]').text(), /unchecked claim/)
+})
+
+test('a question to me stays a question for you', () => {
+  const card = { to: 'me', ask: ['Keep the raise or object?'] }
+  const el = mount(html`<${FlowPage} s=${cockpitState(NOW, state({ now: [ask('20261009-0900-me', { card })] }))} c=${recorder()} />`)
+  assert.equal(el.$('.flow-card .fx-kind').text(), en.flow.kind.question)
+  assert.ok(!el.$('.flow-card .flow-asks-to'), 'no addressee line for your own question')
 })

@@ -185,6 +185,7 @@ function laterWhy(e, lang, s = null) {
   // stage 4: a row in progress with someone says with whom and the day it asks again
   if (e.kind === 'checkin') return f.with(e.who ? String(e.who)[0].toUpperCase() + String(e.who).slice(1) : null, until)
   if (e.kind === 'watch') return e.repo ?? ''
+  if (e.kind === 'obsolete') return e.why ?? w.obsolete
   if (e.why === 'ahead') return w.ahead(activityWhen(e.due, lang), until)
   return [e.why === 'hidden' ? w.hidden(until) : w.deferred(until), e.due ? f.due(activityWhen(e.due, lang)) : null].filter(Boolean).join(' · ')
 }
@@ -231,7 +232,7 @@ export function LeftList({ group, s, c }) {
     return html`<section class="flow-overview flow-leftlist" aria-labelledby="flow-left-h">${head0}
       ${group.rows.length ? html`<table class="flow-ov-table">
         <thead><tr><th class="flow-ov-pickcol"><span class="sr-only">${f.list.pickAll}</span></th><th>${f.list.cols.point}</th>
-          <th>${reason === 'later' ? f.notnow.cols.why : f.list.cols.step}</th></tr></thead>
+          <th>${reason === 'later' || reason === 'obsolete' ? f.notnow.cols.why : f.list.cols.step}</th></tr></thead>
         <tbody>${group.rows.map(e => {
           const row = e.row
           const stand = pointStand(row, s)
@@ -243,7 +244,7 @@ export function LeftList({ group, s, c }) {
             <td class="flow-ov-point"><${OpenRow} row=${row} i=${group.rows.indexOf(e)} c=${c} />
               <span class="flow-ov-stand muted small">${stand ? short(stand, 160) : reason === 'running'
                 ? html`<span class="flow-ov-why">${laterWhy(e, lang, s)}</span>` : null}</span></td>
-            ${reason === 'later' ? html`<td class="flow-ov-step small"><span class="flow-ov-why">${laterWhy(e, lang, s)}</span> ${backOne(e)}</td>`
+            ${reason === 'later' || reason === 'obsolete' ? html`<td class="flow-ov-step small"><span class="flow-ov-why">${laterWhy(e, lang, s)}</span> ${backOne(e)}</td>`
               : html`<td class="flow-ov-step small">${step ? html`<span>${short(step.what, 90)}</span> <${WhoChip} who=${step.who ?? e.who} s=${s} />`
                 : e.who ? html`<${WhoChip} who=${e.who} s=${s} />` : null}${ask ? html`<span class="flow-ov-when muted">${ask}</span>`
                 : reason === 'running' ? null : html`<span class="flow-ov-when muted">${whenOf(e, reason, s, lang)}</span>`}</td>`}
