@@ -25,7 +25,7 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   asksSomething, checkinDays, detailNeedsLoad, dropReasonWord, duration, flowAction, flowDrive, flowSettings, formatDay, guideOf, nextWho, personOf,
-  pointName, pointStand, pointStep, previewText, reportsTicked, resultText, short, soloSource, stageTone, tabOfTask, dropWhat, seenOn,
+  pointName, pointStand, pointStep, previewText, reminderTo, reportsTicked, resultText, short, soloSource, stageTone, tabOfTask, dropWhat, seenOn,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag } from './day.js'
@@ -69,16 +69,6 @@ function cardKind(x) {
   }
   if (x.group === 'question' && reminderTo(x.row)) return f.kind.reminder
   return f.kind[kindKey(x)]
-}
-
-// how the AI that writes a card names the person who keeps the tracker in `to` (card.py ME_WORDS)
-const ME_WORDS = new Set(['me', 'myself', 'ich', 'mich', 'du', 'dich', 'you'])
-
-/** Of whom a point's asks are asked when it is someone else (its card's `to`): a question to them is a reminder to
- *  ask them, never a question for you; null when the asks are yours */
-export function reminderTo(row) {
-  const to = String(row?.card?.to ?? '').trim()
-  return to && !ME_WORDS.has(to.toLowerCase()) ? to : null
 }
 
 const dayOf = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }

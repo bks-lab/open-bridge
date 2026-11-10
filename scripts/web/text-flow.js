@@ -3,6 +3,10 @@
 // side under identical keys. text.js takes them in as TABLES.en.flow and TABLES.de.flow, so a view reads them
 // through T(). Keys and comments are English; only the values of `de` are German. Mouse first: no text names a key.
 
+// a card's asks as one line, numbered, each ending in its own mark (flow.ai.draft); '' without any
+const numbered = asks => (Array.isArray(asks) ? asks : []).map(a => String(a ?? '').trim()).filter(Boolean)
+  .map((a, i) => `${i + 1}. ${/[.?!]$/.test(a) ? a : `${a}.`}`).join(' ')
+
 export const FLOW = {
   en: {
     title: 'Work through',
@@ -95,7 +99,8 @@ export const FLOW = {
     later: { label: 'Until when', tomorrow: 'Tomorrow', monday: 'Monday', week: 'Next week', date: 'Date', go: 'Put off' },
     drop: {
       label: 'Why it goes', other: 'Another reason', send: 'Drop',
-      reason: { resolves_itself: 'Resolves itself', not_needed: 'No longer needed', someone_else: 'Someone else does it', not_worth_it: 'Too big for what it brings' },
+      reason: { resolves_itself: 'Resolves itself', not_needed: 'No longer needed', someone_else: 'Someone else does it', not_worth_it: 'Too big for what it brings',
+        already_done: 'Already done', not_relevant: 'No longer relevant', not_like_this: 'Not needed like this' },
       // what the click will do (logic.js dropWhat), by kind and by cockpit.flow.drop_idea
       what: { idea: day => `Closes the task; it comes back as an idea on ${day}`, task: 'Closes the task for good',
         inbox: 'Drops the item; the reason stays on it as a note', issue: 'Hides it here; it stays open on GitHub',
@@ -132,6 +137,18 @@ export const FLOW = {
     useful: { importance: 'Important', due: 'Due', goal: 'Goal', prio: { P0: 'very high', P1: 'high', P2: 'medium', P3: 'low' },
       noPrio: 'not set', noDue: 'no date', overdue: d => `overdue since ${d}`, today: 'today',
       asks: 'What is asked', asksTo: who => `Ask ${who}:` },
+    // the buttons of a card (cockpit-card-buttons): Give it to the AI and its three ways, a reminder's own two, Out of date
+    ai: {
+      button: 'Give it to the AI', label: 'What should the AI do? A tab opens and works on it.',
+      mode: { go: 'Let it do it', report: 'Advise', context: 'Collect context' },
+      modeNote: { go: 'does it', report: 'checks, recommends, waits for you', context: 'reads up, changes nothing' },
+      draftMode: 'Let it draft the message', note: 'What the agent should do', noteOptional: 'Optional: what it should look at',
+      start: 'Start', cancel: 'Cancel', empty: 'Write what the agent should do first.',
+      draftTo: who => `Draft the message to ${who}`,
+      draft: (who, asks, name) => `Draft a message to ${who}${numbered(asks) ? ` with these questions: ${numbered(asks)}` : ` about "${name}".`} A draft only, with the mail-draft skill, never send it. At the end, write a note "Result: ..." on the item.`,
+      asked: 'I asked', askedNote: 'Asked, waiting for the answer',
+      obsolete: 'Out of date', discard: 'Discard', obsoleteLabel: 'Why is it out of date?', obsoleteSend: 'Out of date',
+    },
     notnow: {
       label: 'Not now',
       group: { running: 'Running elsewhere', later: 'Later', obsolete: 'Out of date', idea: 'Ideas and backlog', stream: 'Streams', watch: 'Watching' },
@@ -418,7 +435,8 @@ export const FLOW = {
     later: { label: 'Bis wann', tomorrow: 'Morgen', monday: 'Montag', week: 'Nächste Woche', date: 'Datum', go: 'Verschieben' },
     drop: {
       label: 'Warum es weg kann', other: 'Anderer Grund', send: 'Weg damit',
-      reason: { resolves_itself: 'Erledigt sich von selbst', not_needed: 'Nicht mehr nötig', someone_else: 'Macht jemand anders', not_worth_it: 'Zu groß für den Nutzen' },
+      reason: { resolves_itself: 'Erledigt sich von selbst', not_needed: 'Nicht mehr nötig', someone_else: 'Macht jemand anders', not_worth_it: 'Zu groß für den Nutzen',
+        already_done: 'Schon erledigt', not_relevant: 'Nicht mehr relevant', not_like_this: 'Brauche ich so nicht' },
       what: { idea: day => `Schließt die Aufgabe; sie kommt als Idee am ${day} wieder`, task: 'Schließt die Aufgabe endgültig',
         inbox: 'Verwirft den Eintrag; der Grund bleibt als Notiz daran', issue: 'Blendet es hier aus; auf GitHub bleibt es offen',
         other: 'Blendet es hier endgültig aus; seine Quelle bleibt, wie sie ist' },
@@ -453,6 +471,17 @@ export const FLOW = {
     useful: { importance: 'Wichtig', due: 'Termin', goal: 'Ziel', prio: { P0: 'sehr hoch', P1: 'hoch', P2: 'mittel', P3: 'niedrig' },
       noPrio: 'nicht gesetzt', noDue: 'kein Termin', overdue: d => `überfällig seit ${d}`, today: 'heute',
       asks: 'Was gefragt ist', asksTo: who => `An ${who}:` },
+    ai: {
+      button: 'An die AI geben', label: 'Was soll die AI tun? Es öffnet sich ein Tab, der daran arbeitet.',
+      mode: { go: 'Machen lassen', report: 'Beraten', context: 'Infos sammeln' },
+      modeNote: { go: 'setzt es um', report: 'prüft, empfiehlt und wartet auf dich', context: 'liest nach, ändert nichts' },
+      draftMode: 'Nachricht entwerfen lassen', note: 'Was der Agent tun soll', noteOptional: 'Optional: worauf er achten soll',
+      start: 'Starten', cancel: 'Abbrechen', empty: 'Erst schreiben, was der Agent tun soll.',
+      draftTo: who => `Nachricht an ${who} entwerfen`,
+      draft: (who, asks, name) => `Entwirf eine Nachricht an ${who}${numbered(asks) ? ` mit diesen Fragen: ${numbered(asks)}` : ` zu „${name}“.`} Nur als Entwurf mit dem mail-draft-Skill, nichts senden. Schreib zum Schluss eine Notiz "Ergebnis: ..." an den Eintrag.`,
+      asked: 'Hab ich gefragt', askedNote: 'Gefragt, wartet auf die Antwort',
+      obsolete: 'Überholt', discard: 'Verwerfen', obsoleteLabel: 'Warum überholt?', obsoleteSend: 'Als überholt ablegen',
+    },
     notnow: {
       label: 'Nicht dran',
       group: { running: 'Läuft', later: 'Später', obsolete: 'Überholt', idea: 'Ideen und Backlog', stream: 'Streams', watch: 'Beobachten' },

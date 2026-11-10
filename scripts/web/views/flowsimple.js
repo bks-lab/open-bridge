@@ -3,8 +3,11 @@
 // many buttons on a point). SimpleActs, the right column's What you can do of Work through (views/flowside.js
 // PointActs hands every point with a row to it while Work through is on): ONE strong button that applies the AI's
 // suggestion with its verb and the step (logic.js strongOf), else Give your yes, else the Bridge's own step, and To tab
-// while an agent tab is on the point; the four states in a quiet 2x2 (views/verbbar.js `simple`: Done, In progress ▾,
-// Later ▾, Drop ▾); More ▾, a menu of every other verb that applies (logic.js moreOf) and the ways of a tab. OrderMenu,
+// while an agent tab is on the point; Give it to the AI ▾ on every card (AiGive: Let it do it, Advise, Collect context,
+// the way its sort fits picked first; cockpit-card-buttons), a reminder's I asked beside it; the four states in a quiet
+// 2x2 (views/verbbar.js `simple`: Done, In progress ▾, Later ▾, Drop ▾, an inbox item's Out of date ▾); More ▾, a menu
+// of every other verb that applies (logic.js moreOf) and the ways of a tab. A reminder (its asks are someone else's)
+// has Draft the message to <who> as its strong button, a draft only. OrderMenu,
 // Order ▾ under the left column's list: what orders the list (Order themes again, Sort again, Read in with Jev or
 // Haiku, Rename the theme entered), the lines of a run that runs under it. Both menus are popovers (parts.js
 // usePopover). Where Work through is off none of this stands: views/flowside.js BasicActs and its foot stay as they were.
@@ -13,7 +16,7 @@
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  adoptStepOf, basicVerbs, canTab, DAY, dropReasonWord, flowAction, flowDriver, flowLive, flowRunning, flowSettings, flowTabOf, formatDay, haikuReady, isoDate,
+  adoptStepOf, aiAction, aiDraft, aiNote, aiOf, basicVerbs, checkinDays, reminderTo, canTab, DAY, dropReasonWord, flowAction, flowDriver, flowLive, flowRunning, flowSettings, flowTabOf, formatDay, haikuReady, isoDate,
   jevReady, leftPlan, moreOf, personOf, pointName, replyOptions, short, strongOf, tabCloseOffer, triageRunning, workPageOf,
   pointKeys, readMark, seenOn, seenSettings,
 } from '../logic.js'
@@ -22,12 +25,14 @@ import { TabClose } from './detail.js'
 import { sugFrom, sugWhy } from './flowlist.js'
 import { GITHUB_ISSUE, Improve, IssueWays, Resort, Rename } from './flowside.js'
 import { PrioFoot } from './flowprio.js'
+import { LaunchPick } from './launch.js'
 import { Btn, usePopover } from './parts.js'
 import { VerbBar } from './verbbar.js'
 
-/** The verbs of a point, simpler (stage 4 of the one point view), top to bottom: ONE strong button that applies the
- *  AI's suggestion with its verb and step (logic.js strongOf: Let the Bridge: <step>, Done, Later, Drop), else Give
- *  your yes, else the Bridge's own step, and To tab while an agent tab is on the point; then the four states in a quiet
+/** The verbs of a point, simpler (stage 4 of the one point view), top to bottom: ONE strong button, a reminder's
+ *  Draft the message to <who>, else the AI's suggestion with its verb and step (logic.js strongOf: Let the Bridge:
+ *  <step>, Done, Later, Drop), else Give your yes, else the Bridge's own step, and To tab while an agent tab is on the
+ *  point; then Give it to the AI ▾ (AiGive, gone while an agent works on it) with a reminder's I asked; then the four states in a quiet
  *  2x2 (Done, In progress ▾, Later ▾, Drop ▾; one that cannot go says why; a tab that asks what its card answers
  *  keeps To tab in More); then More ▾, the menu of every other verb
  *  that applies (logic.js moreOf: Make it a task, Open on GitHub, the board's moves, Show in the net, Describe again,
@@ -75,13 +80,16 @@ export function SimpleActs({ x, row, s, c, sug }) {
   // an issue on a board closes by the board's rules (review first): the suggestion's Done opens its moves, where the
   // move that fits is the strong one with the reason in its field
   const viaBoard = !!board && strong?.verb === 'done'
+  // what the strong start sends: a reminder's draft of its message (a draft only), else the Bridge's step
+  const strongStart = () => (strong?.verb === 'draft' ? aiAction('go', row, aiDraft(row, lang))
+    : flowAction('do', row, w.startStep(strong?.step ?? title), by))
   const applyStrong = () => {
     if (!strong) return
     if (viaBoard) return setPanel(panel === 'board' ? null : 'board')
     if (strong.verb === 'yes') return send({ verb: 'do_it', args: { keys: [row.key] } })
-    if (strong.verb === 'do') {
+    if (strong.verb === 'do' || strong.verb === 'draft') {
       if (flowRunning(s) >= flowSettings(s).max_running) { setCrowd(true); return }
-      return send(flowAction('do', row, w.startStep(strong.step ?? title), by))
+      return send(strongStart())
     }
     if (strong.verb === 'later') return send(flowAction('later', row, laterDay, by, revisitArgs))
     if (strong.verb === 'drop') return send(flowAction('drop', row, sug?.drop ? dropReasonWord(sug.drop, lang) : sug?.reason || w.dropSug, by))
@@ -91,6 +99,7 @@ export function SimpleActs({ x, row, s, c, sug }) {
   // step is no part of what they do)
   const laterDay = sug?.until ?? isoDate((s.now || Date.now()) + 7 * DAY)
   const strongWord = !strong ? null : viaBoard ? `${w.boardDone} ${panel === 'board' ? '▴' : '▾'}` : strong.verb === 'yes' ? f.approve
+    : strong.verb === 'draft' ? f.ai.draftTo(strong.to)
     : strong.verb === 'do' ? w.strongDo(strong.step ?? title)
       : strong.verb === 'later' ? (revisitArgs ? f.marks.strong(formatDay(laterDay, lang)) : f.list.laterUntil(formatDay(laterDay, lang)))
         : w[strong.verb] ?? f.verbs[strong.verb]
@@ -136,6 +145,8 @@ export function SimpleActs({ x, row, s, c, sug }) {
   const toTask = basic.some(v => v.id === 'task') ? (row.inbox_id
     ? { what: f.basic.taskInbox, run: async () => { const r = await c.act('to_task', { key: row.key }); if (r?.ok && r.task) c.openItem(`task:${r.task}`); return r } }
     : { what: f.basic.taskIssue, run: () => c.act('row_action', { ...adopt, action: 'adopt' }) }) : null
+  // Give it to the AI (cockpit-card-buttons): on every card, gone while an agent works on the point or its yes runs
+  const ai = aiOf(row, { live: !!live, running, person })
   const hasMore = !!menu && (items.length || review || near || offer || (mark && !mark.live) || focusable)
   // Read (open_reads click) while the point is unread; Go on, keep in focus where a doing task rests and nothing else is strong
   const readBtn = mark?.unread && !mark.live && seenSettings(s).open_reads === 'click'
@@ -146,7 +157,8 @@ export function SimpleActs({ x, row, s, c, sug }) {
     ${readBtn}
     ${strongBtn ?? goOn}
     ${crowd ? html`<div class="verbbar-acts" role="alert"><span class="small">${f.start.busy(flowRunning(s))}</span>
-      <${Btn} size="sm" variant="secondary" onClick=${() => { setCrowd(false); send(flowAction('do', row, w.startStep(strong?.step ?? title), by)) }}>${f.start.anyway}<//></div>` : null}
+      <${Btn} size="sm" variant="secondary" onClick=${() => { setCrowd(false); send(strongStart()) }}>${f.start.anyway}<//></div>` : null}
+    ${ai && !ai.off && x.group !== 'checkin' ? html`<${AiGive} key=${row.key} row=${row} ai=${ai} s=${s} c=${c} onSent=${() => c.flowDecided()} />` : null}
     ${x.group === 'checkin' ? null : html`<${VerbBar} row=${row} s=${s} c=${c} simple stack off=${{ ...off, work: off.work ?? null }}
       words=${ends ? { done: t.btnDoneCloseTab } : {}} handlers=${ends ? { done: b => c.act('tab_done', { tab_ref: near.ref, ...(b ? { by: b } : {}) }) } : {}} />`}
     ${hasMore ? html`<div class="flow-more" ref=${box}>
@@ -161,6 +173,69 @@ export function SimpleActs({ x, row, s, c, sug }) {
     ${panel === 'board' ? html`<div class="flow-more-board"><${IssueWays} key=${row.key} row=${row} s=${s} c=${c} sug=${sug} /></div>` : null}
     ${panel === 'improve' ? html`<${Improve} row=${row} tab=${tab && tab.state === 'waiting' && canTab(s, 'send') ? tab : null} s=${s} c=${c} onDone=${() => setPanel(null)} />` : null}
 
+  </div>`
+}
+
+/** Give it to the AI (cockpit-card-buttons), the same button on every card: its panel the three ways with what each
+ *  does (logic.js aiOf: the one the card's sort fits picked first), the sentence the agent starts with (aiNote: the
+ *  way's own until the person writes one, then theirs whatever way), the model under it; Start sends the way's verb
+ *  (aiAction) and asks first once cockpit.flow.max_running agents run. A reminder adds I asked: In progress with that
+ *  person for three days (verb work_on), back on that day as a check-in that asks how it stands */
+function AiGive({ row, ai, s, c, onSent }) {
+  const t = T()
+  const f = t.flow
+  const a = f.ai
+  const lang = language()
+  const [open, setOpen] = useState(false)
+  const [mode, setMode] = useState(ai.mode)
+  const [note, setNote] = useState(() => aiNote(ai.mode, row, lang))
+  const [own, setOwn] = useState(false)
+  const [crowd, setCrowd] = useState(0)
+  const [manual, setManual] = useState(null)
+  const busy = !!s.ui?.busy?.[row.key]
+  const to = ai.sort === 'reminder' ? reminderTo(row) : null
+  const pick = m => { setMode(m); if (!own) setNote(aiNote(m, row, lang)); setCrowd(0) }
+  const go = async force => {
+    const act = aiAction(mode, row, note)
+    if (!act) return
+    const n = force ? 0 : flowRunning(s)
+    if (n >= flowSettings(s).max_running) { setCrowd(n); return }
+    setCrowd(0)
+    const r = await c.act(act.verb, act.args)
+    // no terminal driver: the server hands out the commands to start it by hand
+    if (Array.isArray(r?.manual) && r.manual.length) { setManual(r.manual); return }
+    if (r?.ok) { setOpen(false); onSent?.() }
+  }
+  const asked = async () => {
+    const r = await c.act('work_on', { key: row.key, who: to, until: checkinDays(s.now || Date.now())[3], text: a.askedNote })
+    if (r?.ok) onSent?.()
+  }
+  const empty = mode === 'go' && !note.trim()
+  const id = `ai-${row.key}`
+  return html`<div class="flow-ai">
+    <div class="verbbar-acts">
+      <${Btn} size="sm" variant="secondary" pressed=${open} onClick=${() => { setOpen(!open); setCrowd(0) }}>${`${a.button} ${open ? '▴' : '▾'}`}<//>
+      ${to ? html`<${Btn} size="sm" variant="secondary" busy=${busy} onClick=${asked}>${a.asked}<//>` : null}
+    </div>
+    ${open ? html`<div class="verbbar-panel" role="group" aria-label=${a.button}>
+      <p class="small">${a.label}</p>
+      <div class="flow-ai-modes">${ai.modes.map(m => html`<${Btn} key=${m} size="sm" variant="secondary" cls="flow-ai-mode" pressed=${mode === m}
+        onClick=${() => pick(m)}><span class="flow-ai-mode-name">${m === 'go' && to ? a.draftMode : a.mode[m]}</span>
+        <small class="flow-ai-mode-note">${a.modeNote[m]}</small><//>`)}</div>
+      <label class="label-caps" for=${`${id}-note`}>${mode === 'go' ? a.note : a.noteOptional}</label>
+      <textarea id=${`${id}-note`} class="input textarea" rows="3" maxlength="2000" value=${note}
+        onInput=${e => { setNote(e.currentTarget.value); setOwn(true) }}></textarea>
+      <${LaunchPick} s=${s} c=${c} items=${[{ key: row.key, title: pointName(row) }]} />
+      <div class="verbbar-acts">
+        <${Btn} size="sm" variant="primary" busy=${busy} disabled=${empty} onClick=${() => go(false)}>${a.start}<//>
+        <${Btn} size="sm" variant="ghost" onClick=${() => setOpen(false)}>${a.cancel}<//>
+        ${empty ? html`<span class="muted small">${a.empty}</span>` : null}
+      </div>
+      ${crowd ? html`<div class="verbbar-acts" role="alert"><span class="small">${f.start.busy(crowd)}</span>
+        <${Btn} size="sm" variant="secondary" busy=${busy} onClick=${() => go(true)}>${f.start.anyway}<//></div>` : null}
+      ${manual ? html`<div class="verbbar-manual"><p class="small">${f.start.manual}</p><pre class="mono small">${manual.join('\n')}</pre>
+        <${Btn} size="xs" variant="secondary" icon="copy" onClick=${() => c.copy(manual.join('\n'))}>${f.start.copy}<//></div>` : null}
+    </div>` : null}
   </div>`
 }
 
