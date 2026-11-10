@@ -185,6 +185,15 @@ function HelpMenu({ s, c }) {
 /** The header as the menu has it (decision 6, menue.md): the as-of time (the reload button), Tabs, Ask, History,
  *  Notes (the bell, the notes' own list; the history keeps them by day too) beside the state of what runs, and Help
  *  last, with Explain as its first item. The colours and the look-up card stand in Settings, Appearance */
+/** The server runs newer code than this page (app.js hello, logic.js codeSeen): one line and Load again; the page
+ *  loads by itself once nobody types (logic.js reloadSafe), this is for whoever looks now */
+export function NewCode({ s, c }) {
+  const t = T().newCode
+  if (!s.ui?.newCode) return null
+  return html`<span class="hdr-newcode" role="status"><span class="hide-narrow">${t.line}</span>
+    <${Btn} size="xs" variant="primary" onClick=${() => c.reloadPage()}>${t.button}<//></span>`
+}
+
 export function Header({ s, c }) {
   const t = T()
   // the Tabs button counts the tabs that want you; a finished (idle) one waits on nobody
@@ -205,6 +214,7 @@ export function Header({ s, c }) {
     <${WorkspacePicker} s=${s} c=${c} />
     <span class="hdr-headline" aria-hidden="true"></span>
     <div class="hdr-right">
+      <${NewCode} s=${s} c=${c} />
       <${LoadingIndicator} s=${s} />
       <${AsOf} s=${s} c=${c} brief=${s.layout === 'narrow'} />
       ${s.layout === 'narrow' ? null : s.ui.shortcuts ? html`<${CommandBox} c=${c} />` : null}

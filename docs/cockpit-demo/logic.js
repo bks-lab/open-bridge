@@ -4206,6 +4206,23 @@ export function launchChoice(launch, ui) {
  *  changes for a server without it. On, the choice goes along; Auto with a recommendation cached for the
  *  one row started sends its concrete model and effort, so the server need not route again. An effort
  *  goes along only while the effort switch is on, Standard as 'standard' */
+// how long nobody may have typed or clicked before the page loads newer code by itself (app.js hello)
+export const RELOAD_IDLE_MS = 30000
+
+/** What a hello's stamp of the page's code says (server.py web_stamp): the page keeps the first one it saw (`code`,
+ *  the code it runs); a later, different one is `newer`, the server runs code this page does not have. A hello
+ *  without a stamp changes nothing */
+export function codeSeen(had, got) {
+  const code = had || got || null
+  return { code, newer: !!had && !!got && got !== had }
+}
+
+/** Whether the page may load newer code by itself now: while hidden at once, else only when no field holds text
+ *  and nobody typed or clicked for RELOAD_IDLE_MS */
+export function reloadSafe({ hidden = false, editing = false, idleMs = 0 } = {}) {
+  return !!hidden || (!editing && idleMs >= RELOAD_IDLE_MS)
+}
+
 export function withLaunch(verb, args, launch, ui, routes) {
   if (!launch?.enabled || !START_VERBS.includes(verb)) return args
   const { model, effort } = launchChoice(launch, ui)

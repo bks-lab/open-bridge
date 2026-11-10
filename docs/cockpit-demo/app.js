@@ -13,7 +13,7 @@ import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WOR
 import {
   CONN_GRACE_MS, DAY, alertToasts, dismissState, giveTwin, notesOpenedState, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
-  personOf, upsertRecord, addFeed, feedEvents, workersDue, setAreaAliases, setAreaTags, areaOfWord, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
+  codeSeen, reloadSafe, personOf, upsertRecord, addFeed, feedEvents, workersDue, setAreaAliases, setAreaTags, areaOfWord, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, areasOff, areaKey, workspacesOn, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
@@ -489,8 +489,32 @@ function fixPage() {
   else if (s.model && !pageOrder(s).includes(s.ui.page) && !parentOf(s, s.ui.page)) setUi({ page: 'briefing' })
 }
 
+// the code this page runs, as the first hello named it (server.py web_stamp); a later other one is newer code
+let pageCode = null
+let lastInput = 0
+const editing = () => {
+  const a = document.activeElement
+  return !!a && (a.isContentEditable || (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && String(a.value ?? '').trim() !== ''))
+}
+/** Load the newer code once nobody types (logic.js reloadSafe): looked at again every few seconds until then, and
+ *  only while newer code waits */
+function reloadWhenSafe() {
+  if (!lastInput) {
+    lastInput = Date.now()
+    for (const ev of ['keydown', 'pointerdown', 'input']) window.addEventListener(ev, () => { lastInput = Date.now() }, { capture: true, passive: true })
+  }
+  if (reloadSafe({ hidden: document.hidden, editing: editing(), idleMs: Date.now() - lastInput })) { window.location.reload(); return }
+  setTimeout(reloadWhenSafe, 5000)
+}
+
 const handlers = {
   hello(p) {
+    const seen = codeSeen(pageCode, p?.code)
+    pageCode = seen.code
+    if (seen.newer && !store.get().ui.newCode) {
+      setUi({ newCode: true })
+      reloadWhenSafe()
+    }
     if (p?.language && p.language !== language()) {
       setLanguage(p.language)
       document.documentElement.lang = language()
@@ -2402,6 +2426,7 @@ async function boot() {
 
 // exported for the components' retry button
 ctl.retry = () => window.location.reload()
+ctl.reloadPage = () => window.location.reload()
 ctl.attentionTabs = () => attentionTabs(store.get().tabs?.tabs)
 ctl.startRefusal = startRefusal
 
