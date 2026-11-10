@@ -1817,3 +1817,31 @@ def test_a_filed_row_reads_as_its_title_not_its_id():
     assert bf.filed_summary("Systems", probe) == "Systems: A fact nobody links to (warning)"
     issue = {"id": "acme/site#7", "title": "Write the onboarding page", "state": "blocked"}
     assert bf.filed_summary("GitHub", issue) == "GitHub: acme/site#7 Write the onboarding page (blocked)"
+
+
+# ---------------------------------------------------------------- what a taskboard card says (view: taskboard)
+
+def test_a_task_item_carries_goal_stand_headline_area_and_streams_come_only_when_asked(tmp_path):
+    root = bridge(tmp_path)
+    task(root, "alpha", area="Ops", headline="Alpha: ship the release",
+         brief={"goal": "The release is out", "stand": "Half of the notes  written", "name": "Ship alpha"})
+    task(root, "beta")
+    d = root / "work" / "streams" / "weekly"
+    d.mkdir(parents=True)
+    (d / "STATUS.md").write_text("---\nslug: weekly\nstatus: doing\nlast_updated: 2026-10-02\n---\n\n# Weekly digest\n",
+                                 encoding="utf-8")
+    items = {i["id"]: i for i in bf.sec_tasks({"status": ["doing"]}, ctx(root))}
+    assert set(items) == {"alpha", "beta"}, "no stream without streams: true"
+    alpha = items["alpha"]
+    assert (alpha["goal"], alpha["stand"]) == ("The release is out", "Half of the notes written")
+    assert (alpha["headline"], alpha["area"], alpha["stream"]) == ("Alpha: ship the release", "Ops", False)
+    assert {k: items["beta"][k] for k in ("goal", "stand", "headline", "area")} == dict.fromkeys(("goal", "stand", "headline", "area"))
+    both = {i["id"]: i for i in bf.sec_tasks({"status": ["doing"], "streams": True}, ctx(root))}
+    assert both["weekly"]["stream"] is True and both["weekly"]["title"] == "Weekly digest"
+    assert both["alpha"]["stream"] is False
+
+
+def test_streams_is_a_switch_the_validator_holds(tmp_path):
+    root = bridge(tmp_path, profiles={"a": {"id": "a", "sections": [
+        {"kind": "tasks", "status": ["doing"], "streams": "yes"}]}})
+    assert [p for p in bf.validate(root) if "streams must be true or false" in str(p)]

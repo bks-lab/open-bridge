@@ -622,6 +622,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/workspaces.js",
     "scripts/lib/bridge_cockpit/views.py",                # Settings, On this machine: pages and sections off on one machine
     "scripts/web/views/machine.js",
+    "scripts/web/views/taskboard.js",         # a tasks section as a taskboard (view: taskboard)
     "scripts/lib/bridge_cockpit/tab_history.py",          # a tab's whole conversation, searchable: /api/tab-history
     "scripts/tests/test_bridge_cockpit_tab_history.py",
     "scripts/tests/test_bridge_cockpit_workspaces.py",    # a workspace's rules, what a child inherits, archive and delete
@@ -767,6 +768,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/files.js",                   # the files view: queue, drawers, search, ask a file
     "scripts/web/flow.js",                    # the Work through page: its queue, the return card, the five verbs
     "scripts/web/point.js",                   # the one point view: where a row opens, the drawer's facts, the basic verbs
+    "scripts/web/taskboard.js",               # the taskboard's columns, tags, tidy-up rules, tabs without a task
     "scripts/web/markdown.js",
     "scripts/web/triage.js",
     "scripts/web/motion.js",
@@ -776,12 +778,14 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/text-flow.js",               # the Work through page's texts, taken in by text.js
     "scripts/web/text-chat.js",               # the chat's area switch texts, taken in by text.js
     "scripts/web/text-card.js",               # the item card's texts, taken in by text.js
+    "scripts/web/text-taskboard.js",          # the taskboard's texts, taken in by text.js
     "scripts/web/mock.js",
     "scripts/web/tokens.css",
     "scripts/web/style.css",
     "scripts/web/areas.css",                  # the areas' rules, loaded right after style.css
     "scripts/web/files.css",                  # the files view's rules, loaded right after style.css
     "scripts/web/flow.css",                   # the Work through page's rules, loaded right after files.css
+    "scripts/web/taskboard.css",              # the taskboard's rules, loaded right after flow.css
     "scripts/web/term.css",                   # the Chat as a terminal, loaded last
     "scripts/web/favicon.ico",                # the cockpit's icon, for tabs, bookmarks and favourites
     "scripts/web/apple-touch-icon.png",
@@ -804,6 +808,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_costs.test.mjs",
     "scripts/tests/bridge_cockpit_areas.test.mjs",
     "scripts/tests/bridge_cockpit_machine.test.mjs",
+    "scripts/tests/bridge_cockpit_taskboard.test.mjs",
     "scripts/tests/bridge_cockpit_files.test.mjs",
     "scripts/tests/bridge_cockpit_person.test.mjs",
     "scripts/tests/bridge_cockpit_logrange.test.mjs",

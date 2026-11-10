@@ -73,7 +73,7 @@ SECTION_KEYS = {"kind", "id", "title", "max", "to_inbox", "provider", "query", "
                 "status", "contexts", "days", "path", "argv", "exclude_calendars", "info_calendars", "bucket",
                 "repos", "author", "all_branches", "summary", "report_ok", "covers", "kinds", "skip_kinds",
                 "deferred", "cache_minutes", "step_headings", "actions_argv", "event_steps", "prepare",
-                "row_steps", "default_steps", "link"}
+                "row_steps", "default_steps", "link", "streams"}
 # A profile is committed and often shared: a value under one of these names is
 # a credential, and credentials only ever travel as references (account_ref).
 SECRET_NAME = re.compile(r"(token|secret|password|passwd|api[_-]?key|private[_-]?key)", re.I)
@@ -635,7 +635,7 @@ def _section_types(s: dict) -> list:
         out.append("repos must be a list of names or paths")
     if "author" in s and not (isinstance(s["author"], str) or _is_str_list(s["author"])):
         out.append("author must be text or a list of text (`me` = this repository's git user.email)")
-    for key in ("all_branches", "summary", "report_ok"):
+    for key in ("all_branches", "summary", "report_ok", "streams"):
         if key in s and not isinstance(s[key], bool):
             out.append(f"{key} must be true or false")
     if "covers" in s and not (_is_str_list(s["covers"]) and set(s["covers"]) <= set(STREAMS)):
@@ -922,7 +922,10 @@ def sec_tasks(section: dict, ctx: Context) -> list:
     headings = (*STEP_HEADINGS, *[str(h) for h in section.get("step_headings") or []])
     items = []
     log_rows = None
-    for status in sorted((ctx.root / "work" / "tasks").glob("*/STATUS.md")):
+    # `streams: true` reads work/streams/ too, each item marked as a stream (a dashboard's taskboard draws them apart)
+    kinds = ("tasks", "streams") if section.get("streams") is True else ("tasks",)
+    found = [(kind, status) for kind in kinds for status in sorted((ctx.root / "work" / kind).glob("*/STATUS.md"))]
+    for kind, status in found:
         if status.parent.name.startswith("_"):
             continue
         fm = _frontmatter(status.read_text(encoding="utf-8"))
@@ -943,8 +946,20 @@ def sec_tasks(section: dict, ctx: Context) -> list:
                       "changed_at": str(fm.get("last_updated") or ""), "url": str(status.relative_to(ctx.root)),
                       # what a dashboard shows when the row is opened
                       "origin": _clip(str(fm["origin"]), 200) if fm.get("origin") else None,
-                      "type": fm.get("type"), "steps": task_steps(body, headings), "log": task_log(log_rows, slug)})
+                      "type": fm.get("type"), "steps": task_steps(body, headings), "log": task_log(log_rows, slug),
+                      # what a card of the task says (the cockpit's taskboard): its brief, its one-line headline, its area
+                      **_task_card_fields(fm), "stream": kind == "streams"})
     return items
+
+
+def _task_card_fields(fm: dict) -> dict:
+    """goal and stand of a STATUS.md `brief:`, its `headline` and `area`, each a short text or None"""
+    brief = fm.get("brief") if isinstance(fm.get("brief"), dict) else {}
+
+    def text(value, limit: int):
+        return _clip(value, limit) if isinstance(value, str) and value.strip() else None
+    return {"goal": text(brief.get("goal"), 400), "stand": text(brief.get("stand"), 400),
+            "headline": text(fm.get("headline"), 240), "area": text(fm.get("area"), 60)}
 
 
 LOG_ROW = re.compile(r"^\|\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\s*\|\s*([^|]*)\|\s*([^|]*)\|\s*(.*?)\s*\|?\s*$")

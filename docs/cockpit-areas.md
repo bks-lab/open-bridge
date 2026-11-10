@@ -1,7 +1,7 @@
 ---
 summary: "The cockpit's areas: the project chips, the Areas lines of the start page and their numbers, where each number leads, the one area filter over Work, Chat and Sessions, and why a tab gone idle is finished rather than waiting on you."
 type: guide
-last_updated: 2026-11-06
+last_updated: 2026-11-10
 related:
   - bridge-cockpit.md
   - cockpit-files.md
@@ -74,7 +74,7 @@ findings and the rest of the header count everything. On Work the same
 bar carries the star "Only pinned", which keeps the rows you pinned.
 
 **Beyond Work, Chat and Sessions.** The address `?ws=<area or workspace id>` opens the
-cockpit under that filter. The log keeps the rows whose tag stands in the area: its name,
+cockpit under that filter. A taskboard (`view: taskboard`, [bridge-cockpit.md](bridge-cockpit.md#the-taskboard)) keeps the tasks, streams and tabs of the area. The log keeps the rows whose tag stands in the area: its name,
 an alias, a context or a repo of its `workplace.workspaces` entry, a star allowed; an area
 with none of these keeps every row. Dates follow `sources.calendars` of the area's workspace
 ([`workspaces.md`](workspaces.md)): no such key, no filter; an empty list, no dates, and the

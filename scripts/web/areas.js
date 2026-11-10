@@ -160,9 +160,9 @@ const globbed = (word, pattern) => new RegExp(`^${pattern.split('*').map(p => p.
 /** Does a log tag stand in an area? */
 export const tagInArea = (tag, area) => (TAGS.get(areaKey(area)) ?? []).some(p => globbed(String(tag ?? '').toLowerCase(), p))
 
-/** A page under the area filter that is no page of AREA_PAGES: its log, its dates or its cost card follow the area */
+/** A page under the area filter that is no page of AREA_PAGES: its log, its dates, its taskboard or its cost card follow the area */
 export function pageFollowsArea(page) {
-  return !!page && ((page.sections ?? []).some(x => x.view === 'log' || (x.view === 'agenda' && x.kind === 'calendar')) || (page.cards ?? []).includes?.('costs'))
+  return !!page && ((page.sections ?? []).some(x => x.view === 'log' || x.view === 'taskboard' || (x.view === 'agenda' && x.kind === 'calendar')) || (page.cards ?? []).includes?.('costs'))
 }
 
 /** The area a word of ?ws= means: its name, an alias, or the id of its workspace; none: null */

@@ -179,7 +179,23 @@ def parse_info(i: dict) -> dict:
             "about_task": as_text_or_null(i.get("about_task")),
             "about_kind": i.get("about_kind") if i.get("about_kind") in ("task", "stream") else None,
             # a log row's glyph, its activity type (view: log)
-            "glyph": i["glyph"][:8] if isinstance(i.get("glyph"), str) and i["glyph"] else None}
+            "glyph": i["glyph"][:8] if isinstance(i.get("glyph"), str) and i["glyph"] else None,
+            # what a taskboard card of a task row says (briefing_view.task_board)
+            "board": parse_board(i.get("board"))}
+
+
+BOARD_LANES = ("me", "bridge", "waiting", "none")
+
+
+def parse_board(value: Any) -> dict | None:
+    """A task row's taskboard facts (briefing_view.task_board), checked again: the view file is input."""
+    if not isinstance(value, dict):
+        return None
+    text = lambda k, n: as_text(value.get(k))[:n] or None   # noqa: E731
+    return {"lane": value.get("lane") if value.get("lane") in BOARD_LANES else "none",
+            "who": text("who", 120), "until": text("until", 10), "due": text("due", 10), "step": text("step", 400),
+            "goal": text("goal", 400), "stand": text("stand", 400), "headline": text("headline", 240),
+            "area": text("area", 60), "stream": value.get("stream") is True, "updated": text("updated", 10)}
 
 
 def parse_cal(value: Any) -> dict | None:
@@ -344,7 +360,7 @@ def parse_pages(data: dict, tx: dict = EN) -> list[dict]:
                 "total": int(_number(x.get("total"), len(items))),
                 "weight": _number(x.get("weight")), "bad": _number(x.get("bad")),
                 "as_of": as_text_or_null(x.get("as_of")),
-                "view": x.get("view") if x.get("view") in ("tiles", "mosaic", "groups", "board", "agenda", "log") else None,
+                "view": x.get("view") if x.get("view") in ("tiles", "mosaic", "groups", "board", "agenda", "log", "taskboard") else None,
                 # the page's right column beside the main one (views/logpage.js), else the main column
                 "place": "rail" if x.get("place") == "rail" else None,
                 "cal_figures": parse_cal_figures(x.get("cal_figures")),

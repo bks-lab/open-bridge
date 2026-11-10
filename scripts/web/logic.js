@@ -14,6 +14,7 @@ export * from './areas.js'
 export * from './files.js'
 export * from './flow.js'
 export * from './point.js'
+export * from './taskboard.js'
 
 /** The words of one language (text.js, rules/language-policy.md section 3); English for any other */
 const tableOf = lang => (TABLES[lang] ?? TABLES.en).logic

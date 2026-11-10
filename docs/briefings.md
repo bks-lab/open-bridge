@@ -95,7 +95,7 @@ only the cockpit shows (resources, token use) and its pages, while
 | `inbox` | open inbox items, most urgent first ([inbox](inbox.md)) | `max` |
 | `advise` | the advice checks: collisions, quiet and blocked tasks, WIP | `max` |
 | `workplace` | the day's tab plan: one tab per task, grouped into workspaces, opened on your yes through the configured driver (cmux ships as `skills/cmux`) ([workplace](workplace.md)) | `max` |
-| `tasks` | `work/tasks/*/STATUS.md` | `status` (default doing, review), `contexts`, `max` |
+| `tasks` | `work/tasks/*/STATUS.md`, with `streams: true` `work/streams/*/STATUS.md` too | `status` (default doing, review), `contexts`, `streams`, `max` |
 | `activity` | `work/log.md` rows of the last days | `days` (default 7), `max` |
 | `commits` | commits per repository per day as a sparkline (`▁▃█▂`), busiest first, by local committer date (the date `--since` filters on, so a rebase or another time zone lands on the right day). Repositories without commits in the window are left out; one that cannot be read is named under housekeeping; reaching the time limit fails the section instead of hiding repositories | `days` (1 or more, default 7), `repos` (registered names or paths; default: every clone the ecosystem files register, plus this Bridge; a clone is `local_path`, else `local_root` + the repository name from `github:`, and a file without `local_root` uses the one in `ecosystem.yaml`; `${var}` from bridge-config `identity:`), `author` (`me` = each repository's git user.email), `all_branches` (every local branch) |
 | `calendar` | events in local time; also handed to `advise` for collisions. `ics` converts UTC and `TZID` times but lists a recurring event (RRULE) on its first date only: use `icalbuddy` or a `command` for recurring calendars | `provider` (auto, icalbuddy, ics, command), `days`, `path` (ics), `argv` (command), `exclude_calendars` (icalbuddy), `info_calendars` (calendar names whose events are information, not a commitment: see Calendar and all clear), `event_steps` and `prepare` (see Calendar steps) |
@@ -593,6 +593,12 @@ card ignores it. A gauge with a value it cannot read is dropped, a bad `max`,
 per group in the order the rows first name them (a `github-work` row's group is
 its board, else its repository). `view: groups` lists short rows under each
 group instead.
+
+`view: taskboard` draws a `tasks` section as cards in four columns by who has the
+next move (me, the Bridge, waiting on others, to review), its streams (`streams: true`)
+as a band, with tidy-up suggestions and the agent tabs that carry no task. Each task
+row carries `board` for it: `lane`, `who`, `until`, `step`, `due`, `goal`, `stand`,
+`headline`, `area`, `stream`, `updated` ([bridge-cockpit.md](bridge-cockpit.md#the-taskboard)).
 
 `view: log` draws a section (an `activity` section, whose rows carry the glyph
 of their activity type as `glyph` and the minute they were written as `at`) as a
