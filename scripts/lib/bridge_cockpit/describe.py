@@ -97,7 +97,7 @@ SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\Z")
 INBOX_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{4}-[a-z0-9][a-z0-9-]{0,119}\Z")
 FRONT_KEYS = ("type", "status", "origin", "headline", "next", "blocked_by")
 #: the version of SYSTEM and its rules; a brief describe wrote from an older one is stale (module doc)
-PROMPT_VERSION = 4
+PROMPT_VERSION = 5
 #: the writes of one text a brief with an unresolved reference gets: the first and one more try of the pass
 REF_TRIES = 2
 FOLDER_FILES_MAX = 12    # files of a task folder offered as references
@@ -142,8 +142,8 @@ Answer with JSON only, with the fields name, stand, goal, story (an object with 
 - goal: one sentence of at most {goal} characters saying what is different once the item is done. Never repeat the title word for word.
 - story: only when it fits naturally (someone who gains something from it), else null. Each part at most {story} characters, without the words "as", "I want" or "so that" in front.
 - acceptance: {criteria}
-- verdict: "obsolete" when nothing is left to do: the task it belongs to (task_now) is done or already shows the answer, a meeting or date it prepares has passed (today's date and the time of day stand above the data: a meeting at 09:30 today is over at 17:50), or the open asks are all answered. Else "current". When unsure, "current". A source line above the data says how often the person dropped the items of this item's source as out of date: a high share is a reason to check more strictly whether anything is left to do, never a verdict on its own.
-- verdict_why: only with verdict "obsolete", one sentence of at most {verdict_why} characters saying why, else null.
+- verdict: "done" when the work the item asks for is finished: its evidence (the log rows that name it) or the task it belongs to (task_now) shows it landed, merged, sent, answered or closed. A stream is never done. "obsolete" when nothing is left to do because it no longer matters: the task it belongs to (task_now) is closed or already shows the answer, a meeting or date it prepares has passed (today's date and the time of day stand above the data: a meeting at 09:30 today is over at 17:50), or the open asks are all answered. Else "current". When unsure, "current". A source line above the data says how often the person dropped the items of this item's source as out of date: a high share is a reason to check more strictly whether anything is left to do, never a verdict on its own.
+- verdict_why: only with verdict "obsolete" or "done", one sentence naming what shows it (a log row of a day, the task's note) of at most {verdict_why} characters saying why, else null.
 - ask: the asks still open, one by one in full words, at most {ask_items}, each at most {ask_len} characters: the questions themselves or what exactly must be done, never a count of them ("five open points"). Leave out what task_now shows as answered or done. An empty list when the item asks nothing.
 - to: of whom the asks are asked: "me" for the person who keeps this tracker, else the first name of the one to ask (an item "ask Sam ..." has to "Sam"). A question to someone else is a reminder for the person to ask them, never a question to answer.
 - Every criterion is understandable on its own from the card: someone who sees only the goal and the criteria knows what each one means.
@@ -524,15 +524,53 @@ def task_item(root: Path, slug: str, scrub: Callable[[str], str] = lambda s: s, 
             "open_inbox": [str(x)[:INBOX_LINE_MAX] for x in (inbox or [])[:INBOX_MAX]]}
     data = _clean_tree(data, scrub, cap=max(HEAD_MAX, SECTION_MAX))
     data["front"] = _clean_tree(data["front"], scrub)
+    # what shows it done: the log rows that name the task, shown to the model, never in the basis (the basis is the
+    # file's); a newer row than the brief saw makes it stale on its own (stale_why "evidence")
+    proof = [scrub(x) for x in evidence(root, [slug, *ref_needles(text)])]
+    shown = dict(data, evidence=proof) if proof else data
     reach = reach_of(root, text, front, f"work/{folder}/{slug}", scrub=scrub)
     raw = front.get("brief")
     brief = validate_brief(_plain(raw))[0] if isinstance(raw, dict) else None
-    return {"key": f"task:{slug}", "kind": kind, "id": slug, "title": title, "data": fit(_with_refs(data, reach)),
+    return {"key": f"task:{slug}", "kind": kind, "id": slug, "title": title, "data": fit(_with_refs(shown, reach)),
             "basis": brief_basis(text), "path": path, "brief": brief, "writable": _front_closed(text),
+            "evidence_at": proof[-1][:16] if proof else None,
             "edited": bool(brief and brief.get("edited")), "raw_brief": isinstance(raw, dict), "reach": reach}
 
 
 TASK_NOW_MAX = 2400       # the task's last sections an inbox item carries along, their end kept
+EVIDENCE_MAX = 8          # the log rows that name an item, the newest kept
+EVIDENCE_LEN = 240        # one such row, its words cut there
+_LOG_ROW = re.compile(r"^\|\s*(\d{4}-\d\d-\d\d \d\d:\d\d)\s*\|[^|]*\|\s*([^|]*?)\s*\|\s*(.*?)\s*\|\s*$")
+_REF = re.compile(r"\b[\w.-]+/[\w.-]+#\d+\b")
+
+
+def ref_needles(text: str) -> list[str]:
+    """The issues and pull requests a text names, as owner/repo#n and as repo#n (how log rows mostly write them)"""
+    refs = list(dict.fromkeys(_REF.findall(text or "")))
+    return refs + [r.split("/", 1)[1] for r in refs]
+
+
+def evidence(root: Path, needles: list, since: str | None = None) -> list[str]:
+    """What shows an item is done (erledigtes-raeumt-sich-weg): the rows of work/log.md from `since` (a day) on that
+    name one of `needles` (an inbox id, a task slug, an issue or pull request: ref_needles), as "day time context: what", the newest
+    EVIDENCE_MAX, each cut at EVIDENCE_LEN. The log holds the current period only (/archive resets it)"""
+    words = [str(n).casefold() for n in needles if isinstance(n, str) and len(n) >= 3]
+    path = Path(root) / "work" / "log.md"
+    if not words or not path.is_file():
+        return []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return []
+    out = []
+    for line in lines:
+        m = _LOG_ROW.match(line)
+        if not m or (since and m.group(1)[:10] < since[:10]):
+            continue
+        what = f"{m.group(2)}: {m.group(3)}" if m.group(2) else m.group(3)
+        if any(w in what.casefold() for w in words):
+            out.append(f"{m.group(1)} {what}"[:EVIDENCE_LEN])
+    return out[-EVIDENCE_MAX:]
 
 
 def task_now(root: Path, slug: Any, scrub: Callable[[str], str] = lambda s: s) -> dict | None:
@@ -637,14 +675,19 @@ def inbox_item(item: Any, scrub: Callable[[str], str] = lambda s: s, root: Path 
     now = task_now(root, fields.get("task"), scrub) if root is not None else None
     if now:
         data["task_now"] = now
+    # what shows it done: the log rows since it was filed that name it or an issue or pull request it names
+    refs = ref_needles(f"{fields.get('summary') or ''}\n{fields.get('detail') or ''}")
+    proof = [scrub(x) for x in evidence(root, [item.id, *refs], str(fields.get("created") or "")[:10] or None)] \
+        if root is not None else []
     reach = _inbox_reach(root, fields, scrub)
     brief = item.brief
     # the basis is the data without the references, so what the disk holds besides never makes a brief stale
     return {"key": f"inbox:{item.id}", "kind": "inbox", "id": item.id, "title": title, "detail": str(fields.get("detail") or ""),
             "source": fields.get("from") if isinstance(fields.get("from"), str) else None,
             "task": fields.get("task") if isinstance(fields.get("task"), str) else None,
-            "data": fit(_with_refs(data, reach)),
+            "data": fit(_with_refs(dict(data, evidence=proof) if proof else data, reach)),
             "basis": brief_basis(fit(data)), "path": None, "brief": brief, "writable": True,
+            "evidence_at": proof[-1][:16] if proof else None,
             "edited": bool(brief and brief.get("edited")), "raw_brief": brief is not None, "reach": reach}
 
 
@@ -812,6 +855,14 @@ class Describer:
             return None
         return inbox_item(found, self.app.scrub, self.app.root) if found.state in INBOX_STATES else None
 
+    def _log_stamp(self) -> tuple:
+        """What says work/log.md changed: an item's evidence comes from it (evidence), so a new row reads it again"""
+        try:
+            st = (Path(self.app.root) / "work" / "log.md").stat()
+        except OSError:
+            return ()
+        return (st.st_mtime_ns, st.st_size)
+
     def _task_stamp(self, slug: Any) -> tuple:
         """What says the task an inbox item belongs to changed (task_now is part of the item's basis): its STATUS.md
         under work/tasks or work/streams, else that it is not there (closed or gone)"""
@@ -836,7 +887,7 @@ class Describer:
         try:
             st, ev = (folder / "item.yaml").stat(), (folder / "events").stat()
             stamp = ("inbox", st.st_mtime_ns, st.st_size, ev.st_mtime_ns, sum(1 for _ in (folder / "events").iterdir()),
-                     self._task_stamp(((hit[1] or {}) if hit else {}).get("task")))
+                     self._task_stamp(((hit[1] or {}) if hit else {}).get("task")), self._log_stamp())
         except (OSError, ValueError):
             stamp = None
         if stamp is not None and hit and hit[0] == stamp:
@@ -856,7 +907,7 @@ class Describer:
                 st = (base / "STATUS.md").stat()
                 # the folder and the folders right inside it: a file made there changes what the brief may cite
                 dirs = tuple(p.stat().st_mtime_ns for p in sorted(base.iterdir()) if p.is_dir())
-                stamp = (folder, st.st_mtime_ns, st.st_size, base.stat().st_mtime_ns, dirs)
+                stamp = (folder, st.st_mtime_ns, st.st_size, base.stat().st_mtime_ns, dirs, self._log_stamp())
                 break
             except (OSError, ValueError):
                 continue
@@ -914,6 +965,10 @@ class Describer:
         brief = item.get("brief") or {}
         if (item.get("kind") == "inbox" and brief.get("verdict") != "obsolete" and date_passed([item.get("title"), item.get("detail")], brief.get("at"), self.today())):
             return "date"
+        # a log row naming it came after the brief was written: it may be done now (erledigtes-raeumt-sich-weg)
+        if (item.get("evidence_at") and item.get("evidence_at") != entry.get("evidence_at")
+                and brief.get("verdict") not in ("obsolete", "done")):
+            return "evidence"
         tries = entry.get("ref_tries") if isinstance(entry.get("ref_tries"), int) else REF_TRIES
         # only where a pass writes stale briefs again: elsewhere nothing would come of it, the gap says enough
         if (self.cfg().get("auto") == "stale" and entry.get("unresolved") and entry.get("ref_basis") == item["basis"]
@@ -1025,7 +1080,7 @@ class Describer:
         return self.update(item["key"], sha=brief_sha(written), basis=basis, proposal=None, last_error=None,
                            failed_basis=None, at_ms=self.now_ms(), warnings=list(warnings or []),
                            prompt_version=PROMPT_VERSION, unresolved=unresolved, ref_basis=item["basis"],
-                           ref_tries=tries)
+                           ref_tries=tries, evidence_at=item.get("evidence_at"))
 
     def mark_edited(self, item: dict, call: Callable | None = None) -> None:
         actions = self.app.actions

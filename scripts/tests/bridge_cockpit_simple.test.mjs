@@ -120,7 +120,7 @@ test('C1 to C3 the check-in: set, it waits under Running elsewhere, it comes bac
   assert.ok(running.rows.every(e => e.kind === 'checkin' && e.who === 'lena' && e.until === later))
   assert.deepEqual(parts.checkin.map(x => x.row.key), ['task:back'], 'its day came: a check-in')
   assert.equal(parts.leftOut.groups[0].reason, 'running', 'Running elsewhere first among Not now')
-  assert.deepEqual(logic.FLOW_LEFT_OUT, ['running', 'later', 'obsolete', 'idea', 'stream', 'github'])
+  assert.deepEqual(logic.FLOW_LEFT_OUT, ['done', 'running', 'later', 'obsolete', 'idea', 'stream', 'github'])
   // the days In progress offers, and who it can go to
   assert.deepEqual(logic.checkinDays(NOW), { 3: '2026-10-12', 7: '2026-10-16', 14: '2026-10-23' })
   const who = logic.workWho(state({ work: [taskAway, task('x', { card: card({ next: next('Go', 'jan') }) })] }))

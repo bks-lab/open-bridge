@@ -294,13 +294,13 @@ $defs:
         description: "Stage 4: one sentence, where the item stands now and why it is here"
       verdict:
         type: string
-        enum: [current, obsolete]
-        description: "Whether the item still asks something (current) or nothing is left to do (obsolete): the cockpit moves an obsolete card out of the way"
+        enum: [current, obsolete, done]
+        description: "Whether the item still asks something (current), nothing is left to do because it no longer matters (obsolete) or its work is finished as the evidence shows (done): the cockpit moves an obsolete card out of the way and lists a done one under Probably done"
       verdict_why:
         type: string
         minLength: 1
         maxLength: 140
-        description: "Only with verdict obsolete: one sentence, why nothing is left to do"
+        description: "Only with verdict obsolete or done: one sentence, why nothing is left to do"
       ask:
         type: array
         minItems: 0

@@ -396,7 +396,15 @@ def task_card(slug: str, title: Any, ctx: Ctx, *, kind: str | None = None, row: 
                 due=_s(row.get("due")) or _s(t.get("next_due")), area=_s(row.get("area")) or _s(t.get("area")),
                 updated=_s(t.get("updated")), source=origin, links=links,
                 progress=t.get("progress") if isinstance(t.get("progress"), dict) else None,
-                written=written, gaps=gaps, name=(brief or {}).get("name"), stand=(brief or {}).get("stand"))
+                written=written, gaps=gaps, name=(brief or {}).get("name"), stand=(brief or {}).get("stand"),
+                verdict=_task_verdict(brief, closed or kind == "stream", ctx))
+
+
+def _task_verdict(brief: Any, never: bool, ctx: Ctx) -> dict | None:
+    """A task's card names only done (the AI found its work finished, with why): current is what every open task is,
+    and a stream or a closed task is never found done"""
+    v = None if never else _verdict(brief, False, ctx)
+    return v if v and v["word"] == "done" else None
 
 
 #: how a brief's `to` names the person whose tracker it is (the prompt asks for `me`)
@@ -416,7 +424,7 @@ def _verdict(brief: Any, closed_task: bool, ctx: Ctx) -> dict | None:
     word = _s((brief or {}).get("verdict"))
     if word is None:
         return None
-    return {"word": word, "why": _s((brief or {}).get("verdict_why")) if word == "obsolete" else None}
+    return {"word": word, "why": _s((brief or {}).get("verdict_why")) if word in ("obsolete", "done") else None}
 
 
 def _inbox_next(kind: Any, gate: Any, facts: Mapping, ctx: Ctx, to: Any = None) -> dict | None:
