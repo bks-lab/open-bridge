@@ -26,6 +26,10 @@ const whoOf = el => {
 // stage 4, simpler: the strong button, the four states in a 2x2, More with every other verb
 const sw = en.flow.simple
 const STATES = [en.flow.verbs.done, `${sw.work} ▾`, `${sw.later} ▾`, `${sw.drop} ▾`]
+// an inbox item's Drop is Out of date (cockpit-card-buttons)
+const ITEM_STATES = [en.flow.verbs.done, `${sw.work} ▾`, `${sw.later} ▾`, `${en.flow.ai.obsolete} ▾`]
+// Give it to the AI stands on every card, before the four states
+const AI = `${en.flow.ai.button} ▾`
 const MORE = `${sw.more} ▾`
 /** What the menu More holds once opened, in its order */
 async function menuOf(el) {
@@ -1753,7 +1757,7 @@ test('the right column: What you can do with the strong button, the four states 
   assert.equal(aside.$('.flow-can-sug'), null, 'the suggestion is no line of its own: the stand says why, the strong button applies it')
   // the suggested verb is the one strong button, over the four states and More
   // Later with the day it suggests: the words say what the click does
-  assert.deepEqual(acts(el), [`[${en.flow.list.laterUntil(logic.formatDay('2026-10-12', 'en'))}]`, ...STATES, MORE])
+  assert.deepEqual(acts(el), [`[${en.flow.list.laterUntil(logic.formatDay('2026-10-12', 'en'))}]`, AI, ...STATES, MORE])
   assert.equal(aside.$('.verbbar-strong').getAttribute('title'), `Waits for the vendor · ${en.flow.list.from.themes}`)
   const fields = aside.$$('.flow-fields > dl > .meta-item dt').map(d => d.text())
   assert.deepEqual(fields, [en.flow.fields.theme, en.flow.fields.area, en.flow.fields.who, en.flow.fields.due])
@@ -1853,7 +1857,7 @@ const right = (st, c = recorder()) => mount(html`<${FlowPage} s=${cockpitState(N
 
 test('the right column: no strong button without a suggestion, the four states, More with what else applies (B)', async () => {
   const el = right(state({ now: [ask('20261009-0900-a-q')] }))
-  assert.deepEqual(acts(el), [...STATES, MORE])
+  assert.deepEqual(acts(el), [AI, ...ITEM_STATES, MORE])
   assert.deepEqual(await menuOf(el), [en.flow.basic.task, sw.describe, sw.advise])
   // a suggestion makes its verb the strong button, over the states
   const s = state({ now: [ask('20261009-0900-a-q')], themes: { enabled: true, assign: {}, themes: [], suggest: { 'inbox:20261009-0900-a-q': { verb: 'later', reason: 'x', at_ms: NOW } } } })
@@ -1863,13 +1867,13 @@ test('the right column: no strong button without a suggestion, the four states, 
 
 test('the right column: a finding with an action ready gives its yes as the strong button (D)', () => {
   const y = ask('20261009-0900-a-y', { gate: 'your-yes', has_action: true, art: 'finding' })
-  assert.deepEqual(acts(right(state({ now: [y] }))), [`[${en.flow.approve}]`, ...STATES, MORE])
+  assert.deepEqual(acts(right(state({ now: [y] }))), [`[${en.flow.approve}]`, AI, ...ITEM_STATES, MORE])
 })
 
 test('the right column: a task in review offers the four states, Improve in More (C)', async () => {
   const c = recorder()
   const el = right(state({ work: [task('r', { status: 'review' })] }), c)
-  assert.deepEqual(acts(el), [...STATES, MORE])
+  assert.deepEqual(acts(el), [AI, ...STATES, MORE])
   const menu = await menuOf(el)
   assert.ok(menu.includes(en.flow.improve.button) && menu.includes(en.flow.one.net), menu.join(' | '))
   // Improve opens the sentence for a new start, which goes out only with words in it
@@ -1881,7 +1885,7 @@ test('the right column: a task in review offers the four states, Improve in More
 test('the right column: an issue has the four states, Open on GitHub first in More (A)', async () => {
   const issue = ref('acme/app', 7, { bucket: 'do' })
   const el = right(state({ now: [issue] }))
-  assert.deepEqual(acts(el), [...STATES, MORE])
+  assert.deepEqual(acts(el), [AI, ...STATES, MORE])
   assert.equal((await menuOf(el))[0], en.flow.onWeb(issue.url))
   assert.equal(en.flow.onWeb('https://github.com/acme/app/issues/7'), 'Open on GitHub')
   const a = el.$('.flow-aside a.flow-more-item')
@@ -1919,7 +1923,7 @@ test('an issue on a board: Set to review and Done under Board moves in More, the
   await read(el)
   assert.deepEqual(c.calls.find(x => x[0] === 'issuePlan'), ['issuePlan', 'acme/app#7'])
   assert.match(el.$('.flow-issue-on').text(), /Ops: In Progress/)
-  assert.deepEqual(acts(el), [...STATES, MORE, panel(iw.review), panel(iw.done), iw.check])
+  assert.deepEqual(acts(el), [AI, ...STATES, MORE, panel(iw.review), panel(iw.done), iw.check])
 })
 
 test('Set to review asks what is done first, then sends issue_review with it', async () => {
@@ -2001,7 +2005,7 @@ test('Check with AI: the click sends issue_check, its done makes the fitting but
   assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'issue_check', { key: 'ref:acme/app#7' }])
   assert.match(el.$('.flow-issue-check').text(), new RegExp(`${iw.verdict.done}.*Both boxes ticked`))
   assert.ok(el.$('.flow-issue-check').text().includes('#13 merged'))
-  assert.equal(acts(el)[5], `[${panel(iw.review)}]`)
+  assert.equal(acts(el)[6], `[${panel(iw.review)}]`, 'after Give it to the AI, the four states and More')
   el.$$('.flow-aside button').find(b => b.text() === panel(iw.review)).click()
   await until(() => el.$('.flow-issue-panel textarea'))
   const box = el.$('.flow-issue-panel textarea')

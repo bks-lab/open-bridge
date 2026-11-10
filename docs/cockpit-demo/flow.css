@@ -469,6 +469,17 @@
   font: inherit; font-size: var(--text-sm); text-align: left; text-decoration: none; cursor: pointer; }
 .flow-more-item:hover, .flow-more-item:focus-visible { background: var(--surface-raised); }
 .flow-work .flow-work-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Give it to the AI on every card: its button beside a reminder's I asked, the three ways each with what it does
+   under its name (views/flowsimple.js AiGive, cockpit-card-buttons) */
+.flow-ai > .verbbar-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.flow-ai > .verbbar-acts > .btn { flex: 1 1 auto; }
+.flow-ai .verbbar-panel { display: flex; flex-direction: column; gap: 6px; }
+.flow-ai-modes { display: flex; flex-direction: column; gap: 4px; }
+.flow-ai-mode { width: 100%; justify-content: flex-start; text-align: left; white-space: normal; padding-block: 5px; }
+.flow-ai-mode .btn-label { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.flow-ai-mode-name { font-weight: 600; }
+.flow-ai-mode-note { color: var(--on-surface-muted); font-size: var(--text-xs, 11px); font-weight: 400; }
+.flow-ai-mode[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-subtle); }
 /* the overview and the lists: the stand under the name, the step beside it (views/flowlist.js, views/flowleft.js) */
 .flow-ov-stand { display: block; margin-top: 2px; }
 .flow-ov-step { min-width: 12em; }

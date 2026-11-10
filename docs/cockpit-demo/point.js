@@ -23,7 +23,7 @@
 // were. No DOM, no network, no state; logic.js passes every name on, the point test imports it under node.
 import { TABLES } from './text.js'
 import { ACTIVITY_FILTERS, areaScope, CONTEXT_MAX, coveredKeys, DAY, duration, fileContext, fileFacts, flowMode, flowParts, flowUniverse, flowWhere,
-  isoDate, leftPlan, pageStepsOf, rowProject, sessionsInFlow, triageKey } from './logic.js'
+  flowSettings, isoDate, leftPlan, pageStepsOf, rowProject, sessionsInFlow, startNote, triageKey } from './logic.js'
 
 /** Whether every way to an item or a task opens the one point view: the work tab offers Work through
  *  (cockpit.flow.enabled, kept by cockpit.work_views), the rule the sessions and the task check follow too
@@ -397,12 +397,15 @@ export function pointStep(row, s) {
 // the states every point offers in the right column, in their order (stage 4): Done, In progress ▾, Later ▾, Drop ▾
 export const SIMPLE_STATES = ['done', 'work', 'later', 'drop']
 
-/** The one strong button of a point: the AI's suggestion with its verb and the step ({verb, sug: true, step}), else
- *  your yes where an item waits for it, else the Bridge's own step to start ({verb: do, sug: false, step}); null when
- *  the next step is yours or there is none: the four states then stand alone */
+/** The one strong button of a point: a reminder's Draft the message to <who> ({verb: draft, sug: false, to}: what
+ *  its kind asks for, before any suggestion), else the AI's suggestion with its verb and the step ({verb, sug: true,
+ *  step}), else your yes where an item waits for it, else the Bridge's own step to start ({verb: do, sug: false,
+ *  step}); null when the next step is yours or there is none: the four states then stand alone */
 export function strongOf(x, s, sug = null) {
   const row = x?.row
   if (!row?.key) return null
+  const to = row.inbox_id ? reminderTo(row) : null
+  if (to) return { verb: 'draft', sug: false, to }
   const step = pointStep(row, s)
   if (sug && ['do', 'done', 'later', 'drop'].includes(sug.verb)) return { verb: sug.verb, sug: true, step: step?.what ?? null }
   if (row.inbox_id && row.gate === 'your-yes' && row.has_action && row.inbox_state !== 'approved') return { verb: 'yes' }
@@ -411,6 +414,104 @@ export function strongOf(x, s, sug = null) {
 }
 
 const isTask = row => !!row?.task && !row.inbox_id && row.key === `task:${row.task}`
+
+// ---------------------------------------------------------------- the buttons of a card (cockpit-card-buttons): the
+// same on every card, their words and the way picked first by the card's sort
+
+// how the AI that writes a card names the person who keeps the tracker in `to` (card.py ME_WORDS)
+const ME_WORDS = new Set(['me', 'myself', 'ich', 'mich', 'du', 'dich', 'you'])
+
+/** Of whom a point's asks are asked when it is someone else (its card's `to`): a question to them is a reminder to
+ *  ask them, never a question for you; null when the asks are yours */
+export function reminderTo(row) {
+  const to = String(row?.card?.to ?? '').trim()
+  return to && !ME_WORDS.has(to.toLowerCase()) ? to : null
+}
+
+// the kinds of an inbox item (work/templates/_schema.inbox-item.yaml)
+const INBOX_SORTS = new Set(['decision', 'question', 'finding', 'draft', 'result', 'idea'])
+
+/** The sort of a point for its buttons: reminder where its asks are someone else's (reminderTo), else an inbox item's
+ *  kind (an item without one asks: question), task, issue (an issue or a pull request), other */
+export function cardSort(row) {
+  if (!row?.key) return 'other'
+  if (row.inbox_id) return reminderTo(row) ? 'reminder' : INBOX_SORTS.has(row.inbox_kind) ? row.inbox_kind : 'question'
+  if (row.task) return 'task'
+  if (row.ref) return 'issue'
+  return 'other'
+}
+
+// the ways a point goes to the AI from its card, each a verb of the server's (actions_work.py): go do_it (it does
+// it), report advise (it checks and recommends, a tab that waits), context collect_context (it reads up, changes
+// nothing); every one opens an agent tab
+export const AI_MODES = ['go', 'report', 'context']
+
+// the way Give it to the AI opens with, by sort; any other sort goes (a finding is fixed, a draft reworked)
+const FIRST_MODE = { decision: 'report', question: 'context', idea: 'context' }
+
+/** What Give it to the AI offers on a point, {sort, modes, mode, off}: the ways that can go (Collect context only on
+ *  an inbox item or a task, the rows its verb takes), the one picked first by sort, and why none can go now (an agent
+ *  works on it: working; its yes is given and it runs on its own: approved), as basicVerbs says of Let AI do it;
+ *  null for a person (access.py), who hands nothing to a model */
+export function aiOf(row, { live = false, running = false, person = false } = {}) {
+  if (!row?.key || person) return null
+  const sort = cardSort(row)
+  const modes = AI_MODES.filter(m => m !== 'context' || !!(row.inbox_id || row.task))
+  const first = FIRST_MODE[sort] ?? 'go'
+  return { sort, modes, mode: modes.includes(first) ? first : 'go',
+    off: live || running ? 'working' : row.inbox_state === 'approved' ? 'approved' : null }
+}
+
+/** What a way sends for a row, {verb, args}, or null where it may not go: go only with a sentence (nothing starts
+ *  unseen, actions_work.py do_it), Advise and Collect context with the sentence where there is one, Collect context
+ *  only where aiOf offers it */
+export function aiAction(mode, row, note = '', by = null) {
+  const key = row?.key
+  if (!key) return null
+  const text = String(note ?? '').replace(/\s+/g, ' ').trim()
+  const tag = by ? { by } : {}
+  const noted = text ? { note: text } : {}
+  if (mode === 'go') return text ? { verb: 'do_it', args: { keys: [key], note: text, ...tag } } : null
+  if (mode === 'report') return { verb: 'advise', args: { keys: [key], ...noted } }
+  if (mode === 'context') return row.inbox_id || row.task ? { verb: 'collect_context', args: { key, ...noted } } : null
+  return null
+}
+
+/** The message a reminder's AI drafts: to whom, the card's asks numbered (else the point's name), a draft only, never
+ *  sent (text-flow.js flow.ai.draft) */
+export function aiDraft(row, lang = 'en') {
+  const asks = Array.isArray(row?.card?.ask) ? row.card.ask.map(a => String(a ?? '').trim()).filter(Boolean) : []
+  return (TABLES[lang] ?? TABLES.en).flow.ai.draft(reminderTo(row) ?? '', asks, pointName(row))
+}
+
+/** The sentence a way opens with: go the start sentence (startNote), a reminder's go the draft of its message, Advise
+ *  and Collect context none (their tab knows what it is for; the person may add what to look at) */
+export function aiNote(mode, row, lang = 'en') {
+  if (mode !== 'go') return ''
+  return cardSort(row) === 'reminder' ? aiDraft(row, lang) : startNote(row, lang)
+}
+
+// the reasons Out of date offers on an inbox item, before a sentence of the person's own
+export const OBSOLETE_REASONS = ['already_done', 'not_relevant', 'not_like_this']
+
+/** The reasons Drop offers on a point: an inbox item those of Out of date, any other row the instance's
+ *  (cockpit.flow.drop_reasons) */
+export function dropReasonsOf(row, s) {
+  return row?.inbox_id ? OBSOLETE_REASONS : flowSettings(s).drop_reasons
+}
+
+/** What Drop is called on a point: an inbox item Out of date, an idea Discard; null where it stays Drop */
+export function dropWord(row, lang = 'en') {
+  if (!row?.inbox_id) return null
+  const a = (TABLES[lang] ?? TABLES.en).flow.ai
+  return row.art === 'idea' || row.inbox_kind === 'idea' ? a.discard : a.obsolete
+}
+
+/** The reason Out of date opens with: the why of a card the AI found out of date (card.py _verdict), else none */
+export function dropSeed(row) {
+  const v = row?.card?.verdict
+  return v?.word === 'obsolete' ? String(v.why ?? '').trim() : ''
+}
 
 /** What the menu More holds for a point, in its order, only what applies (a verb that cannot is left out): Make it a
  *  task (an inbox item; an issue whose page offers it), Open on GitHub and the board's moves (an issue or pull request;

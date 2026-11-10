@@ -538,7 +538,7 @@ out a workspace:
   drawer or another view: this is the one point view, the same wherever a row
   opens ([One point view](#one-point-view)).
 - **Right**, only while a point or an entry is open (the overview and a list
-  of Not now take its width), **What you can do**, in three parts:
+  of Not now take its width), **What you can do**, in four parts:
   1. **One strong button** that applies the AI's suggestion at once, with its
      verb and the step: **Let the Bridge: <step>** (a start with the step as its
      sentence), **Done**, **Later** (until the day suggested, else in a week) or
@@ -547,20 +547,43 @@ out a workspace:
      hover, and nowhere else on the point. Without a suggestion it is **Give
      your yes** where an item waits for it, else **Let the Bridge: <step>** where
      the next step is the Bridge's; where the next step is yours, none stands.
+     A **reminder** (an inbox item whose asks are someone else's, its brief's
+     `to`) has **Draft the message to <who>** instead, before any suggestion:
+     an agent starts on a draft to that person with the card's asks numbered,
+     through the mail-draft skill, and never sends it.
      While an agent tab is on the point it is **To tab**, except while the tab
      asks what its card answers (its options, yes and no): then To tab waits in
      More and the card takes the answer. A suggested Done of an
      issue on a board opens the board's moves (**Done, on its board ▾**), where
      the move that fits is the strong one: the board's rules close it through
      review.
-  2. **The four states** in a quiet 2x2: **Done**, **In progress ▾**, **Later
-     ▾** and **Drop ▾** (an issue's Done hides it). One that cannot go now stays
+  2. **Give it to the AI ▾**, on every card a person may hand to a model, gone
+     while an agent works on the point or its yes runs on its own. Its panel
+     offers three ways, each with what it does under its name, and opens an
+     agent tab: **Let it do it** (verb `do_it`, with a sentence, so nothing
+     starts unseen), **Advise** (verb `advise`: it checks, recommends and waits
+     for you) and **Collect context** (verb `collect_context`: it reads up and
+     changes nothing; only on an inbox item or a task). The way the card's sort
+     fits is picked first: a decision is advised, a question or an idea read up
+     on, anything else done. Let it do it opens with the start sentence, a
+     reminder's with the draft of its message (the way is then called **Let it
+     draft the message**); Advise and Collect context take an optional line of
+     what to look at. The model sits under it, and past
+     `cockpit.flow.max_running` running agents Start asks first. A reminder
+     has **I asked** beside it: In progress with that person for three days
+     (verb `work_on`), back on that day as a check-in that asks how it stands.
+  3. **The four states** in a quiet 2x2: **Done**, **In progress ▾**, **Later
+     ▾** and **Drop ▾** (an issue's Done hides it). On an inbox item Drop is
+     **Out of date ▾** (an idea's **Discard ▾**) with reasons of its own
+     (Already done, No longer relevant, Not needed like this) and a field; on a
+     card the AI found out of date the field holds its why already. Any other
+     row offers `cockpit.flow.drop_reasons`. One that cannot go now stays
      in its place, off, with one line that says why: Done and Drop while its tab
      asks (nothing closes what waits for an answer) and on a stream. Where the
      close of the tab behind it ends the point, Done is **Done and close tab**.
      A finished, lost or asking start keeps its own verbs (the verb the AI
      suggests strong, else Done and close the tab).
-  3. **More ▾**, a menu of every other verb that applies; a verb that cannot
+  4. **More ▾**, a menu of every other verb that applies; a verb that cannot
      apply is left out: **Make it a task** (verb `to_task` on an inbox item: a
      task in the backlog, the item closes with a pointer to it, and the task
      opens in the same view; on an issue without a task whose GitHub page offers

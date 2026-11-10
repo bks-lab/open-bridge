@@ -14,7 +14,9 @@
 // a panel that says what it does before it goes (`toTask` {what, run}: verb to_task for an inbox item, the GitHub page's
 // step for an issue), and what the kind adds (Advise, Give your yes, `lead`, `extra`) in a row of its own under them.
 // Stage 4, simpler (`simple`): the four states in a quiet 2x2 (logic.js SIMPLE_STATES: Done, In progress ▾, Later ▾,
-// Drop ▾), one that cannot go now off with why under them; In progress opens who has it (you, the Bridge, the people
+// Drop ▾; an inbox item's Drop is Out of date ▾, an idea's Discard ▾, with the reasons of Out of date and the why of a
+// card the AI found out of date written in: logic.js dropWord, dropReasonsOf, dropSeed), one that cannot go now off
+// with why under them; In progress opens who has it (you, the Bridge, the people
 // the Bridge names, someone else) and when to ask again (in 3 days, a week, two weeks, a date) with an optional
 // sentence (verb work_on); the Bridge is Let AI do it, its start sentence and model. The strong button and More stand
 // apart (views/flowside.js SimpleActs); `apply` asks the bar to open one of its panels from outside (the strong
@@ -24,7 +26,7 @@
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { personOf, BASIC_VERBS, checkinDays, DAY, dropReasonWord, flowAction, flowRunning, flowSettings, isoDate, nextMonday, nextWho, parseDate, short,
-  SIMPLE_STATES, startNote, suggestedVerb, verbsFor, workWho, pointName, seenOn, dropWhat } from '../logic.js'
+  SIMPLE_STATES, startNote, suggestedVerb, verbsFor, workWho, pointName, seenOn, dropWhat, dropReasonsOf, dropSeed, dropWord } from '../logic.js'
 import { T, language } from '../text.js'
 import { LaunchPick } from './launch.js'
 import { Btn } from './parts.js'
@@ -98,7 +100,11 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   const [askOwn, setAskOwn] = useState('')
   const [runs, setRuns] = useState('')
   const [reason, setReason] = useState(null)
-  const [other, setOther] = useState('')
+  // the four states (`simple`): an inbox item's Drop is Out of date (an idea's Discard), with its own reasons and the
+  // why of a card the AI found out of date written in (logic.js dropWord, dropReasonsOf, dropSeed)
+  const [other, setOther] = useState(() => (simple ? dropSeed(row) : ''))
+  const outWord = simple ? dropWord(row, lang) : null
+  const outdated = !!outWord && outWord === f.ai.obsolete
   const [day, setDay] = useState('')
   const [dayErr, setDayErr] = useState('')
   const [manual, setManual] = useState(null)
@@ -150,7 +156,7 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   }
   const nowMs = s.now || Date.now()
   const putOff = iso => send(flowAction('later', row, iso, by('later'), revisit ? { revisit: true, ...(sentence.trim() ? { text: sentence.trim() } : {}) } : null))
-  const word = v => words[v] ?? (v === 'task' ? f.basic.task : revisit && v === 'later' ? f.marks.revisit : hand && v === 'work' ? f.marks.handOver
+  const word = v => words[v] ?? (v === 'drop' && outWord ? outWord : v === 'task' ? f.basic.task : revisit && v === 'later' ? f.marks.revisit : hand && v === 'work' ? f.marks.handOver
     : simple && f.simple[v] ? f.simple[v] : f.verbs[v])
   const pickDay = () => {
     const iso = parseDate(day, s.now)
@@ -159,7 +165,7 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
     putOff(iso)
   }
   const why = (other.trim() || (reason ? dropReasonWord(reason, lang) : '')).trim()
-  const reasons = flowSettings(s).drop_reasons
+  const reasons = simple ? dropReasonsOf(row, s) : flowSettings(s).drop_reasons
   const btn = v => html`<${Btn} key=${v} size="sm" variant=${v === strong ? 'primary' : 'secondary'} busy=${busy && v !== 'advise' && !off[v]}
     disabled=${!!off[v]} pressed=${PANELS.has(v) && !off[v] ? open === v : undefined} onClick=${() => click(v)}>${PANELS.has(v) ? `${word(v)} ▾` : word(v)}<//>`
   const btns = list.map(btn)
@@ -262,7 +268,7 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
         ${dayErr ? html`<span class="small verbbar-err" role="alert">${dayErr}</span>` : null}
       </span>
     </div>` : null}
-    ${open === 'drop' ? html`<div class="verbbar-panel" role="group" aria-label=${f.drop.label}>
+    ${open === 'drop' ? html`<div class="verbbar-panel" role="group" aria-label=${outdated ? f.ai.obsoleteLabel : f.drop.label}>
       <div class="verbbar-acts">
         ${reasons.map(x => html`<${Btn} key=${x} size="sm" variant="secondary" pressed=${reason === x}
           onClick=${() => { setReason(reason === x ? null : x); setOther('') }}>${dropReasonWord(x, lang)}<//>`)}
@@ -270,7 +276,7 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
       <span class="field-row">
         <input class="input" type="text" maxlength="200" aria-label=${f.drop.other} placeholder=${f.drop.other} value=${other}
           onInput=${e => { setOther(e.currentTarget.value); setReason(null) }} />
-        <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!why} onClick=${() => send(flowAction('drop', row, why, by('drop')))}>${f.drop.send}<//>
+        <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!why} onClick=${() => send(flowAction('drop', row, why, by('drop')))}>${outdated ? f.ai.obsoleteSend : f.drop.send}<//>
       </span>
       <p class="muted small flow-drop-what">${dropWhat(row, s, lang)}</p>
     </div>` : null}
