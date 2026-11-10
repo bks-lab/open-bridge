@@ -814,6 +814,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_hand_over.test.mjs",  # Hand over without Me, the Drop line, the batch
     "scripts/tests/bridge_cockpit_seen.test.mjs",       # read marks: unread and read, the folds, the walk, Revisit
     "scripts/tests/bridge_cockpit_simple.test.mjs",     # stage 4: the name, the stand, the step, the bands, More, the check-in
+    "scripts/tests/bridge_cockpit_card_buttons.test.mjs",   # the buttons of a card: Give it to the AI, a reminder's two, Out of date
     "scripts/tests/bridge_cockpit_settle.test.mjs",
     "scripts/tests/bridge_cockpit_card.test.mjs",
     "scripts/tests/bridge_cockpit_files_count.test.mjs",
