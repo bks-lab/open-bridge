@@ -136,8 +136,14 @@ export function TaskBoard({ items, page, section, s, c }) {
   const anchor = `tb-tidy-${page?.id ?? ''}-${section?.id ?? ''}`
   const keep = id => { const next = new Set(kept); next.add(id); writeKept(next); setKept(next) }
   const toggle = slug => setPick(p => (p === slug ? null : slug))
+  // a click on the board beside the cards and the panel (a column's empty space, a heading) closes the panel
+  const away = e => {
+    const at = e.target
+    if (!open || typeof at?.closest !== 'function' || at.closest('.tb-card, .tb-side, button, a, input, select, textarea, [role=dialog]')) return
+    setPick(null)
+  }
   const card = x => html`<${Card} key=${x.key} card=${x} picked=${pick === x.slug} onPick=${toggle} />`
-  return html`<div class=${`tb${open ? ' has-side' : ''}`}>
+  return html`<div class=${`tb${open ? ' has-side' : ''}`} onClick=${away}>
     <div class="tb-top">
       <${Btn} onClick=${() => globalThis.document?.getElementById(anchor)?.scrollIntoView?.({ block: 'start' })}>${t.tidyBtn(tidy.length)}<//>
     </div>
