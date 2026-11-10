@@ -533,8 +533,9 @@ PAGE_PLACES = ("main", "rail")
 PAGE_STEPS = ("menu", "buttons")
 # how a dashboard draws a section: rows in a table (default), cards, or a mosaic of every row
 # board: the table, its rows under their group; agenda: a calendar by day, with figures and a timeline;
-# log: a log under its hours, each row its time, glyph, context and text, the contexts as topic chips beside it
-PAGE_VIEWS = ("table", "tiles", "mosaic", "groups", "board", "agenda", "log")
+# log: a log under its hours, each row its time, glyph, context and text, the contexts as topic chips beside it;
+# taskboard: a tasks section as cards in four columns by who has the next move (task_board), streams as a band
+PAGE_VIEWS = ("table", "tiles", "mosaic", "groups", "board", "agenda", "log", "taskboard")
 BOARD_STATES = ("new", "ready", "in_progress", "review", "blocked")
 HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 # An id that names its repository is the same thing wherever it comes from; any
@@ -1061,6 +1062,35 @@ def _item_key(sid, iid) -> str:
     return f"item:{iid}" if GLOBAL_ID.match(iid) else f"item:{sid}:{iid}"
 
 
+def _you(profile: dict) -> set:
+    """The names that mean the reader in a task's `next.who`: me, you, self, the profile's `for` and the person"""
+    return set(WHO_YOU) | {str(profile[k]).lower() for k in ("for", "_person") if profile.get(k)}
+
+
+def _task_next(item: dict) -> dict:
+    """A task item's `next:` as a mapping; a bare text is its `what`, anything else none"""
+    nxt = item.get("next")
+    return {"what": nxt} if isinstance(nxt, str) else nxt if isinstance(nxt, dict) else {}
+
+
+def task_who(item: dict, you) -> dict:
+    """Who has a task's next move, the one rule Work's buckets and the taskboard's columns share: blocked
+    (`blocked_by`, task.py wait) waits on that, with its look-again day; a step for the Bridge is the Bridge's; a
+    step for you (no `who`, or one of `you`) is yours; a step for anyone else waits on them, until its check-in
+    day; no step at all is "none". {lane: me | bridge | waiting | none, who, until}"""
+    nxt = _task_next(item)
+    if item.get("blocked_by"):
+        return {"lane": "waiting", "who": _text(item["blocked_by"]) or None, "until": _text(item.get("quiet_until")) or None}
+    if not nxt.get("what"):
+        return {"lane": "none", "who": None, "until": None}
+    who = str(nxt.get("who") or "me").lower()
+    if who in WHO_BRIDGE:
+        return {"lane": "bridge", "who": None, "until": None}
+    if who in you:
+        return {"lane": "me", "who": None, "until": None}
+    return {"lane": "waiting", "who": _text(nxt.get("who")) or None, "until": _text(nxt.get("check")) or None}
+
+
 def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetime) -> dict:
     sections_cfg = {}
     for s in profile.get("sections") or []:
@@ -1068,7 +1098,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             sections_cfg[str(s.get("id") or s.get("kind"))] = s
     marks = marks_of(view)
     mutes = [m for m in (profile.get("mutes") or []) if isinstance(m, dict) and isinstance(m.get("when"), dict)]
-    you = set(WHO_YOU) | {str(profile[k]).lower() for k in ("for", "_person") if profile.get(k)}
+    you = _you(profile)
     horizon = now.date() + dt.timedelta(days=_int(view.get("lookahead_days"), 1))
     nudge_days = DEFAULT_BUCKETS["waiting"]["nudge_after_days"]
     for b in view.get("buckets") or []:
@@ -1289,11 +1319,12 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             elif kind == "tasks":
                 if iid in quiet:
                     continue
-                nxt = item.get("next")
-                if isinstance(nxt, str):
-                    nxt = {"what": nxt}
+                nxt = _task_next(item)
+                lane = task_who(item, you)["lane"]
                 age = _days_since(item.get("changed_at"), now)
-                if item.get("blocked_by"):
+                if lane == "none":
+                    out["no_next"].append(iid)
+                elif item.get("blocked_by"):
                     age = _days_since(item.get("blocked_since"), now) if item.get("blocked_since") else age
                     why = [labels["waiting_days"].format(n=age) if age is not None else "",
                            _short(item["blocked_by"], 60)]
@@ -1305,8 +1336,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                         nudge = look.date() <= now.date()
                     add(f"task:{iid}", row(sid, item, forced or "waiting", item.get("title"), why, 3, nudge=nudge,
                                            task=iid, priority=item.get("priority"), origin_raw=item.get("origin")))
-                elif isinstance(nxt, dict) and nxt.get("what"):
-                    who = str(nxt.get("who") or "me").lower()
+                else:
                     due = _when(nxt.get("due"))
                     # the row is named by its task (its H1) and says its step apart: a name glued to a step stood
                     # twice on the cockpit's card and cut the topic at its first colon (#605, undone in stage 4)
@@ -1316,9 +1346,9 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                     extra = {"task": iid, "due": nxt.get("due"), "priority": item.get("priority"), "origin_raw": item.get("origin")}
                     if _pos_int(nxt.get("estimate_min")):
                         extra["estimate"] = nxt["estimate_min"]
-                    if who in WHO_BRIDGE:
+                    if lane == "bridge":
                         bucket = "delegate"
-                    elif who in you:
+                    elif lane == "me":
                         bucket = "do" if due is not None and due.date() <= horizon else "plan"
                     else:
                         bucket = "waiting"
@@ -1329,8 +1359,6 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                     # your own next step outranks a card nobody has looked at (OWN_RANK)
                     add(f"task:{iid}", row(sid, item, forced or bucket, item.get("title"), why,
                                            1 if bucket == "do" else 3, step=nxt["what"], **extra))
-                else:
-                    out["no_next"].append(iid)
             else:   # tracker, command
                 state = item.get("state")
                 if state in ("done", "removed"):
@@ -2230,7 +2258,7 @@ def meter_of(value) -> dict | None:
 
 
 def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict, root: Path | None = None,
-              marks: list = ()) -> dict:
+              marks: list = (), you=WHO_YOU) -> dict:
     """One row as every page draws it: when, title, detail, tone, url; plus what it leads to:
     the task (its tab) and whether it is worth asking about (a finding, an issue)."""
     iid = _text(item.get("id"))
@@ -2312,7 +2340,7 @@ def _page_row(kind: str, item: dict, entry: dict, now: dt.datetime, labels: dict
            "ask": tone in ("bad", "warn") or kind in ("tracker", "inbox"), "mark": mark_for(list(marks), title, item)}
     if kind == "tasks":
         row.update(priority=_text(item.get("priority")) or None, state=_text(item.get("state")) or None,
-                   lines=_task_lines(item))
+                   lines=_task_lines(item), board=task_board(item, you))
     elif kind == "calendar":
         # where and with whom, in full when the event is opened (a tag would cut a list of people)
         people = ", ".join(_text(p) for p in item.get("attendees") or [] if _text(p))
@@ -2607,6 +2635,17 @@ def tags_of(value: object) -> dict | None:
     return out or None
 
 
+def task_board(item: dict, you=WHO_YOU) -> dict:
+    """What a taskboard card of a task row says (the cockpit's `view: taskboard`): who has its next move (task_who, the
+    rule Work's buckets keep), the step and its due day, the brief's goal and stand, the headline, the area, whether
+    it is a stream, and the day its STATUS.md last changed"""
+    nxt = _task_next(item)
+    return {**task_who(item, you), "step": _text(nxt.get("what")) or None, "due": _text(nxt.get("due")) or None,
+            "goal": _text(item.get("goal")) or None, "stand": _text(item.get("stand")) or None,
+            "headline": _text(item.get("headline")) or None, "area": _text(item.get("area")) or None,
+            "stream": item.get("stream") is True, "updated": _text(item.get("changed_at"))[:10] or None}
+
+
 def _task_lines(item: dict) -> list:
     """What a dashboard shows when a task row is opened, each line with its kind (the dashboard
     labels it in its own language): origin, next, blocked, open steps, latest log rows."""
@@ -2631,13 +2670,13 @@ def _task_lines(item: dict) -> list:
 
 
 def _page_section(section: dict, entry: dict, now: dt.datetime, labels: dict, root: Path | None = None,
-                  marks: list = ()) -> dict:
+                  marks: list = (), you=WHO_YOU) -> dict:
     kind = section.get("kind") or ""
     # Every row: a page pages itself; `items` is only the briefing's first few.
     items = [i for i in section.get("all") or section.get("items") or [] if isinstance(i, dict)]
     if kind == "commits":   # whoever committed today first
         items = sorted(items, key=_today_count, reverse=True)
-    rows = [_page_row(kind, i, entry, now, labels, root, marks) for i in items]
+    rows = [_page_row(kind, i, entry, now, labels, root, marks, you) for i in items]
     for r, i in zip(rows, items):
         # where the row comes from (cockpit origin.py): an inbox item's `from`, a task's origin, the section
         r["origin_raw"] = _text(i.get("from") if kind == "inbox" else i.get("origin") if kind == "tasks" else None)[:300] or None
@@ -2717,6 +2756,7 @@ def pages(result: dict, profile: dict, root: Path | None = None) -> list:
     view = _cfg(profile)
     labels = _labels(view, profile.get("_language"))
     marks = marks_of(view)
+    you = _you(profile)
     now = _when(result.get("collected_at")) or dt.datetime.now()
     sections = {s.get("id"): s for s in result.get("sections") or [] if isinstance(s, dict) and s.get("id")}
     plan = []   # (id, title, [entry], group, overview, jev)
@@ -2769,7 +2809,7 @@ def pages(result: dict, profile: dict, root: Path | None = None) -> list:
         plan.append((REST_PAGE, labels["page_more"], rest, "more", False, None))
     out = []
     for pid, title, entries, group, overview, jev in plan:
-        built = [_page_section(sections[e["id"]], e, now, labels, root, marks) for e in entries if e["id"] in sections]
+        built = [_page_section(sections[e["id"]], e, now, labels, root, marks, you) for e in entries if e["id"] in sections]
         if built:
             out.append({"id": pid, "title": title, "sections": built, "group": group, **({"overview": True} if overview else {}),
                         **({"jev": jev} if jev is not None else {}), **({"cards": cards[pid]} if pid in cards else {}),

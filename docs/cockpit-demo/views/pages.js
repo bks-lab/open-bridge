@@ -26,6 +26,7 @@ import { WORKERS_PAGE, folderOf, subPagesOf } from './nav.js'
 import { DatesAgenda } from './dates.js'
 import { CostCard, UsageCard } from './costs.js'
 import { LogRows } from './logpage.js'
+import { TaskBoard } from './taskboard.js'
 
 // ---------------------------------------------------------------- pages
 
@@ -498,6 +499,7 @@ export function PageSection({ page, section, s, c, q = '', topic = null }) {
   if (section.status === 'skipped') body = html`<p class=${section.left_out ? 'muted' : ''}><${StateLine} token=${section.left_out ? 'info' : 'warning'} word=${skipText(section, t)} />
     ${skipFixable(section) ? html` <${SkipFix} s=${s} c=${c} title=${section.title} reason=${section.reason} />` : null}</p>`
   else if (section.status === 'error') body = html`<p><${StateLine} token="danger" strong word=${t.unreadable(section.reason || '')} /></p>`
+  else if (section.view === 'taskboard' && section.kind === 'tasks') body = html`<${TaskBoard} items=${items} page=${page} section=${section} s=${s} c=${c} />`
   else if (section.view === 'tiles') body = html`<${TilesView} items=${items} page=${page.id} section=${section.id} sections=${page.sections} c=${c} s=${s} steps=${section.steps ?? 'menu'} />`
   else if (section.view === 'agenda' && section.kind === 'calendar') body = html`<${DatesAgenda} items=${items} page=${page} section=${section} s=${s} c=${c} />`
   else if (section.view === 'log') body = html`<${LogRows} items=${areaLog(s, items)} page=${page.id} section=${section.id} c=${c} words=${words} />`

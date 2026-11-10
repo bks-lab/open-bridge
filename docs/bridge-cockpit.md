@@ -1,7 +1,7 @@
 ---
 summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the Files tab, the news ticker, the status pages and their folders, the task check, the GitHub filters, a page's search over every day before with Ask AI, the keyboard, the safety model, the Setup page, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
-last_updated: 2026-11-05
+last_updated: 2026-11-10
 related:
   - bridge-cockpit-dev.md
   - briefings.md
@@ -2739,6 +2739,63 @@ does not have `work.review.skip_sections` judges every row as before. To leave
 a section out, add its id under `work.review` in `bridge-config.yaml`, then
 run "sort again"; rows already in the cache from that section simply stop
 being listed.
+
+### The taskboard
+
+A second way to see the work, beside Work and leaving Work as it is: a page that starts from the
+tasks, not from the agent tabs. It is opt-in. A profile turns it on with a page whose section is a
+`kind: tasks` section drawn with `view: taskboard`; a Bridge without such a page sees nothing of it.
+
+```yaml
+sections:
+  - kind: tasks
+    id: tasks-board
+    title: Tasks
+    status: [doing, review, backlog]
+    streams: true          # work/streams/ too, drawn as a band
+    bucket: none           # its rows stay off Work, whose own tasks section is unchanged
+view:
+  pages:
+    - id: tasks
+      title: Tasks
+      sections:
+        - {id: tasks-board, view: taskboard}
+```
+
+The page draws four columns: **Me** (your next moves), **Bridge** (a step for the Bridge),
+**Waiting on others** and **To review** (status `review`). Who has a task's next move is the rule
+Work's buckets keep (`briefing_view.task_who`), so both pages count the same: `blocked_by` waits on
+that, until its look-again day (`task.py wait`); `next.who` naming the Bridge (`bridge`, `agent`, `ai`)
+is the Bridge's; no `who`, `me` or the profile's person is yours; any other name waits on that
+person, until its check-in day; a task with no next step stands under Me. Under Me a task with an
+open inbox decision tied to it (an item's `task`, kind `decision`) comes first, tagged Decide, then
+what is under way before the backlog. Waiting is sorted by the day to look again. The streams stand
+in a band **Ongoing** under the columns.
+
+A card shows the task's topic (its H1 up to the first colon), its next step and its tags: the area,
+Backlog, Tab open when an agent tab carries the task, waiting on whom, the day to look again, the due
+day (red within 30 days) and "Step N days old" once its STATUS.md is older than seven days (not on a
+waiting card). A click opens the side panel: title, headline, tags, the brief's goal and status
+(`brief.goal`, `brief.stand`) with the day it last changed, the next step, and buttons that send the
+verbs a task already has: Done (`task_close`), Waiting until (`runs_on`, the same dialog as on
+Work), To the idea list (`shelve`), Hand to the AI (`start_agent`), and Go to tab (`tab_jump`) or,
+without a tab, Open a tab (`collect_context`: an agent tab reads up and changes nothing). A stream
+offers neither Done nor the idea list; a person (access) gets no button that hands the task to a model.
+
+Under the board stand two boxes. **Tidy-up suggestions** names by fixed rules what lies still: a task
+without a next step, a backlog task without movement for 30 days, a step of a task under way older
+than 14 days (streams and waiting tasks are left alone). Each row says what its Yes does (To the idea
+list) and runs it; Keep hides the suggestion in this browser. The rules live in `taskboard.js`
+(`tbTidy`); its `extra`, fed from the section's `tidy` field, is the seam where a later check (an AI's
+"probably done") adds rows of the same shape. **Tabs without a task** lists the open agent tabs no
+task belongs to, each with Go to tab. The one area filter acts on the whole page (cards, band, boxes),
+and the area bar stands over it ([cockpit-areas.md](cockpit-areas.md)). Every text comes in English
+and German (`text-taskboard.js`).
+
+Each task row of the section carries `board` for this (`briefing_view.task_board`): `lane`, `who`,
+`until`, `step`, `due`, `goal`, `stand`, `headline`, `area` (the STATUS.md `area:`, else the area
+`workplace.py` gives the task), `stream` and `updated`. The tasks of a taskboard section are no rows
+of Work and do not enter Work through; their verbs find the task by its folder.
 
 ### Each item's brief
 

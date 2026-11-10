@@ -1071,3 +1071,44 @@ def test_collect_skips_what_this_machine_switched_off_and_still_lists_it(tmp_pat
     data = json.loads(capsys.readouterr().out)
     assert ran.exists() and [p["id"] for p in data["pages"]] == ["lab"]
     assert "ci" not in [s["id"] for s in data["sections"]]
+
+
+# ---------------------------------------------------------------- the taskboard (view: taskboard)
+
+def test_a_task_row_on_a_page_carries_its_board_by_the_rule_work_keeps():
+    result = _result()
+    result["sections"].append(_sec("board", "tasks", [
+        {"id": "mine", "title": "Mine: a headline", "state": "doing", "changed_at": "2026-10-07", "next": {"what": "draft it"},
+         "goal": "A draft", "stand": "Notes only", "headline": "Mine: a headline", "area": "Ops", "stream": False},
+        {"id": "bot", "title": "Bot", "state": "doing", "next": {"what": "check the logs", "who": "bridge"}},
+        {"id": "ana", "title": "Ana", "state": "doing", "next": {"what": "answer", "who": "Ana", "check": "2026-10-12", "due": "2026-10-20"}},
+        {"id": "held", "title": "Held", "state": "doing", "blocked_by": "the vendor", "quiet_until": "2026-10-15",
+         "next": {"what": "chase"}},
+        {"id": "bare", "title": "Bare", "state": "backlog"},
+        {"id": "weekly", "title": "Weekly", "state": "doing", "stream": True, "next": "send it"},
+        {"id": "named", "title": "Named", "state": "doing", "next": {"what": "go", "who": "Michael"}}]))
+    view = {"pages": [{"id": "tasks", "sections": [{"id": "board", "view": "taskboard"}]}], "page_rest": "hide"}
+    sec = _section(bv.pages(result, {**_profile(view), "for": "michael"}), "board")
+    assert sec["view"] == "taskboard"
+    board = {it["id"]: it["board"] for it in sec["items"]}
+    assert board["mine"] == {"lane": "me", "who": None, "until": None, "step": "draft it", "due": None, "goal": "A draft",
+                             "stand": "Notes only", "headline": "Mine: a headline", "area": "Ops", "stream": False,
+                             "updated": "2026-10-07"}
+    assert board["bot"]["lane"] == "bridge"
+    assert (board["ana"]["lane"], board["ana"]["who"], board["ana"]["until"], board["ana"]["due"]) == ("waiting", "Ana", "2026-10-12", "2026-10-20")
+    assert (board["held"]["lane"], board["held"]["who"], board["held"]["until"]) == ("waiting", "the vendor", "2026-10-15")
+    assert board["bare"]["lane"] == "none" and board["bare"]["step"] is None
+    assert board["weekly"]["stream"] is True and board["weekly"]["step"] == "send it"
+    assert board["named"]["lane"] == "me", "the profile's person is you"
+    # the same rule places Work's rows: Bridge's step to delegate, someone else's to waiting, none to no_next
+    rows = bv.build(result, {"id": "morning", "for": "michael", "view": {}})
+    by_task = {r.get("task"): r["bucket"] for b in rows["buckets"] for r in b["items"] if r.get("task")}
+    assert by_task["bot"] == "delegate" and by_task["ana"] == "waiting" and by_task["held"] == "waiting"
+    assert by_task["named"] in ("do", "plan") and by_task["mine"] in ("do", "plan")
+    assert "bare" not in by_task
+
+
+def test_taskboard_is_a_view_a_page_may_ask_for():
+    assert "taskboard" in bv.PAGE_VIEWS
+    problems = bv.problems({"pages": [{"id": "tasks", "sections": [{"id": "board", "view": "taskboard"}]}]}, [])
+    assert not [p for p in problems if "view must be" in p]

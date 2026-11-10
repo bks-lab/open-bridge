@@ -440,6 +440,17 @@ def test_parse_pages_keeps_steps_buttons_and_drops_anything_else():
     assert secs["vms"]["steps"] is None and secs["logs"]["steps"] is None
 
 
+def test_parse_pages_keeps_a_taskboard_and_checks_its_board_facts_again():
+    pages = m.parse_pages({"pages": [{"id": "tasks", "title": "Tasks", "sections": [{"id": "board", "kind": "tasks", "view": "taskboard",
+        "items": [{"title": "A", "task": "a", "board": {"lane": "boss", "who": "Ana", "until": "2026-11-17 and more", "goal": 5,
+                                                         "stream": "yes", "step": "x" * 900}}]}]}]})
+    sec = pages[0]["sections"][0]
+    assert sec["view"] == "taskboard"
+    b = sec["items"][0]["board"]
+    assert b["lane"] == "none" and b["who"] == "Ana" and b["until"] == "2026-11-17"
+    assert b["goal"] == "5" and b["stream"] is False and len(b["step"]) == 400 and b["area"] is None
+
+
 def test_parse_pages():
     pages = m.parse_pages({"pages": [
         {"id": "briefing", "title": "X", "sections": [{"id": "a"}]},
@@ -456,7 +467,7 @@ def test_parse_pages():
                              "actions": None, "row_id": None, "flags": None, "who": None, "gh": None, "cal": None, "due_at": None, "at": None, "id": None, "actionable": False,
                              # where it comes from, raw (origin.py classifies it in the collector)
                              "origin_raw": None, "origin_provider": None, "origin_section_kind": None, "inbox_key": None,
-                             "about_task": None, "about_kind": None, "glyph": None}
+                             "about_task": None, "about_kind": None, "glyph": None, "board": None}
     assert s["as_of"] is None and s["empty"] == "nothing"
     assert s["boards"] is None and s["metrics"] is None and s["stale"] is None and s["cal_figures"] is None
     assert pages[0]["overview"] is False

@@ -1,0 +1,65 @@
+/* SPDX-License-Identifier: MIT */
+/* The taskboard (views/taskboard.js): four columns of task cards, the streams as a band, two boxes under them and the
+   side panel of an open card. Only the cockpit's tokens (tokens.css, colors.css), so light and dark follow the page. */
+
+.tb { display: grid; gap: var(--space-md); }
+.tb-top { display: flex; justify-content: flex-end; }
+.tb-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-md); align-items: start; }
+.tb-col { background: var(--surface-muted); border-radius: var(--radius-lg); padding: 12px; min-height: 120px; display: grid; gap: 10px; align-content: start; }
+.tb-col-title { margin: 0; font-size: var(--text-body); color: var(--ink); display: flex; gap: 8px; align-items: baseline; }
+.tb-col-sub { margin: -6px 0 2px; }
+
+.tb-card {
+  display: grid; gap: 4px; width: 100%; text-align: left; cursor: pointer; font: inherit; color: var(--on-surface);
+  background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 10px 12px;
+  transition: box-shadow var(--motion), border-color var(--motion);
+}
+.tb-card:hover { box-shadow: var(--shadow-hover); border-color: var(--border-strong); }
+.tb-card.is-picked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.tb-card-title { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.tb-card-step { font-size: var(--text-sm); overflow-wrap: anywhere; }
+
+.tb-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.tb-tag {
+  display: inline-flex; align-items: center; min-height: 20px; padding: 0 8px; border-radius: var(--radius-full);
+  font-size: var(--text-label); line-height: 1.4; background: var(--surface-muted); color: var(--on-surface-muted);
+  border: 1px solid transparent;
+}
+.tb-tag-area { background: transparent; border-color: var(--border); }
+.tb-tag-decide { background: color-mix(in srgb, var(--accent) 18%, var(--surface-raised)); color: var(--ink); border-color: var(--accent-line); font-weight: 600; }
+.tb-tag-tab { background: color-mix(in srgb, var(--info) 16%, var(--surface-raised)); color: var(--ink); border-color: var(--info); }
+.tb-tag-stepOld { background: color-mix(in srgb, var(--warning) 16%, var(--surface-raised)); color: var(--ink); border-color: var(--warning); }
+.tb-tag-due.is-soon { background: color-mix(in srgb, var(--danger) 16%, var(--surface-raised)); color: var(--danger); border-color: var(--danger); font-weight: 600; }
+
+.tb-streams { display: grid; gap: 10px; }
+.tb-streams-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+
+.tb-boxes { display: grid; grid-template-columns: 2fr 1fr; gap: var(--space-md); align-items: start; }
+.tb-box-title { margin: 0 0 4px; font-size: var(--text-body); color: var(--ink); }
+.tb-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; }
+.tb-list-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); }
+.tb-list-main { display: grid; gap: 2px; min-width: 0; }
+.tb-list-verb { font-size: var(--text-label); font-weight: 600; color: var(--on-surface-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.tb-list-title { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+
+.tb-side {
+  position: fixed; top: var(--header-h); right: 0; bottom: 0; width: min(440px, 100vw); z-index: 30; overflow: auto;
+  padding: 20px; border-radius: 0; border-width: 0 0 0 1px; box-shadow: var(--shadow-float); display: grid; gap: 12px; align-content: start;
+}
+.tb-side-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.tb-side-title { margin: 0; font-size: var(--text-h4); color: var(--ink); overflow-wrap: anywhere; }
+.tb-side-headline { margin: 0; font-size: var(--text-sm); }
+.tb-side-facts { margin: 0; display: grid; gap: 4px; }
+.tb-side-facts dt { margin: 10px 0 0; }
+.tb-side-facts dd { margin: 0; overflow-wrap: anywhere; }
+.tb-side-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.tb-side-acts .btn, .tb-list-row .btn { min-height: 36px; padding: 0 14px; font-size: var(--text-body); }
+
+@media (max-width: 1100px) {
+  .tb-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tb-boxes { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .tb-board { grid-template-columns: 1fr; }
+  .tb-list-row { flex-direction: column; align-items: stretch; }
+}

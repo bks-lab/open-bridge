@@ -82,7 +82,7 @@ def info_out(it: dict, index: int, root: Path, tabs: list[dict], view: dict | No
             "meter": it.get("meter"), "group": it.get("group"), "icon": it.get("icon"), "glyph": it.get("glyph"),
             "tags": it.get("tags"), "account": it.get("account"), "inbox": it.get("inbox"),
             "actions": it.get("actions"), "row_id": it.get("row_id"), "at": it.get("at"), "flags": it.get("flags"), "who": it.get("who"), "gh": it.get("gh"),
-            "cal": it.get("cal"), "due_at": it.get("due_at"),
+            "cal": it.get("cal"), "due_at": it.get("due_at"), "board": it.get("board"),
             "starting": bool(it.get("task") and it["task"] in starting), "tab": tab_summary(tab, view),
             **page_origin(it, section_id, known), **about_of(it, root, known)}
     # the one card of the item (card.py), from what the row carries and the section it stands in
@@ -295,8 +295,10 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
     # "open tab" on a page item addresses task:<slug>: every active task resolves, even without a row,
     # and so does every task a page shows (a backlog task on a tasks page), like the mod's
     # `trow ?? taskRow(slug, title)`. The slug is checked again before it reaches an argv.
-    page_items = [it for pg in view.get("pages", []) for sec in pg["sections"] for it in sec["items"]
-                  if isinstance(it.get("task"), str) and it.get("task")]
+    # A taskboard section (view: taskboard) names every task and stream on its own page: they are no rows of Work,
+    # and its verbs resolve task:<slug> from the folder (actions.page_entry)
+    page_items = [it for pg in view.get("pages", []) for sec in pg["sections"] if sec.get("view") != "taskboard"
+                  for it in sec["items"] if isinstance(it.get("task"), str) and it.get("task")]
     page_tasks = [(it["task"], it.get("title") or it["task"]) for it in page_items]
     # They go out as task_rows too, so a task opened from a page shows the same actions as one on the card.
     task_rows = []
@@ -306,6 +308,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
     review_tasks = [(slug, v["title"]) for slug, v in verdicts.items()]
     # a task the list of every task names (cockpit.files_scope all) carries its status and fields from there too
     listed = files if files is not None else tasks
+    listed_area = {t["slug"]: t["area"] for t in listed if t.get("area")}
     for slug, title in [(t["slug"], page_titles.get(t["slug"]) or t.get("title") or t["label"]) for t in tasks] + page_tasks + review_tasks:
         key = f"task:{slug}"
         if key not in index and key not in settled:
@@ -318,10 +321,15 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         secs = []
         for s in pg["sections"]:
             # drawn views and the GitHub list (board) filter and search every row
-            cap = DRAWN_CAP if s.get("view") in ("mosaic", "tiles", "groups", "board", "log") else ITEM_CAP
+            cap = DRAWN_CAP if s.get("view") in ("mosaic", "tiles", "groups", "board", "log", "taskboard") else ITEM_CAP
             sec_ctx = replace(card_ctx, section_kind=s.get("kind"))
             shown = [info_out(it, i, root, tabs, view, starting, pg["id"], s["id"], known, sec_ctx)
                      for i, it in enumerate(s["items"][:cap])]
+            for it in shown:
+                # a taskboard card without an `area:` of its own stands in the area workplace.py gives its task
+                board = it.get("board")
+                if board and not board.get("area") and listed_area.get(it.get("task")):
+                    it["board"] = {**board, "area": listed_area[it["task"]]}
             items = [i for i in shown if not (i["actionable"] and (i["key"] in settled or (hidden.get(i["key"]) or "") > today))]
             # a row put off or settled leaves the table, and its count, finding and weight go with it, so the tab
             # badge, the section head and the alarm never count a row the page does not show (a row weighs unless
