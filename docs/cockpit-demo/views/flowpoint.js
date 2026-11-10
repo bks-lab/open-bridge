@@ -25,7 +25,7 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   asksSomething, checkinDays, detailNeedsLoad, dropReasonWord, duration, flowAction, flowDrive, flowSettings, formatDay, guideOf, nextWho, personOf,
-  pointName, pointStand, pointStep, previewText, reminderTo, reportsTicked, resultText, short, soloSource, stageTone, tabOfTask, dropWhat, seenOn,
+  pointName, pointStand, pointStep, previewText, reminderTo, reportsTicked, sourceTrack, resultText, short, soloSource, stageTone, tabOfTask, dropWhat, seenOn,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag } from './day.js'
@@ -75,8 +75,12 @@ const dayOf = ms => { const d = new Date(ms); return `${d.getFullYear()}-${Strin
 
 /** The three signals of a point (cockpit-useful-cards): how important (its priority, else its task's), by when (its due
  *  day, overdue or none) and what for (its goal); a point with none of them shows nothing */
-function Signals({ row, s }) {
+function Signals({ row, s, c }) {
+  // an inbox point counts its source's drops (inbox.py stats): read the noise once where none is (step 3)
+  const wants = !!row?.inbox_id && !!row?.origin_raw && (s?.noise?.status ?? 'idle') === 'idle'
+  useEffect(() => { if (wants) c?.loadNoise?.() }, [wants])
   const u = T().flow.useful
+  const track = sourceTrack(row, s)
   const card = row?.card ?? {}
   const prio = card.priority ?? row?.priority ?? null
   const due = String(card.due ?? row?.due ?? '').slice(0, 10)
@@ -84,12 +88,13 @@ function Signals({ row, s }) {
   const lang = language()
   const dueWord = !/^\d{4}-\d{2}-\d{2}$/.test(due) ? u.noDue : due < today ? u.overdue(formatDay(due, lang)) : due === today ? u.today : formatDay(due, lang)
   const goal = card.goal ?? null
-  if (!prio && !due && !goal) return null
+  if (!prio && !due && !goal && !track) return null
   const hot = prio === 'P0' || prio === 'P1'
   const late = /^\d{4}-\d{2}-\d{2}$/.test(due) && due <= today
   return html`<div class="flow-signals">
     <span class=${`flow-signal${hot ? ' is-hot' : ''}`} data-signal="importance"><b>${u.importance}:</b> ${prio ? u.prio[prio] ?? prio : u.noPrio}</span>
     <span class=${`flow-signal${late ? ' is-hot' : ''}`} data-signal="due"><b>${u.due}:</b> ${dueWord}</span>
+    ${track ? html`<span class="flow-signal" data-signal="source"><b>${u.source}:</b> ${T().flow.ai.track(track.dropped, track.filed)}</span>` : null}
     ${goal ? html`<span class="flow-signal flow-signal-goal" data-signal="goal"><b>${u.goal}:</b> ${goal}</span>` : null}
   </div>`
 }
@@ -387,7 +392,7 @@ export function PointCard({ x, n = 1, s, c }) {
   const sub = pointStand(row, s) ?? (x.task ? f.forTask(pointName(x.task)) : null)
   return html`<${Hero} x=${{ kind: 'row', id: row.key, row }} n=${n} tabOf=${() => tab} s=${s} c=${c} kindWord=${cardKind(x)} title=${pointName(row)}
     sub=${sub} openable=${false} foot=${false} facts=${false} screen=${SCREEN_LINES} headEnd=${html`<${HeadEnd} row=${row} s=${s} c=${c} />`}
-    lead=${html`<${Signals} row=${row} s=${s} /><${Asks} row=${row} /><${StepLine} row=${row} next=${file.next} s=${s} />`} />`
+    lead=${html`<${Signals} row=${row} s=${s} c=${c} /><${Asks} row=${row} /><${StepLine} row=${row} next=${file.next} s=${s} />`} />`
 }
 
 /** The detail a point of its own is read from (logic.js soloSource: a task's STATUS.md, a closed copy by its folder,

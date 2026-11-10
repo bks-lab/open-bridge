@@ -494,6 +494,22 @@ export function aiNote(mode, row, lang = 'en') {
 // the reasons Out of date offers on an inbox item, before a sentence of the person's own
 export const OBSOLETE_REASONS = ['already_done', 'not_relevant', 'not_like_this']
 
+// what each reason of Out of date tells inbox.py drop --reason, so `stats` counts it under the item's source (step 3);
+// Not needed like this asks first whether only this once (unwanted), this kind (family) or the source (source)
+export const OBSOLETE_INBOX = { already_done: 'done', not_relevant: 'outdated', not_like_this: 'unwanted' }
+
+// a source's drops count as a pattern from this many on (describe.py TRACK_MIN)
+const TRACK_MIN = 2
+
+/** How often the person dropped the items of an inbox point's source lately ({filed, dropped}, inbox.py stats as the
+ *  noise holds it, sources compared without case), null for no source, no noise read or fewer than TRACK_MIN drops */
+export function sourceTrack(row, s) {
+  const src = String(row?.origin_raw ?? '').trim().toLowerCase()
+  if (!row?.inbox_id || !src) return null
+  const hit = (s?.noise?.data?.sources ?? []).find(r => String(r?.source ?? '').trim().toLowerCase() === src)
+  return hit && (hit.dropped ?? 0) >= TRACK_MIN ? { filed: hit.filed ?? 0, dropped: hit.dropped } : null
+}
+
 /** The reasons Drop offers on a point: an inbox item those of Out of date, any other row the instance's
  *  (cockpit.flow.drop_reasons) */
 export function dropReasonsOf(row, s) {

@@ -1153,8 +1153,10 @@ export function flowAction(verb, row, value = '', by = null, more = null) {
   if (verb === 'later') return /^\d{4}-\d{2}-\d{2}$/.test(text) ? { verb: 'later', args: { key, until: text, ...tag, ...(more ?? {}) } } : null
   if (verb === 'drop') {
     if (!text || isStream(row)) return null
+    // more.reason: why an inbox item is out of date (point.js OBSOLETE_INBOX), counted under its source
+    const why = row.inbox_id && more?.reason ? { reason: more.reason } : {}
     return row.task && !row.inbox_id ? { verb: 'shelve', args: { key, reason: text.slice(0, 200), ...tag } }
-      : { verb: 'settle', args: { keys: [key], outcome: 'not_doing', text, ...tag } }
+      : { verb: 'settle', args: { keys: [key], outcome: 'not_doing', text, ...tag, ...why } }
   }
   return null
 }

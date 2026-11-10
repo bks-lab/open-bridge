@@ -1120,3 +1120,32 @@ def test_a_change_to_its_task_makes_an_inbox_brief_stale_even_through_the_cache(
     status = world.app.root / "work" / "tasks" / "slides" / "STATUS.md"
     status.write_text(status.read_text(encoding="utf-8") + "\n## Notes\n\nThe answer came in.\n", encoding="utf-8")
     assert world.app.describe.state_for(key)["stale_why"] == "basis"
+
+
+# ---------------------------------------------------------------- step 3 of a useful card: what a source sends late
+
+def test_the_prompt_says_how_often_the_person_found_the_items_of_its_source_out_of_date():
+    """A line above the data, never in it: the counts of the source move with every drop, so in the basis they would
+    make every brief of that source stale. Under two drops it says nothing (one drop is no pattern)"""
+    item = {"kind": "inbox", "data": "{}"}
+    track = {"source": "mini/health", "filed": 6, "dropped": 4, "reasons": {"done": 3, "unwanted": 1}}
+    system, text = dsc.prompt(item, "English", today="2026-11-10 12:00", track=track)
+    line = dsc.source_line(track)
+    assert line == "Of the 6 items its source (mini/health) filed in the last 30 days, the person dropped 4 as out of date or unwanted, most often: done."
+    assert text.startswith(f"Today is 2026-11-10 12:00.\n{line}\n{dsc.DATA_LABEL}")
+    assert "source line" in system, "the rules say what the line is for"
+    assert dsc.source_line({"source": "radar", "filed": 5, "dropped": 1, "reasons": {"once": 1}}) is None
+    assert dsc.source_line(None) is None
+    _, plain = dsc.prompt(item, "English", today="2026-11-10 12:00")
+    assert plain.startswith(f"Today is 2026-11-10 12:00.\n{dsc.DATA_LABEL}")
+
+
+def test_the_track_of_an_inbox_item_comes_from_the_noise_of_its_source(world):
+    box = world.app.describe._inbox()
+    for n in range(3):
+        box.drop(box.add(source="mini/health", kind="finding", summary=f"crash {n}", closer="reporter"), reason="done")
+    mine = box.add(source="Mini/Health", kind="finding", summary="crash again", closer="reporter")
+    track = world.app.describe.source_track({"kind": "inbox", "id": mine, "source": "Mini/Health"})
+    assert (track["filed"], track["dropped"], track["reasons"]) == (4, 3, {"done": 3})
+    assert world.app.describe.source_track({"kind": "task", "id": "x"}) is None
+    assert world.app.describe.source_track({"kind": "inbox", "id": "y", "source": None}) is None

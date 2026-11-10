@@ -347,3 +347,15 @@ def test_stale_is_a_drop_reason_that_leaves_no_rule(box):
     assert box.mutes() == []
     assert box.get(item_id).events[-1].data["reason"] == "stale"
     assert box.stats(days=30)[0]["reasons"] == {"stale": 1}
+
+
+def test_out_of_date_reasons_leave_no_rule_and_count_per_source(box):
+    """What the cockpit's Out of date sends (cockpit-card-buttons step 3): already done, no longer relevant, not
+    needed like this. None leaves a rule, each counts under its source, so the noise names what a source sends late"""
+    for reason in ("done", "outdated", "unwanted"):
+        assert reason in inbox.DROP_REASONS and reason not in inbox.MUTE_REASONS
+        assert box.drop(finding(box, summary=reason), reason=reason) is None
+    assert box.mutes() == []
+    [row] = box.stats(days=30)
+    assert (row["filed"], row["dropped"]) == (3, 3)
+    assert row["reasons"] == {"done": 1, "outdated": 1, "unwanted": 1}

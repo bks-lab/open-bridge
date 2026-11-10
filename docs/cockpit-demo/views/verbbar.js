@@ -26,7 +26,7 @@
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import { personOf, BASIC_VERBS, checkinDays, DAY, dropReasonWord, flowAction, flowRunning, flowSettings, isoDate, nextMonday, nextWho, parseDate, short,
-  SIMPLE_STATES, startNote, suggestedVerb, verbsFor, workWho, pointName, seenOn, dropWhat, dropReasonsOf, dropSeed, dropWord } from '../logic.js'
+  SIMPLE_STATES, startNote, suggestedVerb, verbsFor, workWho, pointName, seenOn, dropWhat, dropReasonsOf, dropSeed, dropWord, OBSOLETE_INBOX } from '../logic.js'
 import { T, language } from '../text.js'
 import { LaunchPick } from './launch.js'
 import { Btn } from './parts.js'
@@ -105,6 +105,9 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   const [other, setOther] = useState(() => (simple ? dropSeed(row) : ''))
   const outWord = simple ? dropWord(row, lang) : null
   const outdated = !!outWord && outWord === f.ai.obsolete
+  // Not needed like this asks what the Bridge learns for the source: only this once, this kind, the source (step 3)
+  const [scope, setScope] = useState('once')
+  const inboxWhy = !outdated || !reason ? null : reason === 'not_like_this' ? (scope === 'once' ? 'unwanted' : scope) : OBSOLETE_INBOX[reason] ?? null
   const [day, setDay] = useState('')
   const [dayErr, setDayErr] = useState('')
   const [manual, setManual] = useState(null)
@@ -118,6 +121,8 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
   const [sentence, setSentence] = useState('')
   const busy = !!s.ui?.busy?.[row.key]
   const finish = r => {
+    // a drop that left a mute rule: the noise shows it, with its lift
+    if (r?.muted) c.loadNoise()
     if (r?.ok) c.flowDecided()
     onDone?.(r)
   }
@@ -273,10 +278,15 @@ export function VerbBar({ row, s, c, verbs = null, primary = null, suggested = f
         ${reasons.map(x => html`<${Btn} key=${x} size="sm" variant="secondary" pressed=${reason === x}
           onClick=${() => { setReason(reason === x ? null : x); setOther('') }}>${dropReasonWord(x, lang)}<//>`)}
       </div>
+      ${outdated && reason === 'not_like_this' ? html`<div class="flow-drop-scope" role="group" aria-label=${f.ai.scope.label}>
+        <p class="label-caps">${f.ai.scope.label}</p>
+        <div class="verbbar-acts">${['once', 'family', 'source'].map(x => html`<${Btn} key=${x} size="sm" variant="secondary" pressed=${scope === x}
+          onClick=${() => setScope(x)}>${f.ai.scope[x]}<//>`)}</div>
+      </div>` : null}
       <span class="field-row">
         <input class="input" type="text" maxlength="200" aria-label=${f.drop.other} placeholder=${f.drop.other} value=${other}
           onInput=${e => { setOther(e.currentTarget.value); setReason(null) }} />
-        <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!why} onClick=${() => send(flowAction('drop', row, why, by('drop')))}>${outdated ? f.ai.obsoleteSend : f.drop.send}<//>
+        <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!why} onClick=${() => send(flowAction('drop', row, why, by('drop'), inboxWhy ? { reason: inboxWhy } : null))}>${outdated ? f.ai.obsoleteSend : f.drop.send}<//>
       </span>
       <p class="muted small flow-drop-what">${dropWhat(row, s, lang)}</p>
     </div>` : null}

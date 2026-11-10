@@ -136,7 +136,7 @@ export const FLOW = {
     // a useful card (views/flowpoint.js Signals, Asks): how important, by when, what for, and exactly what is asked of whom
     useful: { importance: 'Important', due: 'Due', goal: 'Goal', prio: { P0: 'very high', P1: 'high', P2: 'medium', P3: 'low' },
       noPrio: 'not set', noDue: 'no date', overdue: d => `overdue since ${d}`, today: 'today',
-      asks: 'What is asked', asksTo: who => `Ask ${who}:` },
+      asks: 'What is asked', asksTo: who => `Ask ${who}:`, source: 'Source' },
     // the buttons of a card (cockpit-card-buttons): Give it to the AI and its three ways, a reminder's own two, Out of date
     ai: {
       button: 'Give it to the AI', label: 'What should the AI do? A tab opens and works on it.',
@@ -148,6 +148,9 @@ export const FLOW = {
       draft: (who, asks, name) => `Draft a message to ${who}${numbered(asks) ? ` with these questions: ${numbered(asks)}` : ` about "${name}".`} A draft only, with the mail-draft skill, never send it. At the end, write a note "Result: ..." on the item.`,
       asked: 'I asked', askedNote: 'Asked, waiting for the answer',
       obsolete: 'Out of date', discard: 'Discard', obsoleteLabel: 'Why is it out of date?', obsoleteSend: 'Out of date',
+      // Not needed like this: what the Bridge learns from it for the source (inbox.py mute rules)
+      scope: { label: 'From now on', once: 'Only this once', family: 'Not this kind again', source: 'Nothing from this source for 30 days' },
+      track: (dropped, filed) => `${dropped} of ${filed} out of date lately`,
     },
     notnow: {
       label: 'Not now',
@@ -470,7 +473,7 @@ export const FLOW = {
     // eine nützliche Karte (views/flowpoint.js Signals, Asks): wie wichtig, bis wann, wozu, und was genau von wem
     useful: { importance: 'Wichtig', due: 'Termin', goal: 'Ziel', prio: { P0: 'sehr hoch', P1: 'hoch', P2: 'mittel', P3: 'niedrig' },
       noPrio: 'nicht gesetzt', noDue: 'kein Termin', overdue: d => `überfällig seit ${d}`, today: 'heute',
-      asks: 'Was gefragt ist', asksTo: who => `An ${who}:` },
+      asks: 'Was gefragt ist', asksTo: who => `An ${who}:`, source: 'Quelle' },
     ai: {
       button: 'An die AI geben', label: 'Was soll die AI tun? Es öffnet sich ein Tab, der daran arbeitet.',
       mode: { go: 'Machen lassen', report: 'Beraten', context: 'Infos sammeln' },
@@ -481,6 +484,8 @@ export const FLOW = {
       draft: (who, asks, name) => `Entwirf eine Nachricht an ${who}${numbered(asks) ? ` mit diesen Fragen: ${numbered(asks)}` : ` zu „${name}“.`} Nur als Entwurf mit dem mail-draft-Skill, nichts senden. Schreib zum Schluss eine Notiz "Ergebnis: ..." an den Eintrag.`,
       asked: 'Hab ich gefragt', askedNote: 'Gefragt, wartet auf die Antwort',
       obsolete: 'Überholt', discard: 'Verwerfen', obsoleteLabel: 'Warum überholt?', obsoleteSend: 'Als überholt ablegen',
+      scope: { label: 'Künftig', once: 'Nur diesmal', family: 'Diese Art nicht mehr', source: '30 Tage nichts von dieser Quelle' },
+      track: (dropped, filed) => `zuletzt ${dropped} von ${filed} überholt`,
     },
     notnow: {
       label: 'Nicht dran',

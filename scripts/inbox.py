@@ -102,7 +102,9 @@ VERBS = ("seen", "note", "approve", "reject", "drop", "defer", "close", "execute
 ACTIVE_STATES = ("open", "approved", "waiting")
 #: Why a person dropped an item. `family` and `source` leave a mute rule behind.
 #: `stale`: it went old without anybody acting on it (a cleanup proposes these), no rule.
-DROP_REASONS = ("once", "duplicate", "family", "source", "stale")
+#: `done`, `outdated`, `unwanted`: what a person's Out of date says (the cockpit): already done elsewhere, no longer
+#: relevant, not needed like this; no rule, each counts under its source in `stats`.
+DROP_REASONS = ("once", "duplicate", "family", "source", "stale", "done", "outdated", "unwanted")
 MUTE_REASONS = ("family", "source")
 #: A source mute ends by itself: a source that was too loud for a month may have been fixed since.
 MUTE_SOURCE_DAYS = 30

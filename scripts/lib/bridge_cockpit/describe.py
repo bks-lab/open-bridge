@@ -142,7 +142,7 @@ Answer with JSON only, with the fields name, stand, goal, story (an object with 
 - goal: one sentence of at most {goal} characters saying what is different once the item is done. Never repeat the title word for word.
 - story: only when it fits naturally (someone who gains something from it), else null. Each part at most {story} characters, without the words "as", "I want" or "so that" in front.
 - acceptance: {criteria}
-- verdict: "obsolete" when nothing is left to do: the task it belongs to (task_now) is done or already shows the answer, a meeting or date it prepares has passed (today's date and the time of day stand above the data: a meeting at 09:30 today is over at 17:50), or the open asks are all answered. Else "current". When unsure, "current".
+- verdict: "obsolete" when nothing is left to do: the task it belongs to (task_now) is done or already shows the answer, a meeting or date it prepares has passed (today's date and the time of day stand above the data: a meeting at 09:30 today is over at 17:50), or the open asks are all answered. Else "current". When unsure, "current". A source line above the data says how often the person dropped the items of this item's source as out of date: a high share is a reason to check more strictly whether anything is left to do, never a verdict on its own.
 - verdict_why: only with verdict "obsolete", one sentence of at most {verdict_why} characters saying why, else null.
 - ask: the asks still open, one by one in full words, at most {ask_items}, each at most {ask_len} characters: the questions themselves or what exactly must be done, never a count of them ("five open points"). Leave out what task_now shows as answered or done. An empty list when the item asks nothing.
 - to: of whom the asks are asked: "me" for the person who keeps this tracker, else the first name of the one to ask (an item "ask Sam ..." has to "Sam"). A question to someone else is a reminder for the person to ask them, never a question to answer.
@@ -242,8 +242,26 @@ def argv_ok(argv_: list[str], claude: str | None) -> bool:
             and isinstance(argv_[18], str) and 0 < len(argv_[18]) <= PROMPT_MAX)
 
 
-def prompt(item: dict, language: str, today: str | None = None) -> tuple[str, str]:
-    """(system text, prompt): the rules, and the item as JSON under a label that calls it data"""
+# a source's drops count as a pattern from this many on (one drop says nothing about the next item)
+TRACK_MIN = 2
+# the days the noise of a source looks back (inbox.py stats --days)
+TRACK_DAYS = 30
+
+
+def source_line(track: Any) -> str | None:
+    """The line above the data that says how often the person dropped the items of an inbox item's source (step 3 of a
+    useful card): None for no source or fewer than TRACK_MIN drops. The reason named is the one given most often"""
+    if not isinstance(track, dict) or int(track.get("dropped") or 0) < TRACK_MIN or not track.get("source"):
+        return None
+    reasons = {k: v for k, v in (track.get("reasons") or {}).items() if k != "unknown" and isinstance(v, int)}
+    top = f", most often: {max(sorted(reasons), key=lambda k: reasons[k])}" if reasons else ""
+    return (f"Of the {int(track.get('filed') or 0)} items its source ({str(track['source'])[:80]}) filed in the last "
+            f"{TRACK_DAYS} days, the person dropped {int(track['dropped'])} as out of date or unwanted{top}.")
+
+
+def prompt(item: dict, language: str, today: str | None = None, track: dict | None = None) -> tuple[str, str]:
+    """(system text, prompt): the rules, and the item as JSON under a label that calls it data; `track` the noise of
+    an inbox item's source (source_line), which stands above the data like today, never in its basis"""
     stream = item.get("kind") == "stream"
     criteria = CRITERIA_STREAM if stream else CRITERIA_TASK.format(n=BRIEF_LIMITS["acceptance_items"],
                                                                    len=BRIEF_LIMITS["acceptance_len"])
@@ -253,6 +271,8 @@ def prompt(item: dict, language: str, today: str | None = None) -> tuple[str, st
                            ask_len=BRIEF_LIMITS["ask_len"])
     # today stands apart from the data: it is no part of the basis, so a new day alone never makes a brief stale
     head = f"Today is {today}.\n" if today else ""
+    line = source_line(track)
+    head += f"{line}\n" if line else ""
     return system, f"{head}{DATA_LABEL}\n{item['data']}"
 
 
@@ -621,6 +641,7 @@ def inbox_item(item: Any, scrub: Callable[[str], str] = lambda s: s, root: Path 
     brief = item.brief
     # the basis is the data without the references, so what the disk holds besides never makes a brief stale
     return {"key": f"inbox:{item.id}", "kind": "inbox", "id": item.id, "title": title, "detail": str(fields.get("detail") or ""),
+            "source": fields.get("from") if isinstance(fields.get("from"), str) else None,
             "task": fields.get("task") if isinstance(fields.get("task"), str) else None,
             "data": fit(_with_refs(data, reach)),
             "basis": brief_basis(fit(data)), "path": None, "brief": brief, "writable": True,
@@ -743,6 +764,20 @@ class Describer:
 
     def _inbox(self):
         return _module("_cockpit_inbox", "inbox.py").Inbox(Path(self.app.root) / "work" / "inbox", actor="web")
+
+    def source_track(self, item: dict) -> dict | None:
+        """The noise of an inbox item's source over TRACK_DAYS (inbox.py stats: filed, dropped, reasons), what the
+        model is told above the data; None for any other item, an item without a source or a source with no row.
+        Sources that differ only in case are one (inbox.py source_key)"""
+        if item.get("kind") != "inbox" or not item.get("source"):
+            return None
+        mod = _module("_cockpit_inbox", "inbox.py")
+        want = mod.source_key(item["source"])
+        try:
+            rows = self._inbox().stats(days=TRACK_DAYS)
+        except (OSError, ValueError):
+            return None
+        return next((r for r in rows if mod.source_key(r.get("source")) == want), None)
 
     def item(self, key: str, full: bool = False) -> dict | None:
         """The item of a row key as describe sees it now, None for one it does not take. `full` adds the open
@@ -1041,7 +1076,8 @@ class Describer:
             raise _error(503, "describe_unavailable", tx["unavailable"]) from None
         if not ai.supports(SERVICE, chosen.provider) or chosen.model not in MODELS.values() or not app.runner.claude:
             raise _error(503, "describe_unavailable", tx["unavailable"])
-        system, text = prompt(item, language(app.root), f"{self.today()} {dt.datetime.now().strftime('%H:%M')}")
+        system, text = prompt(item, language(app.root), f"{self.today()} {dt.datetime.now().strftime('%H:%M')}",
+                              self.source_track(item))
         argv_ = argv(app.runner.claude, chosen.model, system, text, self.cfg().get("effort", DEFAULT_EFFORT))
         if not argv_ok(argv_, app.runner.claude):
             raise _error(409, "describe_too_big", tx["too_big"])
