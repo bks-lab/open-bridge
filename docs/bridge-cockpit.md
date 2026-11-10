@@ -577,7 +577,16 @@ out a workspace:
      **Out of date ▾** (an idea's **Discard ▾**) with reasons of its own
      (Already done, No longer relevant, Not needed like this) and a field; on a
      card the AI found out of date the field holds its why already. Any other
-     row offers `cockpit.flow.drop_reasons`. One that cannot go now stays
+     row offers `cockpit.flow.drop_reasons`. Each reason goes with the drop
+     (`settle` with `reason`, `inbox.py drop --reason done|outdated|unwanted`),
+     so `inbox.py stats` counts it under the item's source. Not needed like this
+     asks **From now on**: **Only this once**, **Not this kind again** (a
+     `family` mute) or **Nothing from this source for 30 days** (a `source`
+     mute); the noise on the overview lists the rule with its lift. From two
+     drops on, an inbox card says how its source fared lately (**Source: 4 of
+     6 out of date lately**), and the model that writes the cards is told the
+     same in a line above the data, never in its basis: a loud source is a
+     reason to check more strictly whether anything is left to do. One that cannot go now stays
      in its place, off, with one line that says why: Done and Drop while its tab
      asks (nothing closes what waits for an answer) and on a stream. Where the
      close of the tab behind it ends the point, Done is **Done and close tab**.

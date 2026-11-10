@@ -271,7 +271,7 @@ python3 scripts/inbox.py list [--all] [--json] [--short] [--art ask|report|idea]
 python3 scripts/inbox.py show <id>                         # item plus its events; an unambiguous id prefix works
 python3 scripts/inbox.py approve <id> [--when-json '{...}'] [--text "edited draft"]
 python3 scripts/inbox.py reject|close|drop <id> [--note "why"]
-python3 scripts/inbox.py drop <id> --reason once|duplicate|stale|family|source   # family and source leave a mute rule
+python3 scripts/inbox.py drop <id> --reason once|duplicate|stale|done|outdated|unwanted|family|source   # family and source leave a mute rule
 python3 scripts/inbox.py mute list [--json]                 # the mute rules in force
 python3 scripts/inbox.py unmute <rule-id>                   # lift one
 python3 scripts/inbox.py stats [--days 30] [--json]         # per source: filed, dropped by a person, muted
@@ -324,6 +324,9 @@ part of the `drop` event:
 | `once` | not worth it this time | nothing; the key stays dropped as before |
 | `duplicate` | already known elsewhere | nothing |
 | `stale` | it went old without anybody acting on it (what a cleanup proposes) | nothing |
+| `done` | already done elsewhere (the cockpit's Out of date: Already done) | nothing |
+| `outdated` | no longer relevant (Out of date: No longer relevant) | nothing |
+| `unwanted` | not needed like this, only this once (Out of date: Not needed like this) | nothing |
 | `family` | never this kind again | a rule: the source plus the key up to its last colon (`health:crash:1a20` mutes `health:crash:`), or the source plus the kind when the key has no family (such a rule leaves keys with a family alone) |
 | `source` | this source is too loud | a rule: everything of the source for 30 days (`MUTE_SOURCE_DAYS`) |
 

@@ -240,3 +240,73 @@ test('E1 the German words are the ones of the mockup', () => {
     assert.doesNotMatch(all, /[–—]|--/, 'no dashes')
   }
 })
+
+// ---------------------------------------------------------------- F: Out of date teaches the source (step 3)
+
+test('F1 Out of date sends its reason, so the noise counts it under the item\'s source; a task\'s Drop sends none', () => {
+  assert.deepEqual(logic.OBSOLETE_INBOX, { already_done: 'done', not_relevant: 'outdated', not_like_this: 'unwanted' })
+  const q = item('a')
+  assert.deepEqual(logic.flowAction('drop', q, 'Already done', null, { reason: 'done' }),
+    { verb: 'settle', args: { keys: ['inbox:a'], outcome: 'not_doing', text: 'Already done', reason: 'done' } })
+  assert.deepEqual(logic.flowAction('drop', q, 'x'), { verb: 'settle', args: { keys: ['inbox:a'], outcome: 'not_doing', text: 'x' } })
+  assert.deepEqual(logic.flowAction('drop', task('t'), 'x', null, { reason: 'done' }), { verb: 'shelve', args: { key: 'task:t', reason: 'x' } },
+    'a task is shelved, the inbox reason means nothing to it')
+})
+
+test('F2 the panel: a reason picked sends its key; Not needed like this asks whether once, this kind or the source', async () => {
+  const q = item('20261009-0901-q')
+  const open = async () => {
+    const c = recorder()
+    const el = mount(html`<${FlowPage} s=${flowState({ now: [q], ui: pointAt(q.key) })} c=${c} />`)
+    el.button(`${en.flow.ai.obsolete} ▾`).click()
+    await tick()
+    return { c, el }
+  }
+  const a = await open()
+  assert.equal(a.el.$('.flow-drop-scope'), null, 'no scope before Not needed like this')
+  a.el.button(logic.dropReasonWord('already_done', 'en')).click()
+  await tick()
+  a.el.button(en.flow.ai.obsoleteSend).click()
+  await until(() => acts(a.c).length)
+  assert.deepEqual(acts(a.c)[0], ['act', 'settle', { keys: [q.key], outcome: 'not_doing', text: 'Already done', reason: 'done' }])
+  for (const [scope, reason] of [['once', 'unwanted'], ['family', 'family'], ['source', 'source']]) {
+    const b = await open()
+    b.el.button(logic.dropReasonWord('not_like_this', 'en')).click()
+    await tick()
+    const scopes = b.el.$$('.flow-drop-scope button').map(x => x.text())
+    assert.deepEqual(scopes, [en.flow.ai.scope.once, en.flow.ai.scope.family, en.flow.ai.scope.source])
+    b.el.button(en.flow.ai.scope[scope]).click()
+    await tick()
+    b.el.button(en.flow.ai.obsoleteSend).click()
+    await until(() => acts(b.c).length)
+    assert.deepEqual(acts(b.c)[0], ['act', 'settle', { keys: [q.key], outcome: 'not_doing', text: 'Not needed like this', reason }])
+  }
+  assert.equal(en.flow.ai.scope.label, 'From now on')
+})
+
+test('F3 the card says how often the items of its source went out of date lately, from two on', () => {
+  const noise = { status: 'ok', data: { days: 30, sources: [{ source: 'mini/health', filed: 6, dropped: 4, reasons: { done: 4 } },
+    { source: 'radar', filed: 5, dropped: 1, reasons: {} }], mutes: [] } }
+  const loud = item('20261009-0903-loud', { origin_raw: 'Mini/Health', card: card({ goal: 'Fix the crash' }) })
+  assert.deepEqual(logic.sourceTrack(loud, { noise }), { filed: 6, dropped: 4 })
+  assert.equal(logic.sourceTrack(item('b', { origin_raw: 'radar' }), { noise }), null, 'one drop is no pattern')
+  assert.equal(logic.sourceTrack(item('c'), { noise }), null, 'no source')
+  assert.equal(logic.sourceTrack(loud, { noise: { status: 'idle', data: null } }), null)
+  const el = mount(html`<${FlowPage} s=${{ ...flowState({ now: [loud], ui: pointAt(loud.key) }), noise }} c=${recorder()} />`)
+  const sig = el.$('.flow-signal[data-signal="source"]')
+  assert.ok(sig, 'a signal of its own')
+  assert.equal(sig.text(), `${en.flow.useful.source}: ${en.flow.ai.track(4, 6)}`)
+  assert.equal(de.flow.ai.track(4, 6), 'zuletzt 4 von 6 überholt')
+})
+
+test('F4 an inbox point asks for the noise once while none is read', async () => {
+  const q = item('20261009-0901-q', { origin_raw: 'radar' })
+  const c = recorder()
+  mount(html`<${FlowPage} s=${{ ...flowState({ now: [q], ui: pointAt(q.key) }), noise: { status: 'idle', data: null, error: null } }} c=${c} />`)
+  await until(() => c.calls.some(x => x[0] === 'loadNoise'))
+  assert.ok(c.calls.some(x => x[0] === 'loadNoise'))
+  const c2 = recorder()
+  mount(html`<${FlowPage} s=${{ ...flowState({ work: [task('a')], ui: pointAt('task:a') }), noise: { status: 'idle', data: null, error: null } }} c=${c2} />`)
+  await tick()
+  assert.equal(c2.calls.some(x => x[0] === 'loadNoise'), false, 'a task has no source to count')
+})

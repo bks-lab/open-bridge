@@ -480,6 +480,8 @@
 .flow-ai-mode-name { font-weight: 600; }
 .flow-ai-mode-note { color: var(--on-surface-muted); font-size: var(--text-xs, 11px); font-weight: 400; }
 .flow-ai-mode[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-subtle); }
+/* Out of date's Not needed like this: what the Bridge learns for the source (views/verbbar.js, step 3) */
+.flow-drop-scope { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 /* the overview and the lists: the stand under the name, the step beside it (views/flowlist.js, views/flowleft.js) */
 .flow-ov-stand { display: block; margin-top: 2px; }
 .flow-ov-step { min-width: 12em; }

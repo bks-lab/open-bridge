@@ -792,11 +792,15 @@ class WorkVerbs:
         if done:
             self.settle_soon(ctx)
 
-    def v_settle(self, ctx: Ctx, keys: list[str], outcome: str, text: str | None = None, stream: bool = False) -> None:
+    def v_settle(self, ctx: Ctx, keys: list[str], outcome: str, text: str | None = None, stream: bool = False,
+                 reason: str | None = None) -> None:
         """Done or not doing, for any row: a finite task closes through task.py, an inbox item closes or
         drops, every other row (a GitHub issue, an application, a deadline from a protocol) leaves the
         briefing for good, while its source stays as it is. A stream never settles. All rows are checked
-        before the first write."""
+        before the first write. `reason` (not doing only) goes with an inbox item's drop, so inbox.py stats
+        counts it under the item's source; family and source leave a mute rule the page offers to lift."""
+        if reason and outcome != "not_doing":
+            raise bad_arg("reason", "only with outcome not_doing")
         plan = []
         for key in keys:
             entry = self.entry(key, "keys")
@@ -818,14 +822,20 @@ class WorkVerbs:
             if kind == "inbox":
                 item = self.inbox_id(row)
                 verb, note = ("close", self.tx["done_note"]) if outcome == "done" else ("drop", self.tx["drop_note"])
-                run = ctx.call(f"inbox.{verb}", item, self.inbox(verb, item, "--note", note + extra), SHORT_TIMEOUT)
+                why = ["--reason", reason] if reason and verb == "drop" else []
+                run = ctx.call(f"inbox.{verb}", item, self.inbox(verb, item, "--note", note + extra, *why), SHORT_TIMEOUT)
                 if not run.ok:
                     ctx.note(self.tx["done_failed" if outcome == "done" else "drop_failed"].format(err=m.short(run.err, 100)), bad=True)
                     continue
+                # inbox.py prints `muted <rule>` when the reason left a rule behind; the page offers to lift it
+                muted = next((line.split()[1] for line in (run.out or "").splitlines()
+                              if line.startswith("muted ") and len(line.split()) == 2), None)
+                if muted:
+                    ctx.extra["muted"] = muted
                 ctx.history.append({**history_item(key, row["title"], "inbox", "done" if outcome == "done" else "dropped", item),
                                     **({"reason": text} if text else {})})
                 self.end_also(ctx, row, verb)
-                self.settle(ctx, row, self.tx["res_done" if outcome == "done" else "dropped"])
+                self.settle(ctx, row, self.tx["res_done" if outcome == "done" else "dropped_muted" if muted else "dropped"])
                 self.settle_soon(ctx)
             elif kind == "other":
                 # not collector.settle: its source still lists the row, so it would stay invisible for good;

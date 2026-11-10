@@ -37,7 +37,9 @@ PRIORITIES = ("P0", "P1", "P2", "P3")
 CLOSE_REASONS = ("done", "not_doing", "superseded", "elsewhere", "auto")
 DECLINED_REASONS = frozenset({"not_doing", "superseded"})
 # why an inbox item is dropped (inbox.py DROP_REASONS); family and source leave a mute rule behind
-DROP_REASONS = ("once", "duplicate", "family", "source")
+# inbox.py DROP_REASONS a person may give: once, duplicate, the two that mute, and Out of date's three (not stale,
+# which a cleanup gives)
+DROP_REASONS = ("once", "duplicate", "family", "source", "done", "outdated", "unwanted")
 # a quick chat handed on: what reaches the inbox item or the control session, and the most the order
 # typed on handing on may take of it, so some of the conversation always comes along
 HANDOFF_MAX = 3500
@@ -98,8 +100,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "priority": {"key": ("key", True), "value": ("priority", True)},
     # stream: the page asked, and a stream among the keys ends (task.py close --stream)
     "task_close": {"keys": ("keys", True), "reason": ("close_reason", True), "text": ("text", False), "stream": ("bool", False)},
+    # reason: why an inbox item is not done (inbox.py drop --reason), only with outcome not_doing
     "settle": {"keys": ("keys", True), "outcome": ("outcome", True), "text": ("text", False), "stream": ("bool", False),
-               "by": ("by", False)},
+               "by": ("by", False), "reason": ("drop_reason", False)},
     "quick_handoff": {"conv": ("conv", True), "to": ("handoff", True), "text": ("long_text", False), "model": ("launch_model", False), "effort": ("launch_effort", False)},
     "quick_forget": {"conv": ("conv", True)},
     # `routed`: how the chat's route chip chose the tab (audit only, never acted on)

@@ -1586,6 +1586,25 @@ def test_drop_with_a_reason_passes_it_and_says_what_was_muted(world):
     assert err.value.status == 400
 
 
+def test_settle_of_an_inbox_item_carries_its_reason_and_says_what_was_muted(world):
+    """Out of date on a card (step 3 of a useful card): the reason goes to inbox.py drop, so the noise counts it under
+    the item's source; family and source leave a rule the page offers to lift"""
+    world.runner.calls.clear()
+    world.act("settle", keys=[f"inbox:{ONLY_ID}"], outcome="not_doing", text="Already done", reason="done")
+    assert writes(world) == [I(world, "drop", ONLY_ID, "--note", "dropped in the cockpit: Already done", "--reason", "done")]
+    world.runner.handlers["inbox.drop"] = lambda argv: ok("muted 20261017-1800-mini-daily-health-ab12\n")
+    world.runner.calls.clear()
+    res = world.act("settle", keys=[f"inbox:{YES_ID}"], outcome="not_doing", text="Not needed like this", reason="family")
+    assert writes(world) == [I(world, "drop", YES_ID, "--note", "dropped in the cockpit: Not needed like this", "--reason", "family")]
+    assert res["muted"] == "20261017-1800-mini-daily-health-ab12"
+    with pytest.raises(ActionError) as err:
+        world.act("settle", keys=[f"inbox:{YES_ID}"], outcome="not_doing", reason="annoying")
+    assert err.value.status == 400
+    with pytest.raises(ActionError) as err:
+        world.act("settle", keys=[f"inbox:{YES_ID}"], outcome="done", reason="done")
+    assert err.value.status == 400, "a reason belongs to not doing"
+
+
 def test_a_reason_on_a_row_that_is_no_inbox_item_still_discards_it(world):
     world.runner.calls.clear()
     world.act("drop", key="ref:example/repo#12", reason="source")
