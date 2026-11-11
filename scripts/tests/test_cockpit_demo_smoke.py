@@ -570,3 +570,44 @@ def test_the_taskboard_panel_closes_and_leaves_the_right_columns_in_view(base_ur
     assert page.locator(".tb-side").count() == 0, "a click beside the cards closes the panel"
     ctx.close()
     assert not problems, "\n".join(problems)
+
+
+def test_the_taskboard_opens_the_whole_record_on_its_own_page(base_url, browser):
+    """The panel of a card leads on to the whole record: Whole record shows it in place of the board, on the taskboard
+    page itself (the page tab stays, no other tab opens), with the card, its tabs and the right column. Back to the
+    tasks brings the board back with the same card's panel open"""
+    problems: list[str] = []
+    where = ["taskboard record"]
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900})
+    page = ctx.new_page()
+    _watch(page, problems, where)
+    page.goto(f"{base_url}?lang=de&taskboard=1")
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.set_default_timeout(10_000)
+    _steady(page)
+    tab = page.locator(".pagebar-tabs [role=tab]", has_text="Taskboard")
+    if tab.count():
+        tab.first.click()
+    else:
+        page.locator(".ptab-more > [role=tab]").click()
+        page.locator(".more-menu [role=menuitem]", has_text="Taskboard").first.click()
+    page.wait_for_selector("#main .tb-board")
+    url = page.url
+
+    page.locator(".tb-card", has_text="Onboarding guide").first.click()
+    page.wait_for_selector(".tb-side")
+    page.locator(".tb-side button", has_text="Ganze Akte").click()
+    page.wait_for_selector("#main .tb-record .flow-card")
+    assert page.locator("#main .tb-board").count() == 0, "the record stands in place of the board"
+    assert page.locator(".tb-side").count() == 0, "the panel gives way to the record"
+    assert page.locator("#main .tb-record .flow-ptabs [role=tab]").count() >= 2, "the record shows its tabs"
+    assert page.locator("#main .tb-record .flow-aside").count() == 1, "the record shows what you can do"
+    assert page.url == url, "the record opens on the taskboard page itself"
+
+    page.locator("#main .tb-record .flow-back", has_text="Zurück zu den Aufgaben").click()
+    page.wait_for_selector("#main .tb-board")
+    assert page.locator("#main .tb-record").count() == 0
+    side = page.locator(".tb-side .tb-side-title")
+    assert side.count() == 1 and "Onboarding guide" in side.inner_text(), "back on the board, the same card's panel is open"
+    ctx.close()
+    assert not problems, "\n".join(problems)
