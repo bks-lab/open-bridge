@@ -55,11 +55,13 @@ export function tbColumn(it) {
   return 'me'
 }
 
-/** The tasks an open inbox decision is tied to (an item's `task`, kind decision): their cards say Decide, first */
+/** The tasks an open inbox decision is tied to (an item's `task`, kind decision): their cards say Decide, first. Only
+ *  one that asks now: not put off (deferred), not filed ahead and waiting for its probe (waiting, `waits_for`), not
+ *  approved already */
 export function tbDecideSlugs(rows) {
   const out = new Set()
   for (const r of rows ?? []) {
-    if (r?.inbox_id && r.task && r.inbox_kind === 'decision' && r.inbox_state !== 'deferred') out.add(r.task)
+    if (r?.inbox_id && r.task && r.inbox_kind === 'decision' && (r.inbox_state ?? 'open') === 'open') out.add(r.task)
   }
   return out
 }
