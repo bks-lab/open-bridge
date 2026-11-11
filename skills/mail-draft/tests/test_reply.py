@@ -436,3 +436,69 @@ class ReplyClientChoice(BridgeCase):
                                 "--client", "apple-mail", fake=fake)
         self.assertEqual(code, 0, out)
         self.assertEqual(fake.ran("reply")[0][0][-3], "set")
+
+
+CREATED = "OK|sender=yes|to=1|attachments=0|closed=no|from=alex@example.com"
+
+
+class ReplyAsNewDraft(BridgeCase):
+    """--reply-as-new: the reply's words as a NEW draft to copy into the reply by hand.
+
+    The paste into a reply window has stored only the quote on real runs
+    (October and November 2026), so a draft that does not depend on the paste
+    has to exist: addressed and titled like the reply, built like any new mail.
+    """
+
+    def cli(self, *argv, fake=None):
+        from engine import cli
+        out = io.StringIO()
+        with mock.patch("engine.clients.subprocess.run", side_effect=fake or FakeMail()) as run, \
+                mock.patch("engine.cli._open") as opened, \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = cli.main(list(argv))
+        return code, out.getvalue(), run, opened
+
+    def test_new_draft_goes_to_the_original_sender_with_the_reply_subject(self):
+        saved = saved_draft(f"Hello,\n\n{BODY}\n")
+        fake = FakeMail(find=ORIGINAL, create=CREATED, verify=["0", "1\n" + saved])
+        code, out, _, _ = self.cli("compose", "--reply-to", "<orig-1@example.org>", "--reply-as-new",
+                                   "--body", BODY, "--client", "apple-mail", fake=fake)
+        self.assertEqual(code, 0, out)
+        self.assertIn("pat@example.org", out)
+        self.assertIn("Subject:  Re: Plans", out)
+        self.assertEqual(len(fake.ran("reply")), 0, "no reply window, no paste")
+        self.assertEqual(len(fake.ran("create")), 1)
+        self.assertIn("NOT a reply", out)
+        self.assertIn("copy", out)
+
+    def test_any_client_can_take_it(self):
+        """A new message needs no quote, so eml (and Outlook) are not refused."""
+        code, out, run, opened = self.cli("compose", "--reply-to", "Plans", "--reply-as-new",
+                                          "--body", BODY, "--client", "eml", "--hide",
+                                          fake=FakeMail(find=ORIGINAL))
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("not supported", out)
+        self.assertIn("Subject:  Re: Plans", out)
+        opened.assert_not_called()
+
+    def test_given_to_and_subject_win(self):
+        code, out, _, _ = self.cli("compose", "--reply-to", "Plans", "--reply-as-new", "--to", "sam@example.org",
+                                   "--subject", "Re: Plans, with the CV", "--body", BODY,
+                                   "--client", "none", fake=FakeMail(find=ORIGINAL))
+        self.assertEqual(code, 0, out)
+        self.assertIn("sam@example.org", out)
+        self.assertIn("Re: Plans, with the CV", out)
+
+    def test_needs_reply_to(self):
+        code, out, run, _ = self.cli("compose", "--reply-as-new", "--to", "pat@example.org",
+                                     "--subject", "Re: Plans", "--body", BODY, "--client", "none")
+        self.assertEqual(code, 2)
+        self.assertIn("--reply-as-new needs --reply-to", out)
+        run.assert_not_called()
+
+    def test_failed_reply_points_to_the_new_draft(self):
+        fake = FakeMail(find=ORIGINAL, reply="ERR|focus|closed=yes|saved=no", verify="0")
+        code, out, _, _ = self.cli("compose", "--reply-to", "<orig-1@example.org>", "--body", BODY,
+                                   "--client", "apple-mail", fake=fake)
+        self.assertNotEqual(code, 0)
+        self.assertIn("--reply-as-new", out)

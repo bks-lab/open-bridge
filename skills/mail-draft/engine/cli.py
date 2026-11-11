@@ -2,6 +2,7 @@
 
     compose    build the draft and hand it to the mail client (default: Apple Mail on macOS);
                with --reply-to, a reply in Apple Mail that keeps the quote
+               (with --reply-as-new: a new draft to copy into the reply by hand)
     preview    build it, write a light/dark preview page, open nothing in a mail client
     check      build it and report the preflight only
     explain    which profile, footer, language and sender a recipient gets, and why
@@ -155,6 +156,9 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--reply-to", metavar="MESSAGE-ID|SUBJECT",
                    help="answer this message in Apple Mail (Message-ID, or words of its subject)")
     c.add_argument("--reply-all", action="store_true", help="with --reply-to: answer every recipient")
+    c.add_argument("--reply-as-new", action="store_true",
+                   help="with --reply-to: a NEW draft to the original's sender with its Re: subject, "
+                        "to copy into the reply by hand (no reply window, no paste, any client)")
     c.add_argument("--priority", choices=["low", "normal", "high"])
     c.add_argument("--hide", action="store_true", help="save the draft without opening its window")
     c.add_argument("--force", action="store_true", help="create the draft despite preflight errors")
@@ -242,9 +246,31 @@ def _prepare_reply(args, cfg):
     return original
 
 
+def _prepare_reply_as_new(args):
+    """Only the original's sender and subject: the draft itself is a new message."""
+    from .clients import apple_mail
+    original = apple_mail.find_original(args.reply_to)
+    print(f"answering as a new draft: {original.describe()}")
+    if not args.to:
+        args.to = [original.address]
+    if not args.subject:
+        args.subject = apple_mail.reply_subject(original.subject)
+
+
+AS_NEW_NOTE = ("This draft is NOT a reply: open the original in your mail client, press Reply, copy the "
+               "text and the attachments from this draft into the reply, then delete this draft.")
+
+
 def cmd_compose(args, cfg) -> int:
     original = None
-    if args.reply_to:
+    as_new = bool(getattr(args, "reply_as_new", False))
+    if as_new and not args.reply_to:
+        print("mail-draft: --reply-as-new needs --reply-to <message-id|subject> (the message to answer). "
+              "Nothing was created.", file=sys.stderr)
+        return 2
+    if args.reply_to and as_new:
+        _prepare_reply_as_new(args)
+    elif args.reply_to:
         original = _prepare_reply(args, cfg)
         if isinstance(original, int):
             return original
@@ -262,17 +288,21 @@ def cmd_compose(args, cfg) -> int:
     show = not args.hide
     if d.client == "none":
         print("\nclient none: nothing handed to a mail client, the bundle is the draft.")
+        if as_new:
+            print(AS_NEW_NOTE)
         return 0
     if d.client == "eml":
         eml = bundle / "mail.eml"
         if show:
             _open(eml)
         print(f"\ndraft: {eml} (opens as a draft in Outlook and Thunderbird; Apple Mail shows it read-only)")
+        if as_new:
+            print(AS_NEW_NOTE)
         return 0
     if d.client == "imap":
         from .clients import imap
         result = imap.handoff(d, bundle / ".handoff", show=show, cfg=cfg)
-        return _report_handoff(d, result, reply=False)
+        return _report_handoff(d, result, reply=False, as_new=as_new)
     if d.client == "apple-mail":
         from .clients import apple_mail as client
     elif d.client == "outlook":
@@ -284,10 +314,10 @@ def cmd_compose(args, cfg) -> int:
                                      set_to=getattr(args, "reply_set_to", False))
     else:
         result = client.handoff(d, bundle / ".handoff", show=show)
-    return _report_handoff(d, result, reply=original is not None)
+    return _report_handoff(d, result, reply=original is not None, as_new=as_new)
 
 
-def _report_handoff(d, result, reply: bool) -> int:
+def _report_handoff(d, result, reply: bool, as_new: bool = False) -> int:
     print(f"\n{d.client}: {result.detail}")
     if not result.ok:
         print("draft: FAILED" + (", NOT in the Drafts folder" if result.verified is False else ""))
@@ -297,6 +327,11 @@ def _report_handoff(d, result, reply: bool) -> int:
         print("draft: open as a window, NOT yet in the Drafts folder (save it there)")
     else:
         print("draft: created, not verified")
+    if reply and not result.ok:
+        print("The reply could not be built. Run the same command again with --reply-as-new: it makes a "
+              "new draft to copy into the reply by hand.")
+    if as_new and result.ok:
+        print(AS_NEW_NOTE)
     print("Nothing was sent. Review the draft and press Send yourself.")
     return 0 if result.ok else 1
 

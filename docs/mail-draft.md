@@ -1,7 +1,7 @@
 ---
 summary: "Mail drafts: footers in identity/mail-footers/ (who signs, styles, language variants), occasions in workflow/mail-profiles/ (footer, theme, greeting, snippets, attachments, client, who it applies to), recipients from mandants; skills/mail-draft builds a draft in Apple Mail, Outlook or an .eml and never sends. Selection order, footer styles, theme roles, preflight checks, clients and their limits."
 type: guide
-last_updated: 2026-10-24
+last_updated: 2026-11-11
 related:
   - ../skills/mail-draft/SKILL.md
   - ../identity/mail-footers/_schema.yaml
@@ -343,6 +343,17 @@ reported by name and the run fails. When Mail's autosave left an extra copy
 during the run, the extra copies from this run are removed and counted, as for
 a new draft. Plain new drafts are not affected by any of this.
 
+**The paste is not reliable.** On real runs in October and November 2026 the
+saved reply held only the quote: the text, the footer and the attachments never
+arrived, although Mail was the frontmost app, this reply was its front window and
+Accessibility was granted. The read-back caught it every time, so nothing half
+done was reported as ready, but the person was left without a draft. Until the
+reply is built without a paste, `--reply-as-new` is the default way: the same
+command with that flag finds the original only to take its sender and
+`Re: <subject>`, and builds a NEW draft like any other (any client, no reply
+window, no clipboard). The person opens the original, presses Reply, and copies
+the text and the attachments over. A failed paste run points to the flag.
+
 `outlook`, `eml` and `none` refuse a reply by name, before anything is created
 (a flag, `mail.client` or the platform default is checked before Mail is asked
 anything; a profile's client is checked after the build):
@@ -368,6 +379,7 @@ mail:
 ```
 mail-draft.sh compose   --to <who> --subject <s> --body-file <f> [--attach f] [--profile p] [--client c]
 mail-draft.sh compose   --reply-to <message-id|subject> --body-file <f> [--attach f] [--reply-all]
+mail-draft.sh compose   --reply-to <message-id|subject> --reply-as-new --body-file <f> [--attach f]
 mail-draft.sh preview   ...same...   [--open]       light/dark page + text part, no client
 mail-draft.sh check     ...same...                  preflight only
 mail-draft.sh explain   --to <who> [--profile p]    which profile/footer/language, and why
