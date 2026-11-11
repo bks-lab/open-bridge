@@ -1004,5 +1004,57 @@ class AProbeDisagreementWaitsForTheRunThatShouldFixIt(DispatchBase):
         self.assertEqual(len(self.sent), 1, "a daemon that is down is down now")
 
 
+class AFailedRunMayWaitForTheNextOne(DispatchBase):
+    """2026-11-01 to 11-11 on one instance: a failed run alarmed at once, and its all-clear
+    followed 30 minutes to 3 hours later, eight times. Two messages about nothing. With
+    `workloads.failure_grace_hours` set, a single failed run is held until either a SECOND
+    failed run arrives (a different trace stamp) or the grace has passed. A run that turns
+    green inside the grace was never told, so it earns no all-clear either. Without the key
+    nothing changes: the first failed run is told on the very first pass."""
+
+    def detail(self, minute):
+        return f"the midday run ended with 1 at 2026-08-24T12:{minute:02d}:00Z"
+
+    def grace(self, *findings, now, hours=3):
+        return self.once(*findings, now=now, failure_grace_hours=hours)
+
+    def test_one_failed_run_is_held_inside_the_grace(self):
+        self.grace(self.finding(detail=self.detail(0)), now=self.at(hour=12))
+        self.assertEqual(self.sent, [])
+
+    def test_a_second_failed_run_is_told_at_once(self):
+        self.grace(self.finding(detail=self.detail(0)), now=self.at(hour=12))
+        self.grace(self.finding(detail=self.detail(30)), now=self.at(hour=13))
+        self.assertEqual(len(self.sent), 1, "failed twice in a row is the alarm")
+
+    def test_the_same_failed_run_is_told_once_the_grace_has_passed(self):
+        for hour in (12, 13, 14, 15):
+            self.grace(self.finding(detail=self.detail(0)), now=self.at(hour=hour))
+        self.assertEqual(len(self.sent), 1, "a daily run that stays red must not stay silent")
+
+    def test_green_inside_the_grace_sends_nothing_at_all(self):
+        self.grace(self.finding(detail=self.detail(0)), now=self.at(hour=12))
+        self.grace(now=self.at(hour=13))
+        self.assertEqual(self.sent, [], "no alarm, so no all-clear")
+
+    def test_a_stopped_daemon_is_not_held_by_the_grace(self):
+        w = load("watched-daemon")
+        f = self.finding(state=model.WorkloadState.stopped, wid=w.id, appointment="")
+        for hour in (12, 13):
+            notify.dispatch(self.rep(f), [w], state_path=self.state, now=self.at(hour=hour),
+                            sender=self.sender(), failure_grace_hours=3)
+        self.assertEqual(len(self.sent), 1, "a daemon that is down is down now")
+
+    def test_without_the_key_the_first_pass_still_tells(self):
+        self.once(self.finding(detail=self.detail(0)))
+        self.assertEqual(len(self.sent), 1)
+
+    def test_the_grace_is_read_from_the_config(self):
+        cfg = SimpleNamespace(notify_text=None, failure_grace_hours=3)
+        notify.dispatch(self.rep(self.finding()), [load("twice-daily-report")],
+                        state_path=self.state, now=self.at(), sender=self.sender(), cfg=cfg)
+        self.assertEqual(self.sent, [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -79,6 +79,12 @@ Dampening, all of it per `(run, appointment, bucket)`:
 - only `stopped` waits for a **second consecutive pass**; it reads a live
   measurement that flickers around a restart, while everything else here is a
   line already written to disk
+- optional **failure grace**: with `workloads.failure_grace_hours: N` in the
+  bridge config, ONE failed run (`last_run_failed`) waits up to N hours for the
+  next run. A second failed run (new trace stamp) is told at once, the same run
+  still red after N hours is told too, and a run that turns green inside the
+  grace is never told, so it earns no all-clear either. Off (0) by default;
+  `stopped` is never held by it
 - the backoff is recorded **only after a confirmed delivery** (`exit 0`)
 | `drifted` (source `declaration`) | medium | the file on disk has changed since this was provisioned | provision it again |
 | `not_provisioned` | info | declared, never provisioned | run `provision` when it should exist |
