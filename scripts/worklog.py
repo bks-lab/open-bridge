@@ -303,6 +303,30 @@ def append_row(root: Path, at: _dt.datetime, context: str, what: str,
     return row
 
 
+def open_day(root: Path, day: _dt.date) -> bool:
+    """Open `day`'s block when it is missing, with no row. True when it was opened.
+
+    Phase 1 of the session start creates today's block before the first answer;
+    until this existed that took a row (`--append`) or a template copied by hand,
+    and a session that had nothing to log yet skipped it (the test lab's
+    agent-session-start, red for one agent on every night from 2026-11-08).
+    The block is the one `append_row` would open, placed the same way.
+    """
+    b = _sibling("_briefing_for_worklog", "briefing.py")
+    log = root / LOG_PATH
+    text = log.read_text(encoding="utf-8") if log.is_file() else ""
+    lines = text.rstrip("\n").split("\n") if text.strip() else []
+    want = (f"{day:%d}", f"{day:%m}")
+    if any((m := DAY_HEADING.match(ln)) and m.groups() == want for ln in lines):
+        return False
+    at = _dt.datetime.combine(day, _dt.time(0, 0))
+    block = b._new_day_block(root, at, b._weekday(at))
+    lines = _place_block(lines, block.split("\n"), (day.month, day.day))
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
+    return True
+
+
 def _minute(value: str) -> _dt.datetime:
     try:
         return _dt.datetime.strptime(value, "%Y-%m-%d %H:%M")
@@ -338,6 +362,11 @@ def main(argv=None):
         action="store_true",
         help="write one row into its own day's block, opening the block when missing",
     )
+    parser.add_argument(
+        "--open-today",
+        action="store_true",
+        help="open today's day block when it is missing, no row (session start, Phase 1)",
+    )
     parser.add_argument("--context", help="--append: the repo or area tag")
     parser.add_argument("--what", help="--append: what happened, and why")
     parser.add_argument("--glyph", default=DEFAULT_GLYPH, help="--append: activity glyph")
@@ -356,6 +385,12 @@ def main(argv=None):
         else Path(__file__).resolve().parents[1]
     )
     path = root / LOG_PATH
+
+    if args.open_today:
+        day = args.today or _dt.date.today()
+        opened = open_day(root, day)
+        sys.stdout.write(f"work/log.md: {'opened' if opened else 'already has'} the block for {day:%d.%m}\n")
+        return 0
 
     if args.append:
         if not args.context or not args.what:

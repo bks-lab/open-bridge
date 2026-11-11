@@ -460,3 +460,41 @@ def test_a_new_block_keeps_a_chronological_log_in_order(tmp_path):
     text = (root / "work" / "log.md").read_text(encoding="utf-8")
     heads = [ln[-5:] for ln in text.splitlines() if ln.startswith("## ")]
     assert heads == ["12.10", "14.10", "15.10"]
+
+
+# ------------------------------------------------------------ open-today --
+# The test lab's agent-session-start was red for Claude on every night from
+# 2026-11-08: Phase 0 ran, the answer came, and Phase 1 (board, today's day
+# block) never did. Opening the block took a row to write (`--append`) or a
+# template to copy by hand. `--open-today` is the one idempotent command the
+# session start names instead.
+
+def test_open_today_creates_the_missing_block(tree, capsys):
+    import datetime as dt
+    assert wl.main(["--repo-root", str(tree), "--open-today", "--today", "2026-08-29"]) == 0
+    text = (tree / "work" / "log.md").read_text(encoding="utf-8")
+    assert "29.08" in text and text.count("## ") == 5
+    assert "opened" in capsys.readouterr().out
+    # nothing else moved: every old block is still there, word for word
+    for block in (D28, D27, D26, D24):
+        assert block.strip().split("\n")[0] in text
+
+
+def test_open_today_is_idempotent(tree, capsys):
+    wl.main(["--repo-root", str(tree), "--open-today", "--today", "2026-08-29"])
+    before = (tree / "work" / "log.md").read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert wl.main(["--repo-root", str(tree), "--open-today", "--today", "2026-08-29"]) == 0
+    assert (tree / "work" / "log.md").read_text(encoding="utf-8") == before
+    assert "already" in capsys.readouterr().out
+
+
+def test_open_today_leaves_an_existing_block_alone(tree, capsys):
+    before = (tree / "work" / "log.md").read_text(encoding="utf-8")
+    assert wl.main(["--repo-root", str(tree), "--open-today", "--today", "2026-08-28"]) == 0
+    assert (tree / "work" / "log.md").read_text(encoding="utf-8") == before
+
+
+def test_open_today_creates_the_log_when_it_is_missing(tmp_path):
+    assert wl.main(["--repo-root", str(tmp_path), "--open-today", "--today", "2026-08-29"]) == 0
+    assert "29.08" in (tmp_path / "work" / "log.md").read_text(encoding="utf-8")

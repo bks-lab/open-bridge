@@ -34,8 +34,9 @@ what the slice exists to stop:
    slice LEADS with a `> ⚠` line naming those periods, their rows and size.
    Pass it on and offer `/archive`; never archive unasked, since it distils
    memory and asks first. `worklog.py --check` exits 1 on the same condition
-2. Create today's day-block if missing (from `work/templates/day.md`;
-   header `## {Weekday} DD.MM`). A row written with
+2. Create today's day-block if missing: `python3 scripts/worklog.py --open-today`
+   (from `work/templates/day.md`, header `## {Weekday} DD.MM`, idempotent, no
+   row). A row written with
    `python3 scripts/worklog.py --append --context <tag> --what "<what, why>"`
    lands in its own day's block and opens that block when it is missing
 3. Read the registry index: `python3 scripts/context-index.py --registries`
