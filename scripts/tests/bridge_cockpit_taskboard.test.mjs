@@ -51,8 +51,12 @@ test('the board: a decision first in Me, waiting by its look-again day, streams 
 
 test('an open inbox decision tied to a task marks it; a put-off one or another kind does not', () => {
   const rows = [{ inbox_id: 'i1', task: 'a', inbox_kind: 'decision' }, { inbox_id: 'i2', task: 'b', inbox_kind: 'finding' },
-    { inbox_id: 'i3', task: 'c', inbox_kind: 'decision', inbox_state: 'deferred' }, { task: 'd', inbox_kind: 'decision' }]
-  assert.deepEqual([...logic.tbDecideSlugs(rows)], ['a'])
+    { inbox_id: 'i3', task: 'c', inbox_kind: 'decision', inbox_state: 'deferred' }, { task: 'd', inbox_kind: 'decision' },
+    { inbox_id: 'i4', task: 'e', inbox_kind: 'decision', inbox_state: 'open' },
+    // filed ahead, it asks nobody until its probe holds (waits_for); a decision already approved asks nobody either
+    { inbox_id: 'i5', task: 'f', inbox_kind: 'decision', inbox_state: 'waiting' },
+    { inbox_id: 'i6', task: 'g', inbox_kind: 'decision', inbox_state: 'approved' }]
+  assert.deepEqual([...logic.tbDecideSlugs(rows)], ['a', 'e'])
 })
 
 test('the tags of a card: area, tab, waiting on, look again, due (red within 30 days), an old step but not on a waiting card', () => {
