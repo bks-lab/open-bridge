@@ -42,7 +42,8 @@ test('the board: a decision first in Me, waiting by its look-again day, streams 
     task('w2', { lane: 'waiting', who: 'Ana', until: '2026-11-20' }), task('w1', { lane: 'waiting', who: 'Ben', until: '2026-11-13' }),
     task('w0', { lane: 'waiting', who: 'Cy' }), task('s', { stream: true })]
   const board = logic.tbBoard(items.map(it => cardOf(it, { decide })))
-  assert.deepEqual(board.columns.me.map(c => c.slug), ['late', 'early', 'backlog'])
+  assert.deepEqual(board.columns.me.map(c => c.slug), ['late', 'early'])
+  assert.deepEqual(board.later.map(c => c.slug), ['backlog'], 'a backlog task that asks nothing now waits in its band')
   assert.deepEqual(board.columns.waiting.map(c => c.slug), ['w1', 'w2', 'w0'])
   assert.deepEqual(board.streams.map(c => c.slug), ['s'])
   assert.equal(board.columns.me[0].decide, true)
@@ -202,4 +203,52 @@ test('a waiting task whose look-again day has come stands with you again, says s
   assert.equal(open.column, 'waiting', 'no day: it keeps waiting')
   assert.equal(logic.tbTidy([past]).length, 0, 'a task back from waiting is no tidy-up case')
   assert.equal(de.taskboard.tag.lookDue('2026-10-26'), 'nachsehen fällig seit 26.10.')
+})
+
+test('a backlog task waits in the band of what is not started, unless it asks you now', () => {
+  const decide = new Set(['bl-decide'])
+  const items = [task('doing'), task('bl'), task('bl-decide'), task('bl-look', { lane: 'waiting', who: 'Lior', until: '2026-11-01' }),
+    task('bl-due', { due: '2026-11-20' }), task('bl-far', { due: '2027-06-01' }), task('rev', {}, { state: 'review' })]
+  for (const it of items) if (it.task.startsWith('bl')) it.state = 'backlog'
+  const board = logic.tbBoard(items.map(it => cardOf(it, { decide })))
+  assert.deepEqual(board.later.map(c => c.slug), ['bl-far', 'bl'], 'not started and nothing asks you now, by due day')
+  assert.deepEqual(board.columns.me.map(c => c.slug).sort(), ['bl-decide', 'bl-due', 'bl-look', 'doing'].sort(),
+    'a decision, a look-again day passed and a due day within 30 days keep a backlog task with you')
+  assert.deepEqual(board.columns.review.map(c => c.slug), ['rev'])
+  assert.deepEqual(logic.tbBoard([]).later, [])
+})
+
+test('a step that is yours together with someone says with whom on its card', () => {
+  const kinds = c => c.tags.map(g => g.kind)
+  const both = cardOf(task('both', { lane: 'me', who: 'Kim' }))
+  assert.equal(both.column, 'me')
+  assert.ok(kinds(both).includes('with'))
+  assert.equal(both.tags.find(g => g.kind === 'with').value, 'Kim')
+  assert.ok(!kinds(both).includes('waitingOn'), 'not waiting: it is yours')
+  assert.ok(!kinds(cardOf(task('solo'))).includes('with'))
+  assert.equal(en.taskboard.tag.with('Kim'), 'with Kim')
+  assert.equal(de.taskboard.tag.with('Kim'), 'mit Kim')
+})
+
+test('the band of what is not started stays closed until clicked and opens its cards', async () => {
+  const items = [task('doing'), task('idle', {}, { state: 'backlog' }), task('idle2', {}, { state: 'backlog' })]
+  const sec = section(items)
+  const el = mount(html`<${views.pages.PageSection} page=${page(sec)} section=${sec} s=${state()} c=${recorder()} />`)
+  const btn = el.$('.tb-later-toggle')
+  assert.ok(btn, 'the band has its button')
+  assert.ok(btn.text().includes(en.taskboard.later) && btn.text().includes('2'))
+  assert.equal(btn.getAttribute('aria-expanded'), 'false')
+  assert.equal(el.$$('.tb-later .tb-card').length, 0, 'closed: no cards')
+  assert.ok(!el.$$('.tb-col-me .tb-card').some(x => x.text().includes('idle')), 'not in Me')
+  btn.click()
+  await waitFor(() => el.$$('.tb-later .tb-card').length === 2)
+  assert.equal(el.$('.tb-later-toggle').getAttribute('aria-expanded'), 'true')
+})
+
+test('the taskboard shows every task whatever the triage filter of the work page holds', () => {
+  const items = [task('one'), task('two')]
+  const sec = section(items)
+  const s = state({ ui: { triageFilter: 'close' } })
+  const el = mount(html`<${views.pages.PageSection} page=${page(sec)} section=${sec} s=${{ ...s, triage: { items: {} } }} c=${recorder()} />`)
+  assert.equal(el.$$('.tb-card').length, 2, 'no bar to undo it stands on the taskboard page, so no filter acts on it')
 })

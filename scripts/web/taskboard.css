@@ -26,6 +26,7 @@
   border: 1px solid transparent;
 }
 .tb-tag-area { background: transparent; border-color: var(--border); }
+.tb-tag-with { background: transparent; border-color: var(--border-strong); color: var(--ink); }
 .tb-tag-decide { background: color-mix(in srgb, var(--accent) 18%, var(--surface-raised)); color: var(--ink); border-color: var(--accent-line); font-weight: 600; }
 .tb-tag-tab { background: color-mix(in srgb, var(--info) 16%, var(--surface-raised)); color: var(--ink); border-color: var(--info); }
 .tb-tag-stepOld { background: color-mix(in srgb, var(--warning) 16%, var(--surface-raised)); color: var(--ink); border-color: var(--warning); }
@@ -33,6 +34,10 @@
 .tb-tag-due.is-soon { background: color-mix(in srgb, var(--danger) 16%, var(--surface-raised)); color: var(--danger); border-color: var(--danger); font-weight: 600; }
 
 .tb-streams { display: grid; gap: 10px; }
+.tb-later { display: grid; gap: 10px; }
+.tb-later-toggle { display: inline-flex; align-items: baseline; gap: 8px; min-height: 36px; padding: 0 12px; margin-left: -12px; font: inherit;
+  color: inherit; background: none; border: 0; border-radius: var(--radius-md); cursor: pointer; }
+.tb-later-toggle:hover { background: var(--surface-muted); }
 .tb-streams-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 
 .tb-boxes { display: grid; grid-template-columns: 2fr 1fr; gap: var(--space-md); align-items: start; }

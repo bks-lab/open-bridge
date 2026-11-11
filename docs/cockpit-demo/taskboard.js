@@ -106,6 +106,8 @@ export function tbTags(card) {
   if (card.tab) tags.push({ kind: 'tab' })
   // a blocked_by says why in a sentence: the tag keeps its start, the panel's step says the rest
   const waited = card.column === 'waiting' || card.lookDue
+  // a step that is yours with others (briefing_view task_who: lane me, `who` the others) says with whom
+  if (!waited && card.lane === 'me' && card.who) tags.push({ kind: 'with', value: card.who.length > TB_WHO_MAX ? `${card.who.slice(0, TB_WHO_MAX - 1).trimEnd()}…` : card.who })
   if (waited && card.who) tags.push({ kind: 'waitingOn', value: card.who.length > TB_WHO_MAX ? `${card.who.slice(0, TB_WHO_MAX - 1).trimEnd()}…` : card.who })
   if (card.until) tags.push({ kind: card.lookDue ? 'lookDue' : 'lookAgain', value: card.until })
   if (card.due) tags.push({ kind: 'due', value: card.due, soon: card.dueDays != null && card.dueDays <= TB_DUE_SOON })
@@ -116,12 +118,19 @@ export function tbTags(card) {
 /** Does a card (or a tab) stand in the area of the one area filter (ui.area)? No area chosen: every one */
 export const tbInArea = (x, area) => inProject(x, area)
 
-/** The board: the cards in their columns and the streams in their band. You: a decision first, then what is under
- *  way before the backlog, then by due day; waiting: by the day to look again, none last; the rest as they came */
+/** A backlog task that asks nothing of you now: no decision tied to it, no look-again day come, no due day within
+ *  TB_DUE_SOON days. It waits in the band of what is not started instead of filling Me */
+export const tbIsLater = c => c.column === 'me' && c.state === 'backlog' && !c.stream && !c.decide && !c.lookDue
+  && !(c.dueDays != null && c.dueDays <= TB_DUE_SOON)
+
+/** The board: the cards in their columns, the streams in their band and the backlog that asks nothing now in its own
+ *  (`later`, tbIsLater). You: a decision first, then what is under way before the backlog, then by due day; waiting:
+ *  by the day to look again, none last; the rest as they came */
 export function tbBoard(cards) {
   const columns = Object.fromEntries(TB_COLUMNS.map(id => [id, []]))
   const streams = []
-  for (const c of cards ?? []) (c.column === 'stream' ? streams : columns[c.column] ?? columns.me).push(c)
+  const later = []
+  for (const c of cards ?? []) (c.column === 'stream' ? streams : tbIsLater(c) ? later : columns[c.column] ?? columns.me).push(c)
   const at = new Map((cards ?? []).map((c, i) => [c.key, i]))
   const by = (...keys) => (a, b) => {
     for (const k of keys) { const d = k(a) - k(b) || 0; if (d) return d }
@@ -130,7 +139,8 @@ export function tbBoard(cards) {
   const dayKey = iso => dayOf(iso) ?? Infinity
   columns.me.sort(by(c => (c.decide ? 0 : 1), c => (c.state === 'backlog' ? 1 : 0), c => dayKey(c.due)))
   columns.waiting.sort((a, b) => (a.until || '9').localeCompare(b.until || '9') || at.get(a.key) - at.get(b.key))
-  return { columns, streams }
+  later.sort(by(c => dayKey(c.due)))
+  return { columns, streams, later }
 }
 
 /** The tidy-up suggestions by fixed rules, one per task, each with the verb its Yes runs (`shelve`: to the idea list,

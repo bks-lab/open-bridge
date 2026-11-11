@@ -472,9 +472,10 @@ export function PageSection({ page, section, s, c, q = '', topic = null }) {
   const gh = !!(section.metrics?.length || section.boards?.length)
   const stamp = sectionStamp(section.as_of, s.model?.collected_at)
   const more = section.whole ? null : s.more[`${page.id}/${section.id}`]   // whole: the caller already took every row
-  // a task or inbox section follows the triage filter on top of its page
+  // a task or inbox section follows the triage filter on top of its page, a taskboard not
   const all = more ? more.items : (section.items ?? [])
-  const kept = section.kind === 'tasks' || section.kind === 'inbox'
+  // (the taskboard draws no triage bar to undo it, so it shows every task: components.js listed)
+  const kept = (section.kind === 'tasks' || section.kind === 'inbox') && section.view !== 'taskboard'
     ? all.filter(it => triageShows(it, s.triage?.items, s.ui.triageFilter)) : gh ? all.filter(it => ghShows(it, ghFilter, ghMyLogin(all))) : all
   // the words of the page's search (views/timeline.js PageSearch): the rows that hold every one
   const words = q.trim()

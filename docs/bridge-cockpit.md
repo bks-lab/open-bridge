@@ -2766,11 +2766,16 @@ The page draws four columns: **Me** (your next moves), **Bridge** (a step for th
 **Waiting on others** and **To review** (status `review`). Who has a task's next move is the rule
 Work's buckets keep (`briefing_view.task_who`), so both pages count the same: `blocked_by` waits on
 that, until its look-again day (`task.py wait`); `next.who` naming the Bridge (`bridge`, `agent`, `ai`)
-is the Bridge's; no `who`, `me` or the profile's person is yours; any other name waits on that
-person, until its check-in day; a task with no next step stands under Me. Under Me a task with an
+is the Bridge's; no `who`, `me` or the profile's person is yours, and so is a `who` that names you
+among others ("me and Kim", "Sam und Kim" where Sam is you), its card then tagged "with Kim"; any other name waits on
+that person, until its check-in day; a task with no next step stands under Me. Under Me a task with an
 open inbox decision tied to it (an item's `task`, kind `decision`) comes first, tagged Decide, then
-what is under way before the backlog. Waiting is sorted by the day to look again. The streams stand
-in a band **Ongoing** under the columns.
+what is under way. A backlog task that asks nothing of you now (no decision, no look-again day come,
+no due day within 30 days: `tbIsLater`) waits in a closed band **Not started yet** under the columns;
+a click opens it. Waiting is sorted by the day to look again. The streams stand in a band **Ongoing**
+under the columns. A page of taskboards draws neither the triage bar nor the task check of Work over
+the board, and the triage filter set on Work does not act on it, so the columns start right under the
+page head.
 
 A card shows the task's topic (its H1 up to the first colon), its next step and its tags: the area,
 Backlog, Tab open when an agent tab carries the task, waiting on whom, the day to look again, the due

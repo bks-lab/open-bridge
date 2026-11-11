@@ -1073,11 +1073,16 @@ def _task_next(item: dict) -> dict:
     return {"what": nxt} if isinstance(nxt, str) else nxt if isinstance(nxt, dict) else {}
 
 
+# the words that join the names of a step's `who` ("Sam und Kim", "me, Ana & Ben", "sam+kim")
+WHO_JOIN = re.compile(r"\s*(?:,|&|\+|/|\band\b|\bund\b)\s*", re.IGNORECASE)
+
+
 def task_who(item: dict, you) -> dict:
     """Who has a task's next move, the one rule Work's buckets and the taskboard's columns share: blocked
     (`blocked_by`, task.py wait) waits on that, with its look-again day; a step for the Bridge is the Bridge's; a
-    step for you (no `who`, or one of `you`) is yours; a step for anyone else waits on them, until its check-in
-    day; no step at all is "none". {lane: me | bridge | waiting | none, who, until}"""
+    step for you (no `who`, or one of `you`) is yours, also where `who` names you among others (WHO_JOIN), its
+    `who` then the others, the Bridge left out; a step for anyone else waits on them, until its check-in day; no
+    step at all is "none". {lane: me | bridge | waiting | none, who, until}"""
     nxt = _task_next(item)
     if item.get("blocked_by"):
         return {"lane": "waiting", "who": _text(item["blocked_by"]) or None, "until": _text(item.get("quiet_until")) or None}
@@ -1088,6 +1093,11 @@ def task_who(item: dict, you) -> dict:
         return {"lane": "bridge", "who": None, "until": None}
     if who in you:
         return {"lane": "me", "who": None, "until": None}
+    names = [n for n in WHO_JOIN.split(_text(nxt.get("who"))) if n]
+    if len(names) > 1 and any(n.lower() in you for n in names):
+        bare = lambda n: re.sub(r"^(?:the|die|der|das)\s+", "", n.lower())   # "the Bridge" is the Bridge
+        others = [n for n in names if n.lower() not in you and bare(n) not in WHO_BRIDGE]
+        return {"lane": "me", "who": ", ".join(others) or None, "until": None}
     return {"lane": "waiting", "who": _text(nxt.get("who")) or None, "until": _text(nxt.get("check")) or None}
 
 
