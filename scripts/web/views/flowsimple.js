@@ -103,6 +103,8 @@ export function SimpleActs({ x, row, s, c, sug }) {
     : strong.verb === 'do' ? w.strongDo(strong.step ?? title)
       : strong.verb === 'later' ? (revisitArgs ? f.marks.strong(formatDay(laterDay, lang)) : f.list.laterUntil(formatDay(laterDay, lang)))
         : w[strong.verb] ?? f.verbs[strong.verb]
+  // a suggestion says it is one: nothing is set until the click (a Revisit day read as a date already set)
+  const said = strong?.sug && !viaBoard && strongWord ? w.suggested(strongWord) : strongWord
   // the suggestion's why and where it comes from stand on the strong button, on hover (stage 4: no line of its own)
   const sugTitle = strong?.sug && sug ? [sugWhy(sug, lang), sugFrom(sug, lang)].filter(Boolean).join(' · ') : null
   // a tab that asks what its card answers (its options, yes and no: logic.js replyOptions) needs no jump: To tab is
@@ -112,7 +114,7 @@ export function SimpleActs({ x, row, s, c, sug }) {
   const strongBtn = live && flowDriver(s) && !cardAnswers
     ? html`<${Btn} size="sm" variant="primary" cls="verbbar-strong" onClick=${() => c.flowJump({ key: row.key, ref: live.ref, title })}>${f.toTab}<//>`
     : strong ? html`<${Btn} size="sm" variant=${viaBoard && panel === 'board' ? 'secondary' : 'primary'} cls="verbbar-strong" busy=${busy}
-      pressed=${viaBoard ? panel === 'board' : undefined} title=${sugTitle || undefined} onClick=${applyStrong}>${short(strongWord, 80)}<//>` : null
+      pressed=${viaBoard ? panel === 'board' : undefined} title=${sugTitle || undefined} onClick=${applyStrong}>${short(said, 80)}<//>` : null
   const items = moreOf(x, s, { board, adopt })
   const slug = row.task && !person ? row.task : null
   const backOn = items.includes('back') ? leftPlan([x.entry], 'back', s, '', lang) : null

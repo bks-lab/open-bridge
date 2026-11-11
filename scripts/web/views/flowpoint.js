@@ -68,6 +68,9 @@ function cardKind(x) {
     return x.readOnly ? t.item.stateName[r.inbox_state] ?? t.taskState[r.status] ?? r.inbox_state ?? r.status ?? f.one.solo : f.one.solo
   }
   if (x.group === 'question' && reminderTo(x.row)) return f.kind.reminder
+  // Work through's queue holds only tasks in review in the group task (In review); a record opened on its own (the Files
+  // tab, the taskboard: files.js recordPoint) lands there in any state and says its own
+  if (x.group === 'task' && x.row?.status && x.row.status !== 'review' && f.activity.state[x.row.status]) return f.activity.state[x.row.status]
   return f.kind[kindKey(x)]
 }
 

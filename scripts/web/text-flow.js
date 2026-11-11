@@ -284,7 +284,7 @@ export const FLOW = {
     // stage 4, simpler: a point's three things, the strong button, the four states, More, In progress, the check-in
     simple: {
       step: 'Next step', asksOn: day => `asks on ${day}`, dueOn: day => `due ${day}`,
-      strongDo: step => `Let the Bridge: ${step}`, startStep: step => `${step}. Note the result as a line beginning with Result: on the item.`,
+      strongDo: step => `Let the Bridge: ${step}`, suggested: word => `Suggested: ${word}`, startStep: step => `${step}. Note the result as a line beginning with Result: on the item.`,
       dropSug: 'as the AI suggests', more: 'More', board: 'Board moves', boardDone: 'Done, on its board', describe: 'Describe again', advise: 'Get advice',
       work: 'In progress', later: 'Later', drop: 'Drop', whoLabel: 'Who has it?', me: 'Me', bridge: 'Bridge', other: 'someone else …', otherLabel: 'Name',
       bridgeNote: 'The Bridge starts on it now, with a sentence of yours. It reports back as every start does.',
@@ -610,7 +610,7 @@ export const FLOW = {
     },
     simple: {
       step: 'Nächster Schritt', asksOn: day => `fragt am ${day}`, dueOn: day => `fällig ${day}`,
-      strongDo: step => `Bridge macht: ${step}`, startStep: step => `${step}. Halte das Ergebnis als Zeile mit Ergebnis: am Eintrag fest.`,
+      strongDo: step => `Bridge macht: ${step}`, suggested: word => `Vorschlag: ${word}`, startStep: step => `${step}. Halte das Ergebnis als Zeile mit Ergebnis: am Eintrag fest.`,
       dropSug: 'wie die KI vorschlägt', more: 'Mehr', board: 'Board-Schritte', boardDone: 'Erledigt, auf dem Board', describe: 'Neu beschreiben', advise: 'Rat holen',
       work: 'In Arbeit', later: 'Später', drop: 'Weg', whoLabel: 'Wer ist dran?', me: 'Ich', bridge: 'Bridge', other: 'andere …', otherLabel: 'Name',
       bridgeNote: 'Die Bridge legt jetzt los, mit einem Satz von dir. Sie meldet sich zurück wie jeder Start.',

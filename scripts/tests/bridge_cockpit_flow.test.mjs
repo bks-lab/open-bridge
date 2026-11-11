@@ -554,7 +554,10 @@ test('the open point applies the suggestion with one strong button, its reason a
   assert.equal(el.$('.flow-aside .flow-can-sug'), null, 'stage 4: no line of its own, the stand says why')
   assert.ok(!el.$('.flow-card .flow-sug'), 'not on the card')
   const strong = el.$$('.flow-aside .flow-can button').filter(b => b.getAttribute('class').includes('primary')).map(b => b.text().trim())
-  assert.deepEqual(strong, [en.flow.verbs.done])
+  // the button says that it is a suggestion: a click applies what the AI suggests, nothing is set yet
+  assert.deepEqual(strong, [en.flow.simple.suggested(en.flow.verbs.done)])
+  assert.ok(strong[0].startsWith('Suggested: '))
+  assert.equal(text.TABLES.de.flow.simple.suggested('Erledigt'), 'Vorschlag: Erledigt')
   assert.equal(el.$('.flow-aside .verbbar-strong').getAttribute('title'), `Answered in the thread · ${en.flow.list.from.themes}`)
   // without a suggestion: no strong button
   const plain = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
@@ -1757,7 +1760,7 @@ test('the right column: What you can do with the strong button, the four states 
   assert.equal(aside.$('.flow-can-sug'), null, 'the suggestion is no line of its own: the stand says why, the strong button applies it')
   // the suggested verb is the one strong button, over the four states and More
   // Later with the day it suggests: the words say what the click does
-  assert.deepEqual(acts(el), [`[${en.flow.list.laterUntil(logic.formatDay('2026-10-12', 'en'))}]`, AI, ...STATES, MORE])
+  assert.deepEqual(acts(el), [`[${en.flow.simple.suggested(en.flow.list.laterUntil(logic.formatDay('2026-10-12', 'en')))}]`, AI, ...STATES, MORE])
   assert.equal(aside.$('.verbbar-strong').getAttribute('title'), `Waits for the vendor · ${en.flow.list.from.themes}`)
   const fields = aside.$$('.flow-fields > dl > .meta-item dt').map(d => d.text())
   assert.deepEqual(fields, [en.flow.fields.theme, en.flow.fields.area, en.flow.fields.who, en.flow.fields.due])
@@ -1862,7 +1865,7 @@ test('the right column: no strong button without a suggestion, the four states, 
   // a suggestion makes its verb the strong button, over the states
   const s = state({ now: [ask('20261009-0900-a-q')], themes: { enabled: true, assign: {}, themes: [], suggest: { 'inbox:20261009-0900-a-q': { verb: 'later', reason: 'x', at_ms: NOW } } } })
   // without a day of its own, Later in a week
-  assert.equal(acts(right(s))[0], `[${en.flow.list.laterUntil(logic.formatDay('2026-10-16', 'en'))}]`)
+  assert.equal(acts(right(s))[0], `[${en.flow.simple.suggested(en.flow.list.laterUntil(logic.formatDay('2026-10-16', 'en')))}]`)
 })
 
 test('the right column: a finding with an action ready gives its yes as the strong button (D)', () => {
@@ -3653,7 +3656,7 @@ test('R6B 1e: the task check speaks on the point: close, stale and waiting sugge
   const day = logic.formatDay('2026-10-09', 'en')
   const point = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'point', flowAt: { id: 'task:closing', i: 0 } } }} c=${recorder()} />`)
   const strong = point.$('.flow-aside .verbbar-strong')
-  assert.equal(strong.text(), en.flow.verbs.done)
+  assert.equal(strong.text(), en.flow.simple.suggested(en.flow.verbs.done))
   assert.equal(strong.getAttribute('title'), `The guide is merged · ${en.flow.list.from.check(day)}`)
 })
 
