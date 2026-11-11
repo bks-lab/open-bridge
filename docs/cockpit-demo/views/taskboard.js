@@ -4,13 +4,21 @@
 // others, To review), the streams as a band under them, a box of tidy-up suggestions by fixed rules and a box of the
 // agent tabs that carry no task. A card opens a side panel with its goal, its status and its next step and the
 // existing verbs of a task: Done (task_close), Waiting until (runs_on), To the idea list (shelve), Hand to the AI
-// (start_agent), Go to tab (tab_jump) or Open a tab (collect_context). The one area filter (ui.area) acts on all of
-// it. For the mouse: big buttons, no text names a key. The pure part is taskboard.js.
+// (start_agent), Go to tab (tab_jump) or Open a tab (collect_context). Whole record opens the task's full record on
+// this page, in place of the board, as the Files tab shows it (TbRecord), and Back to the tasks returns to the board with
+// the same card's panel open. The one area filter (ui.area) acts on all of it. For the mouse: big buttons, no text names
+// a key. The pure part is taskboard.js.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { indexRows, personOf, TB_COLUMNS, tbBoard, tbCard, tbDecideSlugs, tbInArea, tbLooseTabs, tbTidy } from '../logic.js'
+import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import {
+  indexRows, instructScope, personOf, pointViewOn, recordPoint, soloPoint, TB_COLUMNS, tbBoard, tbCard, tbDecideSlugs, tbInArea,
+  tbLooseTabs, tbTidy,
+} from '../logic.js'
 import { T } from '../text.js'
+import { OpenFile } from './dossier.js'
+import { FlowAside } from './flowside.js'
+import { PointView, useSoloLoad } from './flowpoint.js'
 import { jumpToTab } from './home.js'
 import { Btn, Empty } from './parts.js'
 
@@ -50,7 +58,7 @@ function Card({ card, picked, onPick }) {
 }
 
 /** The panel of the open card: what it is, and the verbs a task already has; one that does not apply is left out */
-function Side({ card, s, c, onClose }) {
+function Side({ card, s, c, onClose, onFull }) {
   const t = T().taskboard
   const busy = s.ui?.busy ?? {}
   const person = !!personOf(s)
@@ -82,7 +90,46 @@ function Side({ card, s, c, onClose }) {
       ${card.column === 'waiting' && card.who ? html`<dt class="label-caps">${t.side.waitingOn}</dt><dd>${card.who}</dd>` : null}
     </dl>
     <div class="tb-side-acts">${acts}</div>
+    <div class="tb-side-full">
+      <${Btn} variant="secondary" onClick=${() => onFull(card.slug)}>${t.act.full}<//>
+      <p class="muted small">${t.fullHint}</p>
+    </div>
   </aside>`
+}
+
+/** The whole record of a card's task on the taskboard page, in place of the board: the one point view of the task
+ *  with its card, its tabs, the instruction line and the right column, as the Files tab opens a record where Work
+ *  through is on (views/dossier.js); where it is off the Files tab's record (OpenFile). A task no row names (a closed
+ *  one, a new backlog task) is read from its file. `onBack` returns to the board */
+function TbRecord({ slug, s, c, onBack }) {
+  const t = T().taskboard
+  useEffect(() => { globalThis.scrollTo?.(0, 0) }, [slug])
+  const one = pointViewOn(s)
+  const point = recordPoint(s, slug)
+  const solo = one && !point ? { key: `task:${slug}`, file: null } : null
+  const soloEntry = useSoloLoad(solo, s, c)
+  const px = one ? point ?? (solo ? soloPoint(s, solo) : null) : null
+  const back = { word: t.record.back, icon: 'back', onClick: onBack }
+  if (px) {
+    return html`<div class="flow tb-record"><div class="tb-record-grid">
+      <section class="flow-main is-point" aria-label=${t.record.theme}>
+        <${PointView} key=${px.id} x=${px} back=${back} theme=${t.record.theme}
+          scope=${px.readOnly ? null : instructScope(px, [], new Set(), null, s)} s=${s} c=${c} />
+      </section>
+      <${FlowAside} x=${px} s=${s} c=${c} />
+    </div></div>`
+  }
+  const head = html`<header class="flow-main-head">
+    <${Btn} size="sm" variant="secondary" icon="back" cls="flow-back" onClick=${onBack}>${t.record.back}<//>
+    <span class="flow-main-theme muted">${t.record.theme}</span></header>`
+  if (one) {
+    return html`<div class="flow tb-record">${head}
+      <p class="muted" role="status">${soloEntry?.status === 'error' ? t.record.missing : t.record.loading}</p></div>`
+  }
+  return html`<div class="flow tb-record"><div class=${`tb-record-grid${point ? '' : ' no-aside'}`}>
+    <section class="flow-main" aria-label=${t.record.theme}>${head}<${OpenFile} key=${slug} open=${slug} s=${s} c=${c} /></section>
+    ${point ? html`<${FlowAside} x=${point} s=${s} c=${c} />` : null}
+  </div></div>`
 }
 
 /** The tidy-up suggestions: what each would do, Yes runs it, Keep hides it in this browser */
@@ -123,6 +170,8 @@ function LooseTabs({ tabs, s, c }) {
 export function TaskBoard({ items, page, section, s, c }) {
   const t = T().taskboard
   const [pick, setPick] = useState(null)
+  // the card whose whole record stands in place of the board (TbRecord); back on the board its panel is open again
+  const [full, setFull] = useState(null)
   const [kept, setKept] = useState(readKept)
   const byKey = indexRows(s.model)
   const tabs = s.tabs?.tabs ?? []
@@ -143,6 +192,7 @@ export function TaskBoard({ items, page, section, s, c }) {
     setPick(null)
   }
   const card = x => html`<${Card} key=${x.key} card=${x} picked=${pick === x.slug} onPick=${toggle} />`
+  if (full) return html`<${TbRecord} slug=${full} s=${s} c=${c} onBack=${() => { setPick(full); setFull(null) }} />`
   return html`<div class=${`tb${open ? ' has-side' : ''}`} onClick=${away}>
     <div class="tb-top">
       <${Btn} onClick=${() => globalThis.document?.getElementById(anchor)?.scrollIntoView?.({ block: 'start' })}>${t.tidyBtn(tidy.length)}<//>
@@ -160,6 +210,6 @@ export function TaskBoard({ items, page, section, s, c }) {
       <${Tidy} rows=${tidy} s=${s} c=${c} onKeep=${keep} anchor=${anchor} />
       <${LooseTabs} tabs=${loose} s=${s} c=${c} />
     </div>
-    ${open ? html`<${Side} card=${open} s=${s} c=${c} onClose=${() => setPick(null)} />` : null}
+    ${open ? html`<${Side} card=${open} s=${s} c=${c} onClose=${() => setPick(null)} onFull=${setFull} />` : null}
   </div>`
 }
