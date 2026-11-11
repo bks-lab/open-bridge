@@ -611,3 +611,43 @@ def test_the_taskboard_opens_the_whole_record_on_its_own_page(base_url, browser)
     assert side.count() == 1 and "Onboarding guide" in side.inner_text(), "back on the board, the same card's panel is open"
     ctx.close()
     assert not problems, "\n".join(problems)
+
+
+def test_the_taskboard_page_keeps_the_board_on_top_and_what_is_not_started_closed(base_url, browser):
+    """On a page of taskboards the work page's triage bar and task check stay away, so the columns start right under
+    the page head. A backlog task that asks nothing now waits in a closed band under the columns, a click opens it.
+    A step that is yours with someone stands in Me and says with whom"""
+    problems: list[str] = []
+    where = ["taskboard focus"]
+    ctx = browser.new_context(viewport={"width": 1440, "height": 900})
+    page = ctx.new_page()
+    _watch(page, problems, where)
+    page.goto(f"{base_url}?lang=de&taskboard=1")
+    page.wait_for_selector(".pagebar-tabs [role=tab]")
+    page.set_default_timeout(10_000)
+    _steady(page)
+    tab = page.locator(".pagebar-tabs [role=tab]", has_text="Taskboard")
+    if tab.count():
+        tab.first.click()
+    else:
+        page.locator(".ptab-more > [role=tab]").click()
+        page.locator(".more-menu [role=menuitem]", has_text="Taskboard").first.click()
+    page.wait_for_selector("#main .tb-board")
+
+    assert page.locator("#main .tri-bar").count() == 0, "no triage bar over the taskboard"
+    assert page.locator("#main .review-strip").count() == 0, "no task check over the taskboard"
+    top = page.locator("#main .tb-board").bounding_box()["y"]
+    assert top < 300, f"the columns start high on the page: {top}"
+
+    assert page.locator(".tb-col-me .tb-card", has_text="Archive").count() == 0, "not started: not in Me"
+    toggle = page.locator(".tb-later-toggle")
+    assert "Noch nicht angefangen" in toggle.inner_text() and toggle.get_attribute("aria-expanded") == "false"
+    assert page.locator(".tb-later .tb-card").count() == 0
+    toggle.click()
+    page.wait_for_selector(".tb-later .tb-card")
+    assert page.locator(".tb-later .tb-card", has_text="Archive").count() == 1
+
+    pricing = page.locator(".tb-col-me .tb-card", has_text="Pricing call")
+    assert pricing.count() == 1 and "mit Kim" in pricing.inner_text()
+    ctx.close()
+    assert not problems, "\n".join(problems)

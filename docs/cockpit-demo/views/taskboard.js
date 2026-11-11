@@ -4,7 +4,8 @@
 // others, To review), the streams as a band under them, a box of tidy-up suggestions by fixed rules and a box of the
 // agent tabs that carry no task. A card opens a side panel with its goal, its status and its next step and the
 // existing verbs of a task: Done (task_close), Waiting until (runs_on), To the idea list (shelve), Hand to the AI
-// (start_agent), Go to tab (tab_jump) or Open a tab (collect_context). Whole record opens the task's full record on
+// (start_agent), Go to tab (tab_jump) or Open a tab (collect_context). A backlog task that asks nothing of you now stands
+// in a closed band of what is not started under the columns (taskboard.js tbIsLater), so Me holds what you can take on. Whole record opens the task's full record on
 // this page, in place of the board, as the Files tab shows it (TbRecord), and Back to the tasks returns to the board with
 // the same card's panel open. The one area filter (ui.area) acts on all of it. For the mouse: big buttons, no text names
 // a key. The pure part is taskboard.js.
@@ -172,6 +173,8 @@ export function TaskBoard({ items, page, section, s, c }) {
   const [pick, setPick] = useState(null)
   // the card whose whole record stands in place of the board (TbRecord); back on the board its panel is open again
   const [full, setFull] = useState(null)
+  // the band of what is not started: closed until clicked, so Me shows what you can take on now
+  const [laterOpen, setLaterOpen] = useState(false)
   const [kept, setKept] = useState(readKept)
   const byKey = indexRows(s.model)
   const tabs = s.tabs?.tabs ?? []
@@ -202,6 +205,15 @@ export function TaskBoard({ items, page, section, s, c }) {
       <p class="tb-col-sub muted small">${t.sub[id]}</p>
       ${board.columns[id].length ? board.columns[id].map(card) : html`<p class="muted small">${t.columnNone}</p>`}
     </section>`)}</div>
+    ${board.later.length ? html`<section class="tb-later" aria-labelledby="tb-h-later">
+      <h3 class="tb-col-title" id="tb-h-later">
+        <button type="button" class="tb-later-toggle" aria-expanded=${String(laterOpen)} aria-controls="tb-later-row"
+          onClick=${() => setLaterOpen(v => !v)}><span aria-hidden="true">${laterOpen ? '▾' : '▸'}</span> ${t.later}
+          <span class="sec-count mono">${board.later.length}</span></button>
+      </h3>
+      ${laterOpen ? html`<p class="tb-col-sub muted small">${t.laterHint}</p>
+        <div class="tb-streams-row" id="tb-later-row">${board.later.map(card)}</div>` : null}
+    </section>` : null}
     <section class="tb-streams" aria-labelledby="tb-h-streams">
       <h3 class="tb-col-title" id="tb-h-streams">${t.streams} <span class="sec-count mono">${board.streams.length}</span></h3>
       ${board.streams.length ? html`<div class="tb-streams-row">${board.streams.map(card)}</div>` : html`<p class="muted small">${t.streamsNone}</p>`}

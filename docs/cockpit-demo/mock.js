@@ -1052,7 +1052,7 @@ export function buildState(now = Date.now(), opts = {}) {
         stream: false, updated: day(-1), ...board } })
     pages.push({ id: 'taskboard', title: 'Taskboard', badge: { kind: 'none' }, sections: [
       { id: 'tasks-board', kind: 'tasks', view: 'taskboard', title: 'Tasks', status: 'ok', reason: '', alarm: false, empty: 'no tasks',
-        count: 6, total: 6, weight: 0, bad: 0, as_of: null, more: 0, items: [
+        count: 8, total: 8, weight: 0, bad: 0, as_of: null, more: 0, items: [
           tb(0, 'demo-task', 'Onboarding guide: write the first two chapters', 'doing', { step: 'Draft the first two chapters',
             goal: 'A new teammate finds their way in one afternoon', stand: 'Outline agreed with the team' }),
           tb(1, 'docs-refresh', 'Docs index: group every page by topic', 'doing', { lane: 'bridge', step: 'Sort the pages into topics' }),
@@ -1062,6 +1062,10 @@ export function buildState(now = Date.now(), opts = {}) {
             step: 'Sam confirms the maintenance window' }),
           tb(4, 'release-notes', 'Release notes: check the draft', 'review', { lane: 'me', step: 'Read the draft and say yes' }),
           tb(5, 'weekly-digest', 'Weekly digest', 'doing', { stream: true, step: 'Collect the links of the week', area: 'Ops' }),
+          // a backlog task that asks nothing now waits in the closed band of what is not started
+          tb(6, 'archive-cleanup', 'Archive: sort the old exports', 'backlog', { step: 'List the exports older than a year' }),
+          // a step that is yours together with someone stands with you and says with whom
+          tb(7, 'pricing-call', 'Pricing call: agree the new tiers', 'doing', { who: 'Kim', step: 'Go through the three tiers with Kim' }),
         ] },
     ] })
   }

@@ -1112,3 +1112,17 @@ def test_taskboard_is_a_view_a_page_may_ask_for():
     assert "taskboard" in bv.PAGE_VIEWS
     problems = bv.problems({"pages": [{"id": "tasks", "sections": [{"id": "board", "view": "taskboard"}]}]}, [])
     assert not [p for p in problems if "view must be" in p]
+
+
+def test_a_step_for_you_and_someone_else_is_yours_and_names_the_others():
+    """`next.who` that names you among others ("Sam und Kim", "me, Ana") is your move: lane me, `who` the others,
+    for Work's buckets and the taskboard alike. Only others named waits on them; the Bridge among them is no person"""
+    you = bv._you({"for": "sam"})
+    assert bv.task_who({"next": {"what": "go", "who": "Sam und Kim"}}, you) == {"lane": "me", "who": "Kim", "until": None}
+    assert bv.task_who({"next": {"what": "go", "who": "Ana, me & Ben"}}, you) == {"lane": "me", "who": "Ana, Ben", "until": None}
+    assert bv.task_who({"next": {"what": "go", "who": "sam+kim"}}, you)["lane"] == "me"
+    assert bv.task_who({"next": {"what": "go", "who": "Sam and the Bridge"}}, you) == {"lane": "me", "who": None, "until": None}
+    assert bv.task_who({"next": {"what": "go", "who": "Ana und Ben", "check": "2026-11-20"}}, you) == \
+        {"lane": "waiting", "who": "Ana und Ben", "until": "2026-11-20"}
+    assert bv.task_who({"next": {"what": "go", "who": "Samantha"}}, you)["lane"] == "waiting", "a name is matched whole"
+    assert bv.task_who({"next": {"what": "go", "who": "Sam"}}, you) == {"lane": "me", "who": None, "until": None}

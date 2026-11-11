@@ -128,6 +128,9 @@ export function PageView({ s, c }) {
   // a folder's bar stands on top of the folder page and of each of its sub pages; the folder page names its
   // machines first, a sub page with `overview` gets a head card of its own parts instead of the tiles
   const sub = !!parentOf(s, whole.id)
+  // a task or inbox section as a list: the triage bar and the task check stand over it; a taskboard has its own
+  // columns and its Tidy up, so a page of taskboards keeps the board at the top (views/taskboard.js)
+  const listed = sec => (sec.kind === 'tasks' || sec.kind === 'inbox') && sec.view !== 'taskboard'
   return html`<div class="col col-page">
     ${work ? null : html`<${FolderBar} s=${s} c=${c} />`}
     <header class="page-head">
@@ -138,11 +141,11 @@ export function PageView({ s, c }) {
     ${page.overview && sub ? html`<${PageSummary} page=${page} s=${s} c=${c} />`
       : page.overview ? html`<${OverviewBoard} page=${page} s=${s} c=${c} />` : null}
     ${kinds.length > 1 ? html`<${KindBar} kinds=${kinds} active=${kind} c=${c} />` : null}
-    ${page.sections?.some(sec => sec.kind === 'tasks' || sec.kind === 'inbox') ? html`<${TriageBar} s=${s} c=${c} byKey=${indexRows(s.model)}
+    ${page.sections?.some(listed) ? html`<${TriageBar} s=${s} c=${c} byKey=${indexRows(s.model)}
       items=${(kind ? whole.sections.filter(sec => kind.sections.includes(sec.id)) : whole.sections)
-        .filter(sec => sec.kind === 'tasks' || sec.kind === 'inbox').flatMap(sec => s.more[`${whole.id}/${sec.id}`]?.items ?? sec.items ?? [])} />` : null}
+        .filter(listed).flatMap(sec => s.more[`${whole.id}/${sec.id}`]?.items ?? sec.items ?? [])} />` : null}
     ${checkHere ? html`<${ReviewBody} s=${s} c=${c} inline />`
-      : page.sections?.some(sec => sec.kind === 'tasks' && (sec.items ?? []).some(it => it.task)) ? html`<${ReviewStrip} s=${s} c=${c} />` : null}
+      : page.sections?.some(sec => listed(sec) && sec.kind === 'tasks' && (sec.items ?? []).some(it => it.task)) ? html`<${ReviewStrip} s=${s} c=${c} />` : null}
     ${page.jev && !work && s.jev?.enabled && s.jev?.ready ? html`<${WorkOrder} page=${page} s=${s} c=${c} />` : null}
     ${jevList ? html`<${JevList} page=${page} s=${s} c=${c} />`
       : (page.sections ?? []).length && log ? html`<${LogPage} page=${page} s=${s} c=${c} draw=${(list, q, topic) => sections(q, list, topic)} />`
