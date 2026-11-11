@@ -347,3 +347,22 @@ test('the who chip names the owner as you, as the band does; a sentence to someo
   const el = mount(html`<${FlowPage} s=${flowState({ later: [w], ui: { flowView: 'left', flowLeft: 'running', flowLeftPicked: [] } })} c=${recorder()} />`)
   assert.equal(el.$('.flow-ov-why').text(), en.flow.notnow.why.others)
 })
+
+test('a task opened on its own says its own state in the card head, not In review', () => {
+  // a record opened from the Files tab or the taskboard is a point of group task whatever its state (files.js
+  // recordPoint); in Work through's queue that group holds only tasks in review, whose word is In review
+  const { pointKind } = views.flowpoint
+  const point = status => ({ group: 'task', id: 'task:x', kind: 'row', row: task('x', { status }) })
+  try {
+    for (const lang of ['en', 'de']) {
+      text.setLanguage(lang)
+      const f = text.TABLES[lang].flow
+      assert.equal(pointKind(point('backlog')), f.activity.state.backlog, `${lang} backlog`)
+      assert.equal(pointKind(point('doing')), f.activity.state.doing, `${lang} doing`)
+      assert.equal(pointKind(point('review')), f.kind.task, `${lang} review`)
+      assert.notEqual(pointKind(point('backlog')), f.kind.task, `${lang}: a backlog task is not In review`)
+    }
+  } finally {
+    text.setLanguage('en')
+  }
+})
