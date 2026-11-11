@@ -45,6 +45,10 @@ class Config:
     #: The words of a message, over engine/notify.py TEXT_DEFAULTS (English).
     #: An instance that reads its alarms in another language writes them here.
     notify_text: dict | None = None
+    #: Hours ONE failed run waits for the next before it alarms (engine/notify.py
+    #: _held_by_grace). A second failed run alarms at once. 0 keeps the old rule:
+    #: the first failed run is told on the first pass.
+    failure_grace_hours: float = 0
     step_timeout_sec: int = 60
     probe_timeout_sec: int = 30
     ssh_connect_timeout_sec: int = 10
@@ -125,6 +129,7 @@ def load_config(root: Path) -> Config:
         dispatcher_guarantees=_guarantees(raw.get("dispatcher_guarantees"), str(path)),
         notify_via=raw.get("notify_via", defaults.notify_via),
         notify_text=raw.get("notify_text", defaults.notify_text),
+        failure_grace_hours=float(raw.get("failure_grace_hours", defaults.failure_grace_hours) or 0),
         step_timeout_sec=int(raw.get("step_timeout_sec", defaults.step_timeout_sec)),
         probe_timeout_sec=int(raw.get("probe_timeout_sec", defaults.probe_timeout_sec)),
         ssh_connect_timeout_sec=int(raw.get("ssh_connect_timeout_sec",

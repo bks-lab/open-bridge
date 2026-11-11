@@ -593,8 +593,10 @@ def _sender_for(spec):
 
 def dispatch(report, workloads, *, state_path, now, cfg=None, sender=None,
              cap: int = DAILY_CAP, backoff_hours: int = BACKOFF_HOURS,
-             max_repeats: int = MAX_REPEATS) -> Dispatched:
+             max_repeats: int = MAX_REPEATS, failure_grace_hours: float | None = None) -> Dispatched:
     """One pass: route, dampen, say it once, and remember only what arrived."""
+    if failure_grace_hours is None:
+        failure_grace_hours = float(getattr(cfg, "failure_grace_hours", 0) or 0) if cfg is not None else 0.0
     by_id = {w.id: w for w in (workloads or ())}
     state, note = _load_state(state_path)
     text = texts(cfg)
@@ -648,6 +650,10 @@ def dispatch(report, workloads, *, state_path, now, cfg=None, sender=None,
             continue
 
         if _waits_for_a_run(finding, workload, entry, report, now):
+            suppressed += 1
+            continue
+
+        if _held_by_grace(finding, entry, now, failure_grace_hours):
             suppressed += 1
             continue
 
@@ -766,6 +772,29 @@ def dispatch(report, workloads, *, state_path, now, cfg=None, sender=None,
 
     _save_state(state_path, state)
     return Dispatched(sent=sent, suppressed=suppressed, note=note)
+
+
+def _held_by_grace(finding, entry, now, hours) -> bool:
+    """True while ONE failed run waits for the next (`workloads.failure_grace_hours`).
+
+    2026-11-01 to 11-11: a failed run alarmed at once and its all-clear followed 30 minutes
+    to 3 hours later, eight times; the alarm's own todo even said "nothing to do if the next
+    run is green". So with a grace set, the first failed run is remembered by its raw
+    sentence (stamp included). A second failed run has a new stamp and is told at once;
+    the same run still red after the grace is told too. A run that turns green inside the
+    grace leaves the findings, its key is dropped unalarmed, and nothing is said at all.
+    Only `last_run_failed`: a stopped daemon is down now. Off (0) by default.
+    """
+    import hashlib
+    from engine import model
+    if not hours or getattr(finding, "state", None) is not model.WorkloadState.last_run_failed:
+        return False
+    if entry.get("last_alert_at"):
+        return False
+    raw = hashlib.sha256(str(getattr(finding, "detail", "")).encode("utf-8")).hexdigest()[:16]
+    first = entry.setdefault("grace_raw", raw)
+    since = entry.setdefault("grace_since", now.isoformat())
+    return raw == first and _within(since, now, hours)
 
 
 def _waits_for_a_run(finding, workload, entry, report, now) -> bool:
