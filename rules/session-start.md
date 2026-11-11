@@ -123,7 +123,7 @@ backup), not the ordinary case.
 | **core** | exists | present | **WRONG BRANCH** | Suggest `git checkout user/{name}` (switching from the core branch). Do not load `work/` from the core branch — those files belong to the user branch. |
 | **core** | none | present | **ORPHAN STATE** | User branch was deleted but local config remains (kept out of git and untouched by branch changes on a non-private origin; on a private origin it means a copy survived some other way, see the Note above). Offer: (a) create a fresh `user/{name}` branch from current state, (b) remove `bridge-config.yaml` and run onboarding fresh, (c) stay on the core branch for CORE-only work. |
 | **core** | exists | missing | **BROKEN CONFIG** | Rare. The user branch likely has the config. Suggest `git checkout user/{name}` to restore state. |
-| `user/*` | (self) | present | **NORMAL** | Proceed to Phase 1 — see `rules/operations.md` § Session Start. |
+| `user/*` | (self) | present | **NORMAL** | Run Phase 1 before the first answer: the three commands in § When Phase 0 clears to NORMAL below, then the rest of `rules/operations.md` § Session Start. |
 | `user/*` | (self) | missing | **BROKEN USER BRANCH** | Config missing on the user branch. Offer `/bridge-onboard` to re-create or inspect `git status` for accidentally deleted files. |
 | any other branch (`feature/*`, the non-default of `main`/`development`, detached HEAD, etc.) | — | — | **CORE DEV MODE** | Working on CORE directly. Skip the work-system load. Answer the user's request normally. |
 
@@ -331,9 +331,20 @@ proceed. Do not silently skip — the user must opt out deliberately.
 
 ## When Phase 0 clears to NORMAL
 
-Continue with Phase 1 session load per `rules/operations.md`:
-read `work/log.md`, `work/board.md`, create day-block, load standing
-orders, check for CORE updates.
+Phase 1 runs **before the first answer**, a "hi" included. Phase 0 alone is
+not a session start: the work log and the board are what the answer is about.
+These three commands are the part a session most often skipped (the test lab's
+`agent-session-start` was red for one agent on every night from 2026-11-08,
+because it answered right after Phase 0):
+
+```bash
+python3 scripts/worklog.py --recent 3   # the recent log slice
+cat work/board.md                       # active tasks
+python3 scripts/worklog.py --open-today # today's day block, opened when missing
+```
+
+Then the rest of Phase 1 per `rules/operations.md` § Session Start: registry
+index, memory index, standing orders, CORE updates.
 
 ### Skill-shadowing tripwire (one command, cheap)
 
