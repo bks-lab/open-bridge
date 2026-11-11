@@ -44,7 +44,7 @@ through an overlay), and the schema refuses `scope: core` for a footer.
 ```
 Request about mail
 ├── write / draft / "send" a mail ──────────► § Draft a mail
-├── answer / reply to a mail in Mail ───────► § Reply
+├── answer / reply to a mail ───────────────► § Reply (--reply-as-new)
 ├── "how will X be addressed?" ─────────────► mail-draft.sh explain --to X
 ├── new footer / signature / profile ───────► § Set up
 ├── paste a signature into Outlook/Mail ────► mail-draft.sh signature <footer> --out <dir>
@@ -79,6 +79,23 @@ Override anything per call: `--profile`, `--footer`/`--no-footer`,
 
 ## Reply
 
+> [!WARNING]
+> The paste into the reply window is unreliable: on real runs (October and
+> November 2026) the saved reply held only the quote, without the text and the
+> attachments, although Mail was in front and Accessibility was granted. Default
+> to **`--reply-as-new`** below and tell the person why. Use the paste way only
+> when they ask for it, and on a failure do not retry it: switch to
+> `--reply-as-new`.
+
+`mail-draft.sh compose --reply-to <message-id|subject words> --reply-as-new
+--body-file <f> [--attach <file>]` makes a NEW draft addressed and titled like
+the reply (the original's sender, `Re: <subject>`, no masthead), built like any
+new mail, so every client works and nothing is pasted. The person opens the
+original, presses Reply, copies the text and the attachments from this draft
+into it and deletes this draft. `--to` and `--subject` override as usual. The
+run says this in its last lines; repeat it to the person.
+
+The paste way, for when it is asked for:
 `mail-draft.sh compose --reply-to <message-id|subject words> --body-file <f>
 [--attach <file>] [--reply-all]` answers a message in Apple Mail. `--to` and
 `--subject` default to the original's sender and `Re: <subject>`; profile,
