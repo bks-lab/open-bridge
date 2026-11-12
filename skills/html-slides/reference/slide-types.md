@@ -397,8 +397,9 @@ What `assets/slide-engine.js` (first line `slide-engine v2`) reads from the mark
 | `data-tracks-cycle="{a} {b} all"` | Order key F cycles through |
 | `data-deck-id="{id}"` | Storage key for the chosen track; defaults to the file path |
 | `data-tracks-labels="{name}={label} ..."` | What the track badge, the presenter window and `SlideDeck.trackLabel()` show for a track name, for a deck in another language than its track names; `data-track`, storage and links keep the name. `data-tracks-labels-de` and `data-tracks-labels-en` (same form) win in that language, so a bilingual deck names a track in both; the gate pairs them, so set both or neither. A label is one word (pairs are split at spaces) |
+| `data-view="deck"` | The deck opens in its deck view (below): every slide as a card under a toolbar; Present, P or F5 start presenting at the card in view, Esc returns. `data-view-title`, or `data-view-title-de` and `data-view-title-en` for a bilingual deck, name the toolbar title (default: `<title>`) |
 | `data-key-ignore` on any element | Keys pressed inside it are left alone (also inputs, text areas, editable regions) |
-| `data-deck="next"`, `prev`, `theme`, `notes`, `help`, `lang`, `track`, `track:{name}`, `goto:{n}`, `goto:#{id}` on a button | Declarative controls, no script needed. `goto:{n}` counts the slides the active track shows, so in a deck with tracks prefer `goto:#{id}`. A `track:{name}` button carries `aria-pressed`, true while its track is active |
+| `data-deck="next"`, `prev`, `theme`, `notes`, `help`, `lang`, `track`, `track:{name}`, `goto:{n}`, `goto:#{id}`, `present`, `deck`, `download:{kind}` on a button | Declarative controls, no script needed. `present` and `deck` switch a deck view deck between its cards and presenting; `download:pdf` (or `pptx`) saves a file `embed-downloads.py` put into the deck, in any deck. `goto:{n}` counts the slides the active track shows, so in a deck with tracks prefer `goto:#{id}`. A `track:{name}` button carries `aria-pressed`, true while its track is active |
 | `class="reveal"` | The only entrance class: it starts hidden and appears when its slide is entered; print shows it at once |
 | `<aside class="notes">` in a slide | Speaker notes for key N |
 
@@ -412,12 +413,39 @@ Presenting live, always on:
 | digits, then Enter | Jump to slide n of the active track (the counter's number); Backspace corrects, Esc or any other key drops the number, three seconds without a key too |
 | Alt+click | Zoom 2x around the pointer on the active slide; the next click, Esc or a slide change resets |
 
+### Deck view
+
+`new-deck.py --deck-attr data-view=deck` opens the deck as a page of cards rather than
+a slide filling the screen. Every slide of the active track stands as a card, laid out
+at 1280 x 720 and zoomed to the window width (never above 100 %), under a fixed toolbar:
+the deck title, then the buttons DE / EN (a bilingual deck only, like key L), theme (T),
+help (?), PDF and PowerPoint (only when `scripts/embed-downloads.py` put them into the
+deck) and Present (DE "Präsentieren"). The page scrolls freely, no slide is `inert`, and
+the card crossing the upper 40 % of the window is the current slide: the counter, key N,
+the deep link and a number jump (digits, Enter) follow it, key F switches tracks.
+
+Present, P or F5 start the normal engine at the card in view and ask for full screen;
+Esc, or leaving full screen, returns to the cards at the slide presented last. Inside
+the presentation everything works as in any deck: arrows, notes, help, cover, zoom,
+tracks and the deck modules (draw, read, presenter, steps; P opens the presenter view
+there). On the cards the module keys wait, so P presents rather than opening the
+presenter, and `data-read-default` gives way to the cards. Cards show their slide
+finished: reveals and step items visible, no beamer zoom.
+
+The toolbar takes its look from the design tokens: `--bg` (bar), `--surface` (the page
+behind the cards), `--text`, `--border-bright` (bar rule, card outline, button outline),
+`--accent` (hover and focus), `--primary` and `--on-primary` for the Present button
+(without them `--accent` and `--bg`), and `--font-body`. Print, `render-pdf.cjs` and
+`render-pptx.py` ignore the deck view: the toolbar is hidden and every slide is a page
+of its own; the gate (`verify-page.py --deck`) measures the slides presenting. A
+presenter preview copy never opens in it. Without the attribute nothing of this exists.
+
 Accessibility: every slide is `role="group"` with `aria-roledescription` "slide" and `aria-label` "n / total"; every slide but the active one is `inert` (all stay in the DOM for scroll-snap, print shows them all), so browser find (Cmd+F), Tab and a screen reader's browse mode reach the active slide only, in every deck since skill version 2.1.0, with or without modules; to search or read a deck through, use the reading view (`--with read`, key R) or the PDF; a polite live region announces each slide change. Under `prefers-reduced-motion` every animation and transition of the deck, its modules included, ends at once, scrolling jumps and module transitions are skipped.
 
 Deep link: the address keeps `#<id>` when the active slide has an id, else `#<n>`, the 1-based position among the slides the active track shows; while a deck module reports a step above 0 it adds `.<step>` (`#<id>.2`). Every form is read on load and on a hash change. Give the slides people link to an id: `#<n>` depends on the track a viewer has stored, `#<id>` does not.
 
 With the stage module (`new-deck.py --with-stage`) a slide can run a live page: key V, `data-stage` buttons and the `.stage` element are documented in `reference/stage.md`. While focus is inside the stage frame, only V, Esc, Page Up, Page Down, T and L reach the deck; click outside the frame to use the other keys.
 
-Script API: `window.SlideDeck` with `goTo(i)`, `next()`, `prev()`, `current()`, `count()`, `setTrack(name)`, `track()`, `trackLabel(name?)`, `toggleTheme()`, `setTheme(t)`, `setLang(l)`, `toggleNotes()`, `toggleHelp()`, `strings()`, `slides()`, `state()`, `setStep(n)`, `step()`, `reducedMotion()`, `use(module)` and `on(event, fn)` for `ready`, `slidechange`, `trackchange` (detail `{track, label, count}`), `stepchange`, `themechange` and `langchange`. `next()` and `prev()` first offer the move to the deck modules as a step. Modules and the plugin API: `reference/modules.md`. Indexes are 0-based among the slides the active track shows. Old decks reaching for `window.slideEngine` or `window.__slideEngine`, or calling `new SlideEngine()`, get the same single instance.
+Script API: `window.SlideDeck` with `goTo(i)`, `next()`, `prev()`, `current()`, `count()`, `setTrack(name)`, `track()`, `trackLabel(name?)`, `toggleTheme()`, `setTheme(t)`, `setLang(l)`, `toggleNotes()`, `toggleHelp()`, `strings()`, `slides()`, `state()`, `setStep(n)`, `step()`, `reducedMotion()`, `use(module)` and `on(event, fn)` for `ready`, `slidechange`, `trackchange` (detail `{track, label, count}`), `stepchange`, `themechange` and `langchange`; for the deck view `view()` (`deck` or `present`), `setView(v)` (a script call never asks for full screen), `download(kind)`, the events `viewchange` (detail `{view}`) and `download` (detail `{kind, file}`), and `state().view`. `next()` and `prev()` first offer the move to the deck modules as a step. Modules and the plugin API: `reference/modules.md`. Indexes are 0-based among the slides the active track shows. Old decks reaching for `window.slideEngine` or `window.__slideEngine`, or calling `new SlideEngine()`, get the same single instance.
 
 A filter that would leave no slide shows all of them. Print and PDF always show every slide, one per 297 x 167 mm page. Screens of at least 1500 x 880 and 2200 x 1200 zoom slide content; under 700 px height or 768 px width a slide grows with its content.

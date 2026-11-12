@@ -947,8 +947,12 @@ JS_HIDDEN = """() => {
   }).map(desc);
 }""" % JS_DESC
 
-JS_SLIDES = """(sel) => [...document.querySelectorAll(sel)].map(el => (
-  {sh: el.scrollHeight, ch: el.clientHeight, sw: el.scrollWidth, cw: el.clientWidth}))"""
+# a slide deck that opens in its deck view (html-slides data-view="deck") is measured presenting
+JS_SLIDES = """(sel) => {
+  if (window.SlideDeck && window.SlideDeck.setView) window.SlideDeck.setView('present');
+  return [...document.querySelectorAll(sel)].map(el => (
+    {sh: el.scrollHeight, ch: el.clientHeight, sw: el.scrollWidth, cw: el.clientWidth}));
+}"""
 
 NO_TRANSITIONS = "*,*::before,*::after{transition:none!important}"
 DECK_SIZES = ((1280, 720), (1920, 1080))

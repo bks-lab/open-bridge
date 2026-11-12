@@ -28,7 +28,14 @@
      pauseTracking() / resumeTracking() and the events stepchange, themechange, langchange.
    - Core keys: B / W cover the screen, digits + Enter jump, L switches a bilingual deck
      (data-de / data-en pairs), Alt+click zooms. data-print-notes prints a notes page
-     after every slide that has notes. */
+     after every slide that has notes.
+   - Deck view: data-view="deck" opens the deck as stacked cards under a toolbar (title,
+     language, theme, help, downloads, Present). Present, P or F5 start the engine at the
+     card in view, Esc (or leaving full screen) returns to it. API view(), setView(v),
+     download(kind); event viewchange {view}. Downloads are <script
+     type="application/x-deck-download" data-kind data-file data-mime> elements holding
+     base64, or carrying data-href (scripts/embed-downloads.py writes them); buttons
+     data-deck="present|deck|download:<kind>". Without data-view nothing changes. */
 (function () {
   'use strict';
 
@@ -46,7 +53,10 @@
       keyStage: 'Enlarge or restore the live stage',
       keyLang: 'Switch language (DE / EN)', keyCover: 'Black or white screen, any key returns',
       keyJump: 'Jump to slide number', keyZoom: 'Zoom in at the pointer, click returns',
-      jump: 'Go to slide', handout: 'Notes on slide {n}'
+      jump: 'Go to slide', handout: 'Notes on slide {n}',
+      present: 'Present', toolbar: 'Deck', download: 'Download as {n}',
+      keyPresent: 'Present from the slide in view', keyCloseView: 'Close a panel, else back to the deck view',
+      viewDeck: 'Deck view', viewPresent: 'Presenting'
     },
     de: {
       slide: 'Folie', status: 'Folie {n} von {m}', goTo: 'Zu Folie {n}',
@@ -60,7 +70,10 @@
       keyStage: 'Live-Bühne vergrößern oder zurück',
       keyLang: 'Sprache wechseln (DE / EN)', keyCover: 'Bildschirm schwarz oder weiß, jede Taste zurück',
       keyJump: 'Zu Foliennummer springen', keyZoom: 'An der Stelle vergrößern, Klick zurück',
-      jump: 'Gehe zu Folie', handout: 'Notizen zu Folie {n}'
+      jump: 'Gehe zu Folie', handout: 'Notizen zu Folie {n}',
+      present: 'Präsentieren', toolbar: 'Foliensatz', download: 'Als {n} herunterladen',
+      keyPresent: 'Ab der sichtbaren Folie präsentieren', keyCloseView: 'Panel schließen, sonst zurück zur Übersicht',
+      viewDeck: 'Übersicht', viewPresent: 'Präsentation'
     }
   };
   /* i18n:end */
@@ -112,6 +125,9 @@
     this.step = 0;
     this.navSeq = 0;
     this.initLang();
+    /* deck view: never in a presenter preview copy, which shows slides */
+    this.viewOn = this.opt('data-view') === 'deck' && !root.hasAttribute('data-deck-preview');
+    this.view = null;
     this.padded = this.opt('data-counter-format') === 'padded';
     this.deepLink = this.opt('data-deep-link') !== 'off';
     this.initTracks();
@@ -121,6 +137,7 @@
     this.observe();
     this.applyTrack(true);
     this.handout();
+    if (this.viewOn) this.initView();
     this.ready = true;
     if (!this.fromHash(true)) this.update();
     modules.forEach(initModule);
@@ -300,7 +317,8 @@
     modules.forEach(function (m) {
       (m.help || []).forEach(function (r) { if (r && r.key) rows.push([String(r.key), r[lang] || r.en || r.de || '']); });
     });
-    rows.push(['?', t.keyHelp], ['Esc', t.keyClose]);
+    if (this.viewOn) rows.push(['P F5', t.keyPresent]);
+    rows.push(['?', t.keyHelp], ['Esc', this.viewOn ? t.keyCloseView : t.keyClose]);
     dl.textContent = '';
     rows.forEach(function (r) {
       var dt = el('dt', '', dl);
@@ -386,7 +404,10 @@
         if (k === 'Enter' || k === 'Backspace' || k === 'Escape') { e.preventDefault(); return; }
       }
       if ((k === ' ' || k === 'Enter') && tg && tg.closest && tg.closest(ACTIVATES)) return;
-      if (self.moduleKey(k, e)) { e.preventDefault(); self.fadeHints(); return; }
+      if (self.view === 'deck') {
+        /* the cards are a page: P and F5 present, module keys wait for the slides */
+        if (k === 'p' || k === 'P' || k === 'F5') { e.preventDefault(); self.present(true); return; }
+      } else if (self.moduleKey(k, e)) { e.preventDefault(); self.fadeHints(); return; }
       /* paused: the page is a document, its scroll keys scroll it natively */
       if (self.paused && /^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|Home|End| |Spacebar)$/.test(k)) return;
       if (k === ' ' || k === 'Spacebar') { if (e.shiftKey) self.prev(); else self.next(); }
@@ -404,6 +425,7 @@
       else if (k === 'Escape' && self.zoomed) self.unzoom();
       else if (k === 'Escape' && !self.helpBox.hidden) self.toggleHelp(false);
       else if (k === 'Escape' && !self.notesPanel.hidden) self.toggleNotes(false);
+      else if (k === 'Escape' && self.view === 'present') self.deckView();
       else return;
       e.preventDefault();
       self.fadeHints();
@@ -419,6 +441,9 @@
       else if (v === 'help') self.toggleHelp();
       else if (v === 'track') self.cycleTrack();
       else if (v === 'lang') self.toggleLang();
+      else if (v === 'present') self.present(true);
+      else if (v === 'deck') self.deckView();
+      else if ((m = /^download:([a-z0-9]+)$/.exec(v))) self.download(m[1]);
       else if ((m = /^track:(.+)$/.exec(v))) self.setTrack(m[1]);
       else if ((m = /^goto:#(.+)$/.exec(v))) self.goToId(m[1]);
       else if ((m = /^goto:(\d+)$/.exec(v))) self.goTo(parseInt(m[1], 10) - 1);
@@ -496,7 +521,7 @@
       try { s.scrollIntoView({ behavior: behavior, block: 'start' }); } catch (e) { s.scrollIntoView(true); }
       self.update();
     };
-    var chain = (instant || !from || s === from || reducedMotion()) ? [] : modules.filter(function (m) { return typeof m.transition === 'function'; });
+    var chain = (instant || !from || s === from || reducedMotion() || this.view === 'deck') ? [] : modules.filter(function (m) { return typeof m.transition === 'function'; });
     if (!chain.length) return apply();
     timer = setTimeout(apply, 1500); /* a transition that never applies must not strand the deck */
     /* Each module's options travel inward: an instant asked for by an outer module
@@ -569,8 +594,13 @@
     this.settleTimer = setTimeout(function () { self.settle(true); }, ms);
   };
   SlideEngine.prototype.onScroll = function () {
-    if (!this.ready || this.paused) return;
     var self = this;
+    if (this.ready && this.view === 'deck') {
+      clearTimeout(this.viewTimer);
+      this.viewTimer = setTimeout(function () { self.trackView(); }, 80);
+      return;
+    }
+    if (!this.ready || this.paused) return;
     this.armSettle(this.pending === null ? 150 : 700);
     clearTimeout(this.quickTimer);
     this.quickTimer = setTimeout(function () { self.settle(false); }, 150);
@@ -669,6 +699,7 @@
     this.renderNotes();
     this.applyAria();
     if (this.handoutBuilt) this.handout();
+    if (this.viewBar) this.labelView();
   };
 
   /* ============ cover, number jump, zoom ============ */
@@ -766,6 +797,175 @@
     this.handoutBuilt = true;
   };
 
+
+  /* ============ deck view (data-view="deck") ============ */
+  /* The slides as cards: every one laid out at VIEW_W x VIEW_H and scaled to the window
+     width (never above 1), under a fixed toolbar. The engine is paused meanwhile, as for
+     the read module: the page scrolls, no slide is inert, and the card crossing the 40 %
+     line is the current slide (counter, notes, deep link). */
+  var VIEW_W = 1280, VIEW_GAP = 24;
+  var THEME_ICON = '<svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  var DOWNLOAD_SEL = 'script[type="application/x-deck-download"][data-kind]';
+  var DOWNLOAD_LABEL = { pdf: 'PDF', pptx: 'PowerPoint' };
+
+  SlideEngine.prototype.initView = function () {
+    var self = this;
+    this.buildViewBar();
+    this.view = 'deck';
+    this.pauseTracking();
+    root.classList.add('deck-view');
+    this.layoutView();
+    /* entering full screen resizes the deck and snaps it again, which can cut short a
+       move begun meanwhile: the slide the engine is on is put in place again */
+    var settleView = function () {
+      if (self.view === 'deck') { self.layoutView(); self.showCard(self.slides[self.current]); }
+      else if (self.view === 'present') self.goTo(self.current, true);
+    };
+    window.addEventListener('resize', settleView);
+    document.addEventListener('fullscreenchange', function () {
+      if (document.fullscreenElement) { requestAnimationFrame(settleView); return; }
+      if (!self.ownFull) return;
+      self.ownFull = false;
+      if (self.view === 'present') self.deckView();
+    });
+  };
+  SlideEngine.prototype.buildViewBar = function () {
+    var self = this, bar = el('div', 'deck-view-bar', document.body);
+    bar.setAttribute('role', 'toolbar');
+    var back = this.opt('data-back-href');
+    if (back) {
+      var a = el('a', 'deck-view-btn deck-view-back', bar);
+      a.href = back;
+      a.textContent = '←';
+    }
+    this.viewTitle = el('div', 'deck-view-title', bar);
+    var tools = el('div', 'deck-view-tools', bar);
+    function btn(cls, action, keys) {
+      var b = el('button', 'deck-view-btn ' + cls, tools);
+      b.type = 'button';
+      b.setAttribute('data-deck', action);
+      if (keys) b.setAttribute('aria-keyshortcuts', keys);
+      b.addEventListener('click', function () { setTimeout(function () { b.blur(); }); });
+      return b;
+    }
+    if (this.bilingual) btn('deck-view-lang', 'lang', 'L').textContent = 'DE / EN';
+    btn('deck-view-theme', 'theme', 'T').innerHTML = THEME_ICON;
+    btn('deck-view-help', 'help', '?').textContent = '?';
+    this.downloads().forEach(function (d) {
+      var b = btn('deck-view-download', 'download:' + d.kind);
+      b.textContent = d.label;
+      b.setAttribute('data-kind', d.kind);
+    });
+    btn('deck-view-present', 'present', 'P F5');
+    this.viewBar = bar;
+    this.labelView();
+  };
+  SlideEngine.prototype.labelView = function () {
+    var t = this.t, bar = this.viewBar, back = bar.querySelector('.deck-view-back');
+    bar.setAttribute('aria-label', t.toolbar);
+    this.viewTitle.textContent = this.opt('data-view-title-' + this.lang) || this.opt('data-view-title') || document.title || '';
+    if (back) back.setAttribute('aria-label', this.opt('data-back-label') || t.back);
+    var set = function (sel, label) {
+      var b = bar.querySelector(sel);
+      if (b) { b.setAttribute('aria-label', label); b.title = label; }
+    };
+    set('.deck-view-lang', t.keyLang);
+    set('.deck-view-theme', t.themeTitle);
+    set('.deck-view-help', t.help + ' (?)');
+    [].forEach.call(bar.querySelectorAll('.deck-view-download'), function (b) {
+      b.setAttribute('aria-label', fill(t.download, b.textContent));
+      b.title = b.getAttribute('aria-label');
+    });
+    var p = bar.querySelector('.deck-view-present');
+    p.textContent = t.present;
+    p.title = t.present + ' (P)';
+  };
+  SlideEngine.prototype.layoutView = function () {
+    var w = (this.deck.clientWidth || window.innerWidth || VIEW_W) - 2 * VIEW_GAP;
+    var k = Math.max(0.1, Math.min(1, w / VIEW_W));
+    root.style.setProperty('--deck-view-k', k.toFixed(4));
+    if (this.viewBar) root.style.setProperty('--deck-view-bar', this.viewBar.offsetHeight + 'px');
+  };
+  /* an instant scroll that puts `s` at the top of the deck (under the toolbar) */
+  SlideEngine.prototype.showCard = function (s) {
+    if (!s) return;
+    try { s.scrollIntoView({ block: 'start', behavior: 'instant' }); } catch (e) { s.scrollIntoView(true); }
+  };
+  SlideEngine.prototype.trackView = function () {
+    if (this.view !== 'deck') return;
+    var i = this.indexFromScroll();
+    if (i !== this.current) { this.current = i; this.step = 0; this.update(); }
+  };
+  /* Present: the engine at the card in view; `full` asks for full screen (a click or a
+     key may, a script call never does) */
+  SlideEngine.prototype.present = function (full) {
+    if (this.view !== 'deck') return;
+    var i = this.indexFromScroll(), s = this.slides[i], self = this;
+    this.view = 'present';
+    this.current = i;
+    this.step = 0;
+    root.classList.remove('deck-view');
+    this.showCard(s);
+    this.resumeTracking();
+    if (full && !document.fullscreenElement && root.requestFullscreen) {
+      try {
+        var pr = root.requestFullscreen();
+        this.ownFull = true;
+        if (pr && pr.catch) pr.catch(function () { self.ownFull = false; });
+      } catch (e) { this.ownFull = false; }
+    }
+    this.say(this.t.viewPresent);
+    emit('viewchange', { view: 'present' });
+  };
+  /* back to the cards, at the slide the engine is on */
+  SlideEngine.prototype.deckView = function () {
+    if (!this.viewOn || this.view === 'deck') return;
+    var s = this.slides[this.current];
+    this.view = 'deck';
+    this.unzoom(true);
+    this.setCover(null);
+    this.jumpClear();
+    if (this.ownFull) {
+      this.ownFull = false;
+      try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function () {}); } catch (e) { /* not ours to leave */ }
+    }
+    this.pauseTracking();
+    root.classList.add('deck-view');
+    this.layoutView();
+    this.showCard(s);
+    this.update();
+    this.say(this.t.viewDeck);
+    emit('viewchange', { view: 'deck' });
+  };
+  SlideEngine.prototype.downloads = function () {
+    return [].slice.call(document.querySelectorAll(DOWNLOAD_SEL)).map(function (n) {
+      var kind = n.getAttribute('data-kind');
+      return { kind: kind, label: n.getAttribute('data-label') || DOWNLOAD_LABEL[kind] || kind.toUpperCase(), node: n };
+    }).filter(function (d) { return /^[a-z0-9]+$/.test(d.kind); });
+  };
+  /* A download embedded as base64 becomes a Blob only on click, so it works offline and
+     in a sandboxed frame that allows downloads; data-href links a file next to the deck. */
+  SlideEngine.prototype.download = function (kind) {
+    var d = this.downloads().filter(function (x) { return x.kind === kind; })[0];
+    if (!d) return false;
+    var n = d.node, file = n.getAttribute('data-file') || ('deck.' + kind), url = n.getAttribute('data-href'), blob = false;
+    if (!url) {
+      var bin = atob((n.textContent || '').replace(/\s+/g, '')), len = bin.length, bytes = new Uint8Array(len);
+      for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+      url = URL.createObjectURL(new Blob([bytes], { type: n.getAttribute('data-mime') || 'application/octet-stream' }));
+      blob = true;
+    }
+    var a = el('a', '', document.body);
+    a.href = url;
+    a.download = file;
+    a.hidden = true;
+    a.click();
+    a.parentNode.removeChild(a);
+    if (blob) setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+    emit('download', { kind: kind, file: file });
+    return true;
+  };
+
   /* ============ modules ============ */
   SlideEngine.prototype.moduleKey = function (k, e) {
     var lk = String(k).toLowerCase();
@@ -820,12 +1020,21 @@
     reducedMotion: reducedMotion,
     pauseTracking: function () { if (instance) instance.pauseTracking(); },
     resumeTracking: function () { if (instance) instance.resumeTracking(); },
+    /* 'deck' while a data-view="deck" deck shows its cards, else 'present' */
+    view: function () { return instance && instance.view === 'deck' ? 'deck' : 'present'; },
+    setView: function (v) {
+      if (!instance) return;
+      if (v === 'present') instance.present(false);
+      else if (v === 'deck') instance.deckView();
+    },
+    download: function (kind) { return instance ? instance.download(String(kind)) : false; },
     state: function () {
       var e = instance;
-      if (!e) return { index: 0, id: '', step: 0, track: 'all', theme: 'dark', lang: 'en', notes: false };
+      if (!e) return { index: 0, id: '', step: 0, track: 'all', theme: 'dark', lang: 'en', notes: false, view: 'present' };
       var s = e.slides[e.current];
       return { index: e.current, id: (s && s.id) || '', step: e.step, track: e.activeTrack,
-               theme: e.theme(), lang: e.lang, notes: !e.notesPanel.hidden };
+               theme: e.theme(), lang: e.lang, notes: !e.notesPanel.hidden,
+               view: e.view === 'deck' ? 'deck' : 'present' };
     },
     /* A module: {name, keys, step, transition, help, init}; reference/modules.md. A second
        module with a name already in use is ignored. */

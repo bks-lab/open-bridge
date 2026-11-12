@@ -198,6 +198,8 @@
         build();
       });
       var v = opt('data-read-default');
+      /* a deck that opens in its deck view (data-view="deck") shows its cards first */
+      if (api.view && api.view() === 'deck') return;
       if (v !== null && v !== 'off' && v !== 'false') open();
     }
   });
