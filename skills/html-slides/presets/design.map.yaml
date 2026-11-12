@@ -71,6 +71,8 @@ vars:
   gradient-to: {role: gradient-to, optional: true}
   # A gradient may pass through a middle stop (new-deck.py then writes --stat-gradient).
   gradient-via: {role: gradient-via, optional: true}
+  # and a second middle stop, for a four-stop gradient (from, via, via-2, to)
+  gradient-via-2: {role: gradient-via-2, optional: true}
   # A brand that draws its arc under a heading in a colour of its own names it
   # `highlight`, and the second, wider glow `glow`; without them the arc is the accent.
   arc: {role: highlight, optional: true}

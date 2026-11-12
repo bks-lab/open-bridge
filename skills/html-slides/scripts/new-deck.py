@@ -342,7 +342,10 @@ def design_tokens(preset: dict, design: Path) -> str:
                     lines.append("  --label-tracking: %s;" % track)
                 break
     colours = data.get("colors") or {}
-    if "gradient-via" in colours:
+    if "gradient-via" in colours and "gradient-via-2" in colours:
+        lines.append("  --stat-gradient: linear-gradient(100deg, var(--gradient-from, var(--accent)) 10%, "
+                     "var(--gradient-via) 38%, var(--gradient-via-2) 67%, var(--gradient-to, var(--accent)) 95%);")
+    elif "gradient-via" in colours:
         lines.append("  --stat-gradient: linear-gradient(100deg, var(--gradient-from, var(--accent)) 10%, "
                      "var(--gradient-via) 52%, var(--gradient-to, var(--accent)) 95%);")
     css += "\n:root {\n%s\n}\n" % "\n".join(lines)
@@ -370,7 +373,7 @@ SLIDE_ROLES = {
     "slide-label": (".slide__label", ".slide__result-label"),
     "slide-body": (".slide__body", ".slide__bullets li"),
     "slide-small": (".slide__stat-label", ".cheat-card__item", ".slide__numbered > li > :not(strong)",
-                    ".data-table td"),
+                    ".data-table td", ".slide__body--sm"),
     "slide-subhead": (".slide h3",),
     "slide-item-title": (".slide__numbered > li > strong", ".cheat-card__title", ".slide h4"),
     "slide-result-value": (".slide__result-value",),
@@ -400,10 +403,266 @@ CONTENT_SLIDES = ".slide:not(.slide--bleed):not(.slide--divider):not(.slide--tit
 def _colour(data: dict, where: str, ref) -> tuple[str, str]:
     m = COLOUR_REF.match(str(ref).strip())
     colors, dark = data.get("colors") or {}, data.get("colorsDark") or {}
-    if not m or m.group(1) not in colors:
+    if not m or (m.group(1) not in colors and m.group(1) not in dark):
         raise ValueError('%s: %r must name a colour role of this design as "{colors.<role>}"' % (where, ref))
     role = m.group(1)
+    if role not in colors:   # a role only the dark palette has holds in both modes
+        return str(dark[role]), str(dark[role])
     return str(colors[role]), str(dark.get(role, colors.get("dark-" + role, colors[role])))
+
+
+# A value that is CSS rather than one token (a gradient, a shadow, a border) may name
+# parts of the design: {colors.<role>} becomes a custom property per mode, and
+# {gradients.<name>}, {shadows.<name>}, {rounded.<name>}, {spacing.<name>} are put in
+# as written there (and may name colours themselves).
+DESIGN_REF = re.compile(r"\{(colors|gradients|shadows|rounded|spacing)\.([\w-]+)\}")
+UNSAFE_CSS = re.compile(r"[;{}<>\\]|/\*|url\(|@import|expression\(", re.I)
+CSS_LENGTH = r"-?\d*\.?\d+(?:em|px|rem|vw|vh|dvh|ch|%)"
+ONE_LENGTH = re.compile(r"^(?:0|%s|clamp\(\s*%s\s*,\s*%s\s*,\s*%s\s*\))$" % ((CSS_LENGTH,) * 4))
+COMPONENT_KEYS = {
+    "slide-text": {"smoothing"},
+    "slide-media": {"share", "gap"},
+    "slide-bullet": {"marker", "style", "indent", "gap"},
+    "slide-spacing": {"afterHeading", "labelToHeading", "betweenBlocks", "beforeHeading"},
+    "plate": {"background", "border", "shadow", "backdropFilter", "rounded", "padding"},
+    "toolbar": {"backgroundColor", "textColor", "typography", "padding", "border"},
+    "button-present": {"background", "textColor", "fontWeight", "rounded", "padding"},
+    "deck-view": {"backgroundColor", "gap", "slideShadow"},
+}
+SHARES = {"1/3": "33.333%", "2/5": "40%", "1/2": "50%", "4/15": "26.667%", "1/4": "25%"}
+# role extras beside the text properties
+ROLE_EXTRAS = {"slide-number": {"marker", "paint", "rule", "ruleWidth"},
+               "slide-stat": {"gradient", "minWidth"},
+               "slide-quote": {"bar", "barWidth", "maxWidth", "paddingStart"}}
+
+
+class _Css:
+    """Resolves design references in CSS values and collects the colour properties they need."""
+
+    def __init__(self, data: dict):
+        self.data, self.light, self.dark, self.seen = data, [], [], set()
+
+    def colour_var(self, where: str, ref) -> str:
+        light, dark = _colour(self.data, where, ref)
+        name = COLOUR_REF.match(str(ref).strip()).group(1)
+        var = "--cmp-c-%s" % name
+        if var not in self.seen:
+            self.seen.add(var)
+            self.light.append("  %s: %s;" % (var, light))
+            self.dark.append("  %s: %s;" % (var, dark))
+        return "var(%s)" % var
+
+    def value(self, where: str, raw) -> str:
+        text = str(raw).strip()
+        for _ in range(5):
+            def sub(m):
+                kind, name = m.groups()
+                if kind == "colors":
+                    return self.colour_var(where, m.group(0))
+                block = self.data.get(kind) or {}
+                if name not in block:
+                    raise ValueError("%s: {%s.%s} names nothing in this design" % (where, kind, name))
+                return str(block[name]).strip()
+            new = DESIGN_REF.sub(sub, text)
+            if new == text:
+                break
+            text = new
+        if not text or DESIGN_REF.search(text) or UNSAFE_CSS.search(text) or "{" in text:
+            raise ValueError("%s: %r is not a CSS value this generator writes" % (where, raw))
+        return text
+
+    def length(self, where: str, raw) -> str:
+        val = str(raw).strip()
+        if DESIGN_REF.fullmatch(val):
+            val = self.value(where, val)
+        if not ONE_LENGTH.match(val):
+            raise ValueError("%s: %r is not a length" % (where, raw))
+        return val
+
+
+# components other generators read too: keys this one does not know are theirs
+SHARED_COMPONENTS = {"plate", "toolbar", "button-present", "deck-view"}
+
+
+def _keys(comps: dict, name: str) -> dict | None:
+    entry = comps.get(name)
+    if entry is None:
+        return None
+    if isinstance(entry, dict) and name in SHARED_COMPONENTS:
+        return {k: v for k, v in entry.items() if k in COMPONENT_KEYS[name]}
+    if not isinstance(entry, dict) or set(entry) - COMPONENT_KEYS[name]:
+        raise ValueError("components.%s takes %s" % (name, ", ".join(sorted(COMPONENT_KEYS[name]))))
+    return entry
+
+
+def design_extras(data: dict, css: "_Css") -> list[str]:
+    """Rules for the components beside the text roles: font smoothing, photo share,
+    bullets, spacing, the result plate and the deck view. Each only when named."""
+    comps = data.get("components") or {}
+    rules = []
+    text = _keys(comps, "slide-text")
+    if text is not None and "smoothing" in text:
+        if text["smoothing"] not in ("antialiased", "auto"):
+            raise ValueError("components.slide-text.smoothing: %r is not antialiased or auto" % text["smoothing"])
+        if text["smoothing"] == "antialiased":
+            rules.append("html body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }")
+    media = _keys(comps, "slide-media")
+    if media is not None:
+        if "share" in media:
+            share = str(media["share"]).strip()
+            share = SHARES.get(share, share)
+            if not re.match(r"^\d+(\.\d+)?%$", share):
+                raise ValueError("components.slide-media.share: %r is not %s or a percentage"
+                                 % (media["share"], ", ".join(SHARES)))
+            rules.append("html .deck .slide--media:not([data-media-size]) { --media-share: %s; }" % share)
+        if "gap" in media:
+            rules.append("html .deck .slide--media { --media-gap: %s; }" % css.length("components.slide-media.gap", media["gap"]))
+    bullet = _keys(comps, "slide-bullet")
+    if bullet is not None:
+        style = str(bullet.get("style", "dot")).strip()
+        if style not in ("dot", "disc"):
+            raise ValueError("components.slide-bullet.style: %r is not dot or disc" % style)
+        colour = css.colour_var("components.slide-bullet.marker", bullet["marker"]) if "marker" in bullet else None
+        indent = css.length("components.slide-bullet.indent", bullet["indent"]) if "indent" in bullet else None
+        if style == "disc":
+            rules.append("html .deck .slide__bullets { list-style: disc outside; padding-left: %s; }" % (indent or "1.2em"))
+            rules.append("html .deck .slide__bullets li { padding-left: 0.4em; }")
+            rules.append("html .deck .slide__bullets li::before { content: none; display: none; }")
+            if colour:
+                rules.append("html .deck .slide__bullets li::marker { color: %s; }" % colour)
+        else:
+            if colour:
+                rules.append("html .deck .slide__bullets li::before { background: %s; }" % colour)
+            if indent:
+                rules.append("html .deck .slide__bullets li { padding-left: %s; }" % indent)
+        if "gap" in bullet:
+            gap = css.length("components.slide-bullet.gap", bullet["gap"])
+            rules.append("html .deck .slide__bullets li { padding-top: 0; padding-bottom: 0; }")
+            rules.append("html .deck .slide__bullets li + li { margin-top: %s; }" % gap)
+            if style == "dot":
+                rules.append("html .deck .slide__bullets li::before { top: calc(0.75em - 3px); }")
+    spacing = _keys(comps, "slide-spacing")
+    if spacing is not None:
+        flow = "html .deck :is(.slide, .slide__content, .slide__inner > div)"
+        # positioned layers (photo, veil, top slot) are no blocks in the flow
+        names = (("betweenBlocks", "--space-block",
+                  flow + " > * + :not(.slide__bg, .slide__scrim, .slide__top, .slide__decor, .slide__media, .notes)"),
+                 ("beforeHeading", "--space-before-heading", flow + " > * + :is(.slide__heading, h3, h4)"),
+                 ("afterHeading", "--space-after-heading", flow + " > .slide__heading + *"),
+                 ("labelToHeading", "--space-label-heading", flow + " > .slide__label + *"))
+        props = [(var, css.length("components.slide-spacing.%s" % key, spacing[key]), sel)
+                 for key, var, sel in names if key in spacing]
+        if props:
+            rules.append(":root { %s }" % " ".join("%s: %s;" % (v, val) for v, val, _ in props))
+            if "labelToHeading" in spacing:
+                rules.append("html .deck .slide .slide__label { margin-bottom: 0; }")
+            rules += ["%s { margin-top: var(%s); }" % (sel, v) for v, _, sel in props]
+    plate = _keys(comps, "plate")
+    if plate is not None:
+        decls = []
+        for key, prop in (("background", "background"), ("border", "border"), ("shadow", "box-shadow"),
+                          ("rounded", "border-radius"), ("padding", "padding")):
+            if key in plate:
+                decls.append("%s: %s;" % (prop, css.value("components.plate.%s" % key, plate[key])))
+        if "backdropFilter" in plate:
+            v = css.value("components.plate.backdropFilter", plate["backdropFilter"])
+            decls.append("-webkit-backdrop-filter: %s; backdrop-filter: %s;" % (v, v))
+        if decls:
+            # the design preset drops blur and shadow outside .fx (0,6,0); a plate the
+            # design asks for outranks that
+            rules.append(":root:not(.cmp) .deck:not(.cmp) .slide:not(.cmp) .slide__result:not(.cmp) { %s }" % " ".join(decls))
+    view = []
+    bar = _keys(comps, "toolbar")
+    if bar is not None:
+        decls = []
+        if "backgroundColor" in bar:
+            decls.append("background: %s;" % css.value("components.toolbar.backgroundColor", bar["backgroundColor"]))
+        if "textColor" in bar:
+            decls.append("color: %s;" % css.value("components.toolbar.textColor", bar["textColor"]))
+        if "padding" in bar:
+            decls.append("padding: %s;" % css.value("components.toolbar.padding", bar["padding"]))
+        if "border" in bar:
+            decls.append("border-bottom: %s;" % css.value("components.toolbar.border", bar["border"]))
+        if decls:
+            view.append("html:root.deck-view .deck-view-bar { %s }" % " ".join(decls))
+        if "typography" in bar:
+            m = TYPE_REF.match(str(bar["typography"]).strip())
+            spec = (data.get("typography") or {}).get(m.group(1)) if m else None
+            if not isinstance(spec, dict):
+                raise ValueError("components.toolbar.typography: %r names no typography role of this design" % bar["typography"])
+            tdecls = ["%s: %s;" % (prop, str(spec[key]).strip()) for key, prop in TYPE_PROPS.items()
+                      if key in spec and TYPE_VALUE[key].match(str(spec[key]).strip())]
+            if tdecls:
+                view.append("html .deck-view-bar .deck-view-title { %s }" % " ".join(tdecls))
+    btn = _keys(comps, "button-present")
+    if btn is not None:
+        decls = []
+        for key, prop in (("background", "background"), ("textColor", "color"), ("rounded", "border-radius"),
+                          ("padding", "padding")):
+            if key in btn:
+                decls.append("%s: %s;" % (prop, css.value("components.button-present.%s" % key, btn[key])))
+        if "fontWeight" in btn:
+            fw = str(btn["fontWeight"]).strip()
+            if not TYPE_VALUE["fontWeight"].match(fw):
+                raise ValueError("components.button-present.fontWeight: %r is not a font weight" % fw)
+            decls.append("font-weight: %s;" % fw)
+        if "background" in btn:
+            decls.append("border-color: transparent;")
+        if decls:
+            body = " ".join(decls)
+            view.append("html .deck-view-bar .deck-view-present, html .deck-view-bar .deck-view-present:hover, "
+                        "html .deck-view-bar .deck-view-present:focus-visible { %s }" % body)
+    dv = _keys(comps, "deck-view")
+    if dv is not None:
+        if "backgroundColor" in dv:
+            view.append("html:root.deck-view body { background: %s; }" % css.value("components.deck-view.backgroundColor", dv["backgroundColor"]))
+        if "gap" in dv:
+            view.append(":root.deck-view { --deck-view-gap: %s; }" % css.length("components.deck-view.gap", dv["gap"]))
+        if "slideShadow" in dv:
+            view.append("html:root.deck-view .deck .slide { box-shadow: %s; }" % css.value("components.deck-view.slideShadow", dv["slideShadow"]))
+    if view:
+        rules.append("@media screen {\n  %s\n}" % "\n  ".join(view))
+    return rules
+
+
+def role_extras(name: str, entry: dict, css: "_Css") -> list[str]:
+    """The keys of a text role beyond type: paint and rule of the numbers, the gradient
+    and width of a big number, the bar and measure of a quote."""
+    rules = []
+    if name == "slide-number":
+        if "paint" in entry:
+            if entry["paint"] not in ("gradient", "plain"):
+                raise ValueError("components.slide-number.paint: %r is not gradient or plain" % entry["paint"])
+            if entry["paint"] == "gradient":
+                rules.append("html .deck .slide__numbered > li::before { background-image: var(--stat-gradient, "
+                             "linear-gradient(100deg, var(--gradient-from, var(--accent)) 10%, var(--gradient-to, "
+                             "color-mix(in oklab, var(--accent) 55%, var(--text))) 95%)); -webkit-background-clip: text; "
+                             "background-clip: text; -webkit-text-fill-color: transparent; }")
+        if "rule" in entry:
+            rules.append(".slide__numbered { --number-rule: %s; }" % css.colour_var("components.slide-number.rule", entry["rule"]))
+        if "ruleWidth" in entry:
+            rules.append(".slide__numbered { --number-rule-width: %s; }" % css.length("components.slide-number.ruleWidth", entry["ruleWidth"]))
+    if name == "slide-stat":
+        if "gradient" in entry:
+            rules.append(":root { --stat-gradient: %s; }" % css.value("components.slide-stat.gradient", entry["gradient"]))
+        if "minWidth" in entry:
+            rules.append("html .deck .slide__stat-value { min-width: min(100%%, %s); }"
+                         % css.length("components.slide-stat.minWidth", entry["minWidth"]))
+    if name == "slide-quote":
+        if "bar" in entry:
+            width = css.length("components.slide-quote.barWidth", entry.get("barWidth", "3px"))
+            rules.append("html .deck .slide__quote { position: relative; border-left: 0; }")
+            rules.append("html .deck .slide__quote::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; "
+                         "width: %s; border-radius: %s; background: %s; }"
+                         % (width, width, css.value("components.slide-quote.bar", entry["bar"])))
+        elif "barWidth" in entry:
+            rules.append("html .deck .slide__quote { border-left-width: %s; }" % css.length("components.slide-quote.barWidth", entry["barWidth"]))
+        if "maxWidth" in entry:
+            mw = css.length("components.slide-quote.maxWidth", entry["maxWidth"])
+            rules.append("html .deck .slide__quote, html .deck .slide__quote p { max-width: %s; }" % mw)
+        if "paddingStart" in entry:
+            rules.append("html .deck .slide__quote { padding-left: %s; }" % css.length("components.slide-quote.paddingStart", entry["paddingStart"]))
+    return rules
 
 
 def component_rules(data: dict) -> str:
@@ -411,13 +670,14 @@ def component_rules(data: dict) -> str:
     comps = data.get("components") or {}
     typography = data.get("typography") or {}
     rules, light_vars, dark_vars = [], [], []
+    css = _Css(data)
     for name, selectors in SLIDE_ROLES.items():
         entry = comps.get(name)
         if entry is None:
             continue
         if not isinstance(entry, dict):
             raise ValueError("components.%s must be a mapping" % name)
-        known = {"typography", "fontFamily", "textColor", *TYPE_PROPS} | ({"marker"} if name == "slide-number" else set())
+        known = {"typography", "fontFamily", "textColor", *TYPE_PROPS} | ROLE_EXTRAS.get(name, set())
         for key in entry:
             if key not in known:
                 raise ValueError("components.%s.%s: unknown key; known: %s" % (name, key, ", ".join(sorted(known))))
@@ -463,6 +723,7 @@ def component_rules(data: dict) -> str:
         if name == "slide-body" and "fontSize" in spec:
             # the bullet dot sits on the first line whatever the size
             rules.append("html .deck .slide__bullets li::before { top: calc(10px + 0.7em - 3px); }")
+        rules += role_extras(name, entry, css)
     layout = comps.get("slide-layout")
     if layout is not None:
         if not isinstance(layout, dict) or set(layout) - {"align", "paddingTop", "paddingX"}:
@@ -489,8 +750,21 @@ def component_rules(data: dict) -> str:
             rules.append("html .deck .slide__aside { align-items: flex-start; }")
     arc = comps.get("slide-arc")
     if arc is not None:
-        if not isinstance(arc, dict) or set(arc) - {"width", "span", "baseline"}:
-            raise ValueError("components.slide-arc takes width, span and baseline")
+        if not isinstance(arc, dict) or set(arc) - {"width", "span", "baseline", "height", "fade", "glow"}:
+            raise ValueError("components.slide-arc takes width, span, baseline, height, fade and glow")
+        if "height" in arc:
+            rules.append(":root { --arc-height: %s; }" % css.length("components.slide-arc.height", arc["height"]))
+        if "fade" in arc:
+            fade = str(arc["fade"]).strip()
+            if not re.match(r"^\d+(\.\d+)?%$", fade) or float(fade[:-1]) > 50:
+                raise ValueError("components.slide-arc.fade: %r is not a percentage up to 50%%" % arc["fade"])
+            rules.append(":root { --arc-fade: %s; }" % fade)
+        if "glow" in arc:
+            parts = str(arc["glow"]).split()
+            if len(parts) != 2:
+                raise ValueError("components.slide-arc.glow: %r is not two lengths (inner, outer)" % arc["glow"])
+            rules.append(":root { --arc-glow-inner: %s; --arc-glow-outer: %s; }"
+                         % tuple(css.length("components.slide-arc.glow", x) for x in parts))
         if "width" in arc:
             width = str(arc["width"]).strip()
             if not re.match(r"^\d*\.?\d+px$", width):
@@ -509,8 +783,24 @@ def component_rules(data: dict) -> str:
                          "top: 50%; height: 1px; background: var(--arc-base); }")
     bleed = comps.get("slide-bleed")
     if bleed is not None:
-        if not isinstance(bleed, dict) or set(bleed) - {"veil", "dim"}:
-            raise ValueError("components.slide-bleed takes veil and dim")
+        if not isinstance(bleed, dict) or set(bleed) - {"veil", "dim", "padding", "textColor"}:
+            raise ValueError("components.slide-bleed takes veil, dim, padding and textColor")
+        if "padding" in bleed:
+            parts = str(bleed["padding"]).split()
+            if not 1 <= len(parts) <= 3:
+                raise ValueError("components.slide-bleed.padding: %r is one to three lengths (top, sides, bottom)"
+                                 % bleed["padding"])
+            vals = [css.length("components.slide-bleed.padding", x) for x in parts]
+            top, side, bottom = (vals * 3)[:3] if len(vals) == 1 else (vals[0], vals[1], vals[-1 if len(vals) == 3 else 0])
+            rules.append("html .deck .slide--bleed > .slide__top { padding: %s %s 0; }" % (top, side))
+            rules.append("html .deck .slide--bleed .slide__content { padding: %s %s %s; }" % (top, side, bottom))
+        if "textColor" in bleed:
+            light, dark = _colour(data, "components.slide-bleed.textColor", bleed["textColor"])
+            light_vars.append("  --cmp-bleed-color: %s;" % light)
+            dark_vars.append("  --cmp-bleed-color: %s;" % dark)
+            rules.append(":root:not(.cmp) .deck:not(.cmp) .slide.slide--bleed:not(.cmp) :is(.slide__content, .slide__top) "
+                         ":is(p, h1, h2, h3, h4, li, span, strong, .slide__label, .slide__display, .slide__heading, "
+                         ".slide__subtitle, .slide__body):not(.cmp) { color: var(--cmp-bleed-color) !important; }")
         if "dim" in bleed:
             dim = bleed["dim"]
             if isinstance(dim, bool) or not isinstance(dim, (int, float)) or not 0 < dim <= 1:
@@ -531,6 +821,9 @@ def component_rules(data: dict) -> str:
                      "color-mix(in srgb, var(--bg) %g%%, transparent) 0%%, color-mix(in srgb, var(--bg) %g%%, "
                      "transparent) 55%%, transparent 100%%); }" % (veil, veil * 0.6))
           rules.append("html .deck .slide--bleed .slide__scrim { opacity: %g; }" % (veil / 100))
+    rules += design_extras(data, css)
+    light_vars += css.light
+    dark_vars += css.dark
     if not rules:
         return ""
     out = "\n/* design-components: from components.slide-* in the design */\n"
@@ -942,6 +1235,18 @@ def deck_title(args) -> str:
     return title
 
 
+def design_default_mode(slug: str, design: Path | None) -> str | None:
+    """defaultMode: light|dark of the design a deck wears, the default for --theme-default."""
+    if slug != "design" or design is None:
+        return None
+    mode = design_to_css().frontmatter(design).get("defaultMode")
+    if mode is None:
+        return None
+    if mode not in ("light", "dark"):
+        raise DeckError("%s: defaultMode %r is not light or dark" % (design, mode))
+    return mode
+
+
 def build(args) -> int:
     title = deck_title(args)
     if not args.out:
@@ -960,6 +1265,7 @@ def build(args) -> int:
             slides += "\n" + block_slides(blocks)
     attrs = deck_attrs(args.deck_attr)
     slug, preset, design = choose_preset(args.preset, args.design, out.resolve().parent, args.context, args.persona)
+    theme_default = args.theme_default or design_default_mode(slug, design)
 
     requested = list(args.with_modules)
     if NEEDS_MOTION & set(blocks) and "motion" in available_modules() and "motion" not in resolve_modules(requested):
@@ -974,7 +1280,7 @@ def build(args) -> int:
     names += [module_region_name(m) for m in modules]
     contents = region_contents(names, slug, preset, design, not args.no_embed_fonts, blocks)
     html = splice(skeleton(title, args.lang, slides, args.with_stage, attrs, modules, bool(blocks), block_js,
-                          args.theme_default),
+                          theme_default),
                   contents)
     verify(html, contents)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -1148,7 +1454,8 @@ def main() -> int:
     ap.add_argument("--persona", help="identity/personas/<id>.yaml whose design_ref the deck wears")
     ap.add_argument("--lang", choices=("en", "de"), default="en", help="<html lang> (default en)")
     ap.add_argument("--theme-default", choices=("light", "dark"),
-                    help="the theme the deck opens in when the viewer chose none (default: the OS); "
+                    help="the theme the deck opens in when the viewer chose none (default: the design's "
+                         "defaultMode, else the OS); "
                          "build only, a refresh keeps the <html> tag")
     ap.add_argument("--with-stage", action="store_true", help="add the live stage (assets/slide-stage.*)")
     ap.add_argument("--with", dest="with_modules", action="append", default=[], metavar="NAME",

@@ -38,7 +38,10 @@ def canvas_module(name: str):
 # Engine-internal switches, tone and layout variables: set by the engine or a preset, not palette tokens.
 INTERNAL_VARS = {"tone", "tone-dim", "glow-at", "decor-glow", "decor-grid", "decor-fill", "media-share", "media-gap",
                  "label-tracking", "arc-width", "stat-gradient",  # these two: new-deck.py from components / gradient-via
-                 "deck-view-k", "deck-view-bar"}  # the deck view: set by the engine at run time
+                 "deck-view-k", "deck-view-bar",  # the deck view: set by the engine at run time
+                 # set by new-deck.py from components (slide-arc, slide-number, deck-view), with fallbacks
+                 "arc-height", "arc-fade", "arc-glow-inner", "arc-glow-outer", "number-rule", "number-rule-width",
+                 "deck-view-gap"}
 
 
 def engine_vars() -> set[str]:

@@ -176,7 +176,9 @@ def frontmatter(path: Path) -> dict:
     text = path.read_text(encoding="utf-8", errors="replace")
     if not text.startswith("---"):
         sys.exit(f"design-to-css: {path} has no YAML frontmatter")
-    parts = text.split("---", 2)
+    # the closing fence is a line of exactly three dashes: a comment such as
+    # "# ---- colours ----" inside the front matter is not one
+    parts = re.split(r"^---[ \t]*\r?$", text, maxsplit=2, flags=re.M)
     if len(parts) < 3:
         sys.exit(f"design-to-css: {path} frontmatter not closed")
     data = yaml.safe_load(parts[1])

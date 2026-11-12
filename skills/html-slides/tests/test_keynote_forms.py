@@ -36,7 +36,8 @@ REGION_RE = re.compile(r"/\* =+ KEYNOTE FORMS \(opt-in\) =+ \*/.*?/\* =+ END KEY
 KEYNOTE_CLASSES = {"slide--media", "slide__media", "slide__stats", "slide__stat", "slide__stat-value",
                    "slide__stat-label", "metrics--gradient", "slide__arc", "slide__arc--center", "slide--quote",
                    "slide__quote", "slide__quote-source", "slide__result", "slide__result-label",
-                   "slide__result-value", "slide__numbered", "slide__numbered--2col", "cards--tinted"}
+                   "slide__result-value", "slide__numbered", "slide__numbered--2col", "slide__numbered--3col",
+                   "slide__numbered--stacked", "slide__arc--half", "slide__arc--quarter", "cards--tinted"}
 OLD_TYPES = 11
 
 
