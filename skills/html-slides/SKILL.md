@@ -4,7 +4,7 @@ description: >-
   Builds single-file HTML slide decks from any content: DESIGN.md brand or a style preset, light/dark, embedded fonts, tracks, speaker notes, live stages, offline; PDF and optional PowerPoint (PPTX) export, a quality gate and an anonymity check before sending. Trigger: "create a presentation", "make slides", "slide deck", "html slides", "PowerPoint alternative", "/slides".
 metadata:
   scope: core
-  version: 2.4.0
+  version: 2.5.0
   last_updated: 2026-11-12
 ---
 

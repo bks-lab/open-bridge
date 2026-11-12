@@ -246,6 +246,9 @@ body {
   text-wrap: pretty;
 }
 
+/* a smaller paragraph: captions, a note under a list */
+.slide__body.slide__body--sm { font-size: clamp(13px, 1.4vw, 17px); line-height: 1.5; }
+
 .slide__subtitle {
   font-family: var(--font-mono);
   font-size: clamp(12px, 1.5vw, 18px);
@@ -616,6 +619,12 @@ img.slide__bg { width: 100%; height: 100%; object-fit: cover; display: block; }
 }
 .slide--bleed .slide__heading { color: var(--text); }
 .slide--bleed .slide__subtitle { color: var(--text-dim); }
+/* A top slot: what sits in .slide__top (an eyebrow, a logo) stays at the top of the
+   photo while .slide__content keeps to the bottom. */
+.slide--bleed > .slide__top {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+  padding: clamp(40px, 6vh, 80px) clamp(40px, 8vw, 120px) 0;
+}
 
 /* ============ SCENARIO / CARD GRIDS ============ */
 .scenario-grid, .cheat-grid {
@@ -695,12 +704,15 @@ img.slide__bg { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* Media split: a photo fills its share of the slide edge to edge, full height,
    the text column keeps the slide padding on the other side. data-media="left"
-   moves the photo, data-media-size="1/3|2/5|1/2" sets its share (default 2/5).
+   moves the photo, data-media-size="1/3|2/5|1/2|4/15" sets its share (default 2/5;
+   a design may set another with components.slide-media, a slide with
+   style="--media-share: 30%").
    An image slot without a src yet shows the surface colour in the same box. */
 .slide--media { --media-share: 40%; --media-gap: clamp(40px, 5vw, 80px); }
 .slide--media[data-media-size="1/3"] { --media-share: 33.333%; }
 .slide--media[data-media-size="2/5"] { --media-share: 40%; }
 .slide--media[data-media-size="1/2"] { --media-share: 50%; }
+.slide--media[data-media-size="4/15"] { --media-share: 26.667%; }
 .slide.slide--media:not([data-media="left"]) { padding-right: calc(var(--media-share) + var(--media-gap)); }
 .slide.slide--media[data-media="left"] { padding-left: calc(var(--media-share) + var(--media-gap)); }
 .slide--media > .slide__media {
@@ -757,13 +769,16 @@ img.slide__bg { width: 100%; height: 100%; object-fit: cover; display: block; }
    in every preset, the design preset included. .slide__arc--center centres it. */
 .slide__arc {
   position: relative; display: block; pointer-events: none;
-  width: min(100%, 520px); height: clamp(14px, 2.4vh, 24px); margin: clamp(10px, 1.8vh, 20px) 0;
+  width: min(100%, 520px); height: var(--arc-height, clamp(14px, 2.4vh, 24px)); margin: clamp(10px, 1.8vh, 20px) 0;
   border-top: var(--arc-width, 1px) solid var(--arc, var(--accent)); border-radius: 50% / 100% 100% 0 0;
-  filter: drop-shadow(0 0 3px var(--arc, var(--accent))) drop-shadow(0 0 10px var(--arc-glow, color-mix(in srgb, var(--accent) 55%, transparent)));
-  -webkit-mask-image: linear-gradient(90deg, transparent 0%, var(--accent) 28%, var(--accent) 72%, transparent 100%);
-  mask-image: linear-gradient(90deg, transparent 0%, var(--accent) 28%, var(--accent) 72%, transparent 100%);
+  filter: drop-shadow(0 0 var(--arc-glow-inner, 3px) var(--arc, var(--accent))) drop-shadow(0 0 var(--arc-glow-outer, 10px) var(--arc-glow, color-mix(in srgb, var(--accent) 55%, transparent)));
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, var(--accent) var(--arc-fade, 28%), var(--accent) calc(100% - var(--arc-fade, 28%)), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, var(--accent) var(--arc-fade, 28%), var(--accent) calc(100% - var(--arc-fade, 28%)), transparent 100%);
 }
 .slide__arc--center { margin-left: auto; margin-right: auto; }
+/* a share of the column, whatever width the design gives the arc */
+.slide .slide__arc.slide__arc--half { width: 50%; }
+.slide .slide__arc.slide__arc--quarter { width: 25%; }
 
 /* Quote slide: large light type in the body family behind an accent bar. */
 .slide--quote { justify-content: center; }
@@ -815,6 +830,7 @@ ol.slide__numbered {
   display: grid; gap: clamp(14px, 2.4vh, 28px); margin-top: clamp(16px, 2.8vh, 32px);
 }
 ol.slide__numbered--2col { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: clamp(24px, 4vw, 64px); }
+ol.slide__numbered--3col { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: clamp(16px, 2.5vw, 32px); }
 .slide__numbered > li {
   counter-increment: slide-num; display: grid; grid-template-columns: auto minmax(0, 1fr);
   column-gap: clamp(12px, 1.4vw, 20px); align-items: start;
@@ -834,7 +850,17 @@ ol.slide__numbered--2col { grid-template-columns: repeat(2, minmax(0, 1fr)); col
 .slide__numbered > li > :not(strong) {
   grid-column: 2; margin-top: 2px; font-size: clamp(13px, 1.4vw, 16px); line-height: 1.5; color: var(--text-dim);
 }
-@media (max-width: 768px) { ol.slide__numbered--2col { grid-template-columns: minmax(0, 1fr); } }
+/* --stacked: the number above its title with a thin rule under it (a column head),
+   in --number-rule (default the accent) at --number-rule-width (default 1px). */
+.slide__numbered--stacked > li { grid-template-columns: minmax(0, 1fr); }
+:root ol.slide__numbered.slide__numbered--stacked > li::before {
+  grid-row: auto; justify-self: stretch; min-width: 0; text-align: left;
+  padding: 0 0 0.6em; margin-bottom: 0.6em; border: 0; border-radius: 0;
+  border-bottom: var(--number-rule-width, 1px) solid var(--number-rule, var(--accent));
+  background-color: transparent;
+}
+.slide__numbered--stacked > li > strong, .slide__numbered--stacked > li > :not(strong) { grid-column: 1; }
+@media (max-width: 768px) { ol.slide__numbered--2col, ol.slide__numbered--3col { grid-template-columns: minmax(0, 1fr); } }
 
 /* Tinted cards: .cards--tinted on a .cheat-grid or .scenario-grid turns its cards
    into soft accent-tinted cards with a hairline and a larger radius. */
@@ -1031,7 +1057,7 @@ ol.slide__numbered--2col { grid-template-columns: repeat(2, minmax(0, 1fr)); col
     scroll-snap-align: none;
     /* zoom scales the layout box too: no gap, no sideways overflow */
     zoom: var(--deck-view-k, 1);
-    margin: 0 auto calc(24px / var(--deck-view-k, 1));
+    margin: 0 auto calc(var(--deck-view-gap, 24px) / var(--deck-view-k, 1));
     border: 1px solid var(--border-bright, var(--border));
   }
   :where(:root.deck-view) .slide { background-color: var(--bg); }

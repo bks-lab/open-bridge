@@ -136,10 +136,19 @@ builds the deck it built before.
 |---|---|
 | colour roles `highlight`, `glow` | the arc under a heading (`.slide__arc`) in its own colour with a second, wider glow; without them the arc is the accent |
 | colour role `gradient-via` | a middle stop for the gradient numbers (`--stat-gradient`), between `gradient-from` and `gradient-to` |
-| `components.slide-<role>` | how a text role is set: `fontFamily` (display, body, mono, label), `fontWeight`, `fontSize` (a length, `vw` to scale with the slide, or `clamp()`), `letterSpacing`, `lineHeight`, `textTransform`, `textColor` (a colour role, per mode), or `typography: "{typography.<role>}"`. Roles: `slide-display`, `slide-subtitle`, `slide-heading`, `slide-subhead` (h3), `slide-label` (also the result card label), `slide-body` (body copy and bullets), `slide-small` (stat labels, card text, numbered descriptions, table cells), `slide-item-title` (numbered titles, card titles, h4), `slide-result-value`, `slide-stat`, `slide-table-head`, `slide-quote`, `slide-number` (also `marker: plain` drops the box) |
+| colour role `gradient-via-2` | with `gradient-via`, a four-stop number gradient (from, via, via-2, to) |
+| `defaultMode: light` or `dark` | the mode a new deck opens in when `--theme-default` is not given |
+| `components.slide-<role>` | how a text role is set: `fontFamily` (display, body, mono, label), `fontWeight`, `fontSize` (a length, `vw` to scale with the slide, or `clamp()`), `letterSpacing`, `lineHeight`, `textTransform`, `textColor` (a colour role, per mode), or `typography: "{typography.<role>}"`. Roles: `slide-display`, `slide-subtitle`, `slide-heading`, `slide-subhead` (h3), `slide-label` (also the result card label), `slide-body` (body copy and bullets), `slide-small` (stat labels, card text, numbered descriptions, table cells, `.slide__body--sm`), `slide-item-title` (numbered titles, card titles, h4), `slide-result-value`, `slide-stat`, `slide-table-head`, `slide-quote`, `slide-number` (also `marker: plain` drops the box) |
+| role extras | `slide-number`: `paint: gradient` (the numbers in the number gradient), `rule` (a colour role) and `ruleWidth` for the rule of `slide__numbered--stacked`. `slide-stat`: `gradient` (a full CSS gradient, e.g. `"{gradients.metric}"`) and `minWidth` (the value is at least `min(100%, minWidth)` wide, so a short number shows the start of the gradient). `slide-quote`: `bar` (a gradient or colour for the bar, e.g. `"{gradients.accent}"`), `barWidth`, `maxWidth`, `paddingStart` |
 | `components.slide-layout` | `align: top` with `paddingTop`, and `paddingX`, for content slides; a photo slide keeps the room for its photo |
-| `components.slide-arc` | `width` (px), `span` (a length, e.g. `100%`), `baseline` (a colour role for a hairline under the arc) |
-| `components.slide-bleed` | `veil`: how strongly a full-bleed photo is veiled under its text, 0 to 100 (default look 94) |
+| `components.slide-arc` | `width` (px), `span` (a length, e.g. `100%`), `baseline` (a colour role for a hairline under the arc), `height` (a length), `fade` (where the line reaches full strength from each end, up to `50%`; default `28%`), `glow` (two lengths, the inner and outer glow radius; default `3px 10px`) |
+| `components.slide-bleed` | `veil`: how strongly a full-bleed photo is veiled under its text, 0 to 100 (default look 94); `dim`: dark mode darkens the photo instead; `padding`: one to three lengths (top, sides, bottom) for `.slide__top` and `.slide__content`; `textColor`: a colour role for every text on the photo |
+| `components.slide-text` | `smoothing: antialiased` sets grayscale font smoothing on the page (macOS) |
+| `components.slide-media` | `share`: the photo share of a media slide without `data-media-size` (`1/3`, `2/5`, `1/2`, `4/15`, `1/4` or a percentage); `gap`: the room between photo and text |
+| `components.slide-bullet` | `style: dot` (default) or `disc` (a list marker outside the text), `marker` (a colour role), `indent`, `gap` (between items) |
+| `components.slide-spacing` | lengths for `betweenBlocks`, `beforeHeading`, `afterHeading` (after `.slide__heading`) and `labelToHeading`, as `--space-*` properties; positioned layers (photo, veil, top slot) are left out |
+| `components.plate` | the result card (`.slide__result`): `background`, `border`, `shadow`, `backdropFilter`, `rounded`, `padding`, CSS values that may name `{colors.*}`, `{gradients.*}`, `{shadows.*}` |
+| `components.toolbar`, `button-present`, `deck-view` | the deck view (`reference/slide-types.md` § Deck view): toolbar `backgroundColor`, `textColor`, `typography`, `padding`, `border`; Present button `background`, `textColor`, `fontWeight`, `rounded`, `padding`; the page `backgroundColor`, the `gap` between cards and their `slideShadow` |
 | `components.knowledge-term` | how a knowledge term looks: `html-canvas/references/knowledge.md` § Term mark |
 
 ```yaml
@@ -151,6 +160,12 @@ components:
   slide-number: {marker: plain}
   slide-arc: {width: 2px, span: 100%, baseline: "{colors.border}"}
 ```
+
+A CSS value (a gradient, a border, a shadow) may name parts of the design: `{colors.<role>}`
+becomes a property per mode, `{gradients.<name>}`, `{shadows.<name>}`, `{rounded.<name>}` and
+`{spacing.<name>}` are put in as written there. Only plain CSS values pass: no `;`, braces,
+`url()` or comments. A design that names none of these keys builds the deck it built before,
+byte for byte (`tests/test_design_extras.py` pins it).
 
 A wrong reference or value stops the build with the component's name.
 

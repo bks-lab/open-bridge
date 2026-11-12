@@ -186,7 +186,7 @@ accent tint with a hairline and a larger radius, the keynote look.
 ```
 
 ### 9. Closing / Full-Bleed
-Image (or gradient) background under a veil in the theme background, text at the bottom; reads in light and dark. Use for the final "Questions?" slide. The image is an `<img class="slide__bg" alt="">` that fills the slide (cover, behind the scrim), never an inline `background-image`; for a gradient use `<div class="slide__bg slide__bg--gradient"></div>` instead of the `<img>`.
+Image (or gradient) background under a veil in the theme background, text at the bottom; reads in light and dark. Use for the final "Questions?" slide. The image is an `<img class="slide__bg" alt="">` that fills the slide (cover, behind the scrim), never an inline `background-image`; for a gradient use `<div class="slide__bg slide__bg--gradient"></div>` instead of the `<img>`. A `<div class="slide__top">` placed after the scrim holds what stays at the top of the photo (an eyebrow, a logo) while `.slide__content` keeps to the bottom; a design sets the padding of both and the text colour on the photo (`components.slide-bleed`).
 
 ```html
 <section class="slide slide--bleed">
@@ -258,7 +258,8 @@ values take the one display cut.
 ### 12. Media Split (Photo Half Panel)
 A photo fills one side of the slide edge to edge, full height, no frame (`object-fit: cover`);
 the text column keeps the slide padding on the other side. `data-media="right"` (default) or
-`"left"` picks the side, `data-media-size="1/3|2/5|1/2"` the photo's share (default `2/5`).
+`"left"` picks the side, `data-media-size="1/3|2/5|1/2|4/15"` the photo's share (default `2/5`,
+or the design's `components.slide-media.share`; any other share with `style="--media-share: 30%"`).
 Under 768 px wide the photo stacks above the text at a fixed height; print keeps it side by
 side. An AI image slot works the same way: `<img class="slide__media" data-image-prompt="..."
 data-image-ratio="4:3" alt="...">` without a `src` shows the surface colour in the same box
@@ -286,7 +287,9 @@ gradient from the accent to the accent mixed towards the text colour, so both en
 least as well as the accent; print, forced colours and a browser without
 `background-clip: text` get the solid accent. `slide__stat--solid` keeps one number solid.
 The `.slide__arc` under the heading is a thin glowing curve, decorative (`aria-hidden`),
-hidden under forced colours; `slide__arc--center` centres it.
+hidden under forced colours; `slide__arc--center` centres it, `slide__arc--half` and
+`slide__arc--quarter` take half or a quarter of the column whatever width the design sets.
+A smaller paragraph (a caption, a note under a list) is `<p class="slide__body slide__body--sm">`.
 
 ```html
 <section class="slide">
@@ -363,8 +366,10 @@ tint, a small caps label and one or more values; an arc between two values separ
 
 ### 16. Numbered Agenda
 A numbered list with a small boxed number (01, 02, ...) drawn by a CSS counter, a title in
-`<strong>` and an optional description line. `slide__numbered--2col` sets two columns, one
-again under 768 px.
+`<strong>` and an optional description line. `slide__numbered--2col` and `--3col` set two or
+three columns, one again under 768 px. `slide__numbered--stacked` puts the number above its
+title with a thin rule under it, a column head (rule colour and width from the design's
+`components.slide-number`, else the accent at 1px).
 
 ```html
 <section class="slide">
@@ -435,7 +440,9 @@ finished: reveals and step items visible, no beamer zoom.
 The toolbar takes its look from the design tokens: `--bg` (bar), `--surface` (the page
 behind the cards), `--text`, `--border-bright` (bar rule, card outline, button outline),
 `--accent` (hover and focus), `--primary` and `--on-primary` for the Present button
-(without them `--accent` and `--bg`), and `--font-body`. Print, `render-pdf.cjs` and
+(without them `--accent` and `--bg`), and `--font-body`. A design may set the bar, the
+Present button and the page behind the cards itself (`components.toolbar`, `button-present`,
+`deck-view` in `reference/deck-build.md`). Print, `render-pdf.cjs` and
 `render-pptx.py` ignore the deck view: the toolbar is hidden and every slide is a page
 of its own; the gate (`verify-page.py --deck`) measures the slides presenting. A
 presenter preview copy never opens in it. Without the attribute nothing of this exists.
