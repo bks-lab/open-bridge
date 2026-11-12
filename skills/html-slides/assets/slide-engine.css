@@ -1010,6 +1010,96 @@ ol.slide__numbered--2col { grid-template-columns: repeat(2, minmax(0, 1fr)); col
   .deck-print-notes__body p + p { margin-top: 0.6em; }
 }
 
+/* ============ DECK VIEW (data-view="deck") ============
+   Every slide of the active track stacked under a fixed toolbar, each laid out at
+   1280 x 720 and zoomed to the window width, never above 100 %. The engine sets
+   :root.deck-view and --deck-view-k (the zoom) and --deck-view-bar (the toolbar
+   height); Present takes the class away and the deck is the normal engine again.
+   Screen only: print and PDF keep one slide per page. */
+@media screen {
+  :root.deck-view body { background: var(--surface, var(--bg)); }
+  :root.deck-view .deck {
+    scroll-snap-type: none; scroll-behavior: auto; overflow-x: hidden;
+    padding: calc(var(--deck-view-bar, 56px) + 24px) 24px 48px;
+    scroll-padding-top: calc(var(--deck-view-bar, 56px) + 16px);
+  }
+  :root.deck-view .deck:focus { outline: none; }
+  :root.deck-view .slide {
+    width: 1280px !important; height: 720px !important;
+    min-height: 0 !important; max-height: none !important;
+    flex: none; overflow: hidden !important;
+    scroll-snap-align: none;
+    /* zoom scales the layout box too: no gap, no sideways overflow */
+    zoom: var(--deck-view-k, 1);
+    margin: 0 auto calc(24px / var(--deck-view-k, 1));
+    border: 1px solid var(--border-bright, var(--border));
+  }
+  :where(:root.deck-view) .slide { background-color: var(--bg); }
+  :root.deck-view .slide:last-of-type { margin-bottom: 0; }
+  :root.deck-view .slide--split .slide__panels { height: 100%; min-height: 0; }
+  /* the design size, not the window, sets the content: no beamer zoom inside a card */
+  :root.deck-view .slide > * { zoom: 1 !important; }
+  /* a card shows its slide finished: entrances and step reveals at their end state */
+  :root.deck-view .slide .reveal { opacity: 1; transform: none; transition: none; }
+  :root.deck-view .slide [data-step],
+  :root.deck-view .slide [data-steps] > * {
+    visibility: visible !important; opacity: 1 !important; transform: none !important; transition: none !important;
+  }
+  /* presenting chrome that means nothing over a stack of cards; the toolbar holds the rest */
+  :root.deck-view .deck-progress, :root.deck-view .deck-dots, :root.deck-view .deck-hints,
+  :root.deck-view .theme-toggle, :root.deck-view .deck-back { display: none !important; }
+}
+
+.deck-view-bar { display: none; }
+:root.deck-view .deck-view-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 101;
+  display: flex; align-items: center; gap: 12px;
+  min-height: 56px; padding: 8px clamp(12px, 2vw, 24px);
+  font-family: var(--font-body); color: var(--text);
+  background: var(--bg); border-bottom: 1px solid var(--border-bright, var(--border));
+}
+.deck-view-title {
+  flex: 1 1 auto; min-width: 0;
+  font-weight: 600; font-size: 15px; line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.deck-view-tools { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.deck-view-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 36px; min-height: 36px; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  font: 600 13px/1.2 var(--font-body); text-decoration: none; white-space: nowrap;
+  color: var(--text); background: transparent; border: 1px solid var(--border-bright, var(--border));
+}
+.deck-view-btn:hover, .deck-view-btn:focus-visible { color: var(--accent); border-color: var(--accent); }
+.deck-view-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.deck-view-btn svg { width: 16px; height: 16px; }
+.deck-view-present {
+  background: var(--primary, var(--accent)); border-color: var(--primary, var(--accent));
+  color: var(--on-primary, var(--bg));
+}
+.deck-view-present:hover, .deck-view-present:focus-visible {
+  color: var(--on-primary, var(--bg));
+  background: color-mix(in srgb, var(--primary, var(--accent)) 86%, var(--text));
+  border-color: var(--primary, var(--accent));
+}
+.deck-view-back { font-size: 18px; padding: 4px 10px; }
+.deck-view-theme .sun { display: block; }
+.deck-view-theme .moon { display: none; }
+@media (prefers-color-scheme: light) {
+  :root:not(.theme-dark):not(.theme-light) .deck-view-theme .sun { display: none; }
+  :root:not(.theme-dark):not(.theme-light) .deck-view-theme .moon { display: block; }
+}
+:root.theme-light .deck-view-theme .sun { display: none; }
+:root.theme-light .deck-view-theme .moon { display: block; }
+@media (max-width: 640px) {
+  :root.deck-view .deck-view-bar { flex-wrap: wrap; }
+  .deck-view-title { flex-basis: 100%; }
+  .deck-view-tools { flex-wrap: wrap; }
+}
+@media print {
+  .deck-view-bar { display: none !important; }
+}
+
 /* reduced motion: every animation */
 /* Applies to the engine, the slides and every deck module alike: a module never needs
    its own rule, and an animation still ends at its final frame. */

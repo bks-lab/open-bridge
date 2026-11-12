@@ -464,6 +464,8 @@ def load_deck(page, src: Path, args):
     info = page.evaluate(
         """async ({theme, lang, track}) => {
           const D = window.SlideDeck, root = document.documentElement;
+          // a deck that opens in its deck view (data-view="deck") is shot presenting
+          if (D.setView) D.setView('present');
           if (theme) { root.classList.remove('theme-light', 'theme-dark'); root.classList.add('theme-' + theme); }
           if (lang && D.setLang) D.setLang(lang);
           if (D.setTrack) D.setTrack(track || 'all');

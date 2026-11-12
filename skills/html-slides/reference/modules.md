@@ -66,7 +66,8 @@ and the engine goes on as if the handler had returned `false`.
 
 | `SlideDeck.` | Returns or does |
 |---|---|
-| `state()` | `{index, id, step, track, theme, lang, notes}`: 0-based index among the slides the active track shows, the slide id (`''` without one), the current step, the active track (`all` when none), `light` or `dark` as shown, `de` or `en`, whether the notes panel is open |
+| `state()` | `{index, id, step, track, theme, lang, notes, view}`: 0-based index among the slides the active track shows, the slide id (`''` without one), the current step, the active track (`all` when none), `light` or `dark` as shown, `de` or `en`, whether the notes panel is open, `deck` while a `data-view="deck"` deck shows its cards (else `present`) |
+| `view()`, `setView('present'\|'deck')`, `on('viewchange')` | the deck view (`reference/slide-types.md` § Deck view). While it shows the cards the engine is paused and no module key reaches a module; a module with an overlay listens for `viewchange` to stand aside |
 | `slides()` | the slides the active track shows, in order (a copy of the list) |
 | `setStep(n)` / `step()` | set or read the step of the active slide. A slide change resets it to 0; `setStep` emits `stepchange` and keeps the deep link current |
 | `setLang('de'\|'en')`, `setTheme('light'\|'dark')` | switch language or theme, as the keys L and T do |
@@ -369,6 +370,7 @@ bar at the top shows how far the reader is.
 | T, L, F, B / W, `?` while reading | work as in the slide view; F rebuilds the document for the new track |
 | `data-read-default` on the deck or `<html>` | the deck opens in the reading view: the variant for a copy that is sent to be read (`new-deck.py --with read --deck-attr data-read-default=`). A deep link still picks the slide it opens at; `data-read-default="off"` keeps the slide view. The presenter's previews of such a copy still show slides |
 | print, `render-pdf.cjs` | unchanged: the layout rules are screen only, so the slides print one per page and the reading chrome is hidden |
+| a deck with `data-view="deck"` (`reference/slide-types.md` § Deck view) | the cards come first and `data-read-default` gives way; R works once the deck is presenting |
 
 For other modules: while reading, `<html>` has the class `deck-read`, and `document`
 gets `deckread:change` with `{read: true|false}` on every switch. The view shows every

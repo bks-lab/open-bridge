@@ -4,8 +4,8 @@ description: >-
   Builds single-file HTML slide decks from any content: DESIGN.md brand or a style preset, light/dark, embedded fonts, tracks, speaker notes, live stages, offline; PDF and optional PowerPoint (PPTX) export, a quality gate and an anonymity check before sending. Trigger: "create a presentation", "make slides", "slide deck", "html slides", "PowerPoint alternative", "/slides".
 metadata:
   scope: core
-  version: 2.3.0
-  last_updated: 2026-11-07
+  version: 2.4.0
+  last_updated: 2026-11-12
 ---
 
 # HTML Slide Deck Generator
@@ -39,6 +39,7 @@ foundation (tokens, fonts, the quality gate, the send bundle) is shared with
 | A keynote look: a photo filling half the slide, gradient numbers, a glowing arc under a heading, a quote, a decision with a result card, a numbered agenda | `slide--media`, `slide__stat`, `slide__arc`, `slide--quote`, `slide__result`, `slide__numbered` (all opt-in markup) | `reference/slide-types.md` § Keynote Forms |
 | The deck in the design of a context or persona | `--context NAME` / `--persona ID` | `reference/deck-build.md` § Presets |
 | Generated illustrations or mood images on slides, from the Codex CLI, a configured command or the agent's own image tool | `<img data-image-prompt="…">` in the slide, then `html-canvas/scripts/gen-images.py` plan / generate / place | `html-canvas/references/images.md` |
+| A deck page to browse first: every slide as a card under a toolbar (title, language, theme, help, PDF and PowerPoint downloads, Present), presenting full screen from the card in view | `--deck-attr data-view=deck`, then `scripts/embed-downloads.py` after the PDF and PPTX renders; P or F5 present, Esc returns | `reference/slide-types.md` § Deck view, `reference/output-formats.md` § 5 |
 | A deck handed over to be read, not presented: every slide with its notes as one document | `--with read`, key R; a send copy opens in it with `--deck-attr data-read-default=` | `reference/modules.md` § Module: read |
 | Terms on a slide that open their knowledge on the right while presenting (split screen, no pop-up) | `new-deck.py --blocks knowledge`, then `html-canvas/scripts/knowledge-pack.py` mark and embed; key K | `html-canvas/references/knowledge.md` |
 | Pick a look | DESIGN.md (default) or a style preset by name | `reference/deck-build.md` § Presets |
@@ -138,6 +139,7 @@ its chromium; a bare `python3` without them fails as `browser-skipped`.
 | "send to customer", "external", "check before sending" | `scripts/check-anonymity.py deck.html`, resolve every hit (exit 1 on hits) |
 | "as PDF", "print", "attachment" | `node scripts/render-pdf.cjs deck.html deck.pdf [--theme light]`, one 16:9 page per slide |
 | "as PowerPoint", "PPTX", the recipient edits in PowerPoint (optional, PDF stays the default) | `uv run --with python-pptx --with playwright python scripts/render-pptx.py deck.html deck.pptx`: native text boxes and tables over a picture of each slide, notes on the notes pages; `--mode image` for pixel-exact pictures (`reference/output-formats.md` § PowerPoint) |
+| Downloads in the deck itself ("PDF and PowerPoint in the page") | after `render-pdf.cjs` and `render-pptx.py`: `scripts/embed-downloads.py deck.html --pdf deck.pdf --pptx deck.pptx` (base64 inside, 14 MiB guard), or `--pdf-url` / `--pptx-url` for files hosted next to it (`reference/output-formats.md` § 5) |
 | The deck loads local files (images, a stage page next to it) | `scripts/inline-assets.py deck.html deck-send.html`, which runs the shared `html-canvas/scripts/bundle.py` |
 | Mail the deck | anonymity check, gate, bundle, PDF, then check the bundled copy again |
 | Send it to readers, not an audience | build a reading copy from the same slides (`--with read --deck-attr data-read-default=`), then the same path |
@@ -165,6 +167,7 @@ An instance names its own wordlist in `bridge-config.yaml` under
 | `assets/modules/` | the deck modules (`draw`, `morph`, `motion`, `presenter`, `read`, `steps`), one `.js` and `.css` each |
 | `assets/fonts/`, `scripts/font-face.py` | preset fonts (woff2 plus OFL licences) |
 | `scripts/check-anonymity.py`, `scripts/render-pdf.cjs`, `scripts/inline-assets.py` | the send path |
+| `scripts/embed-downloads.py` | PDF and PowerPoint as download buttons inside the deck |
 | `html-canvas/scripts/gen-images.py` | image slots in a deck: plan, generate, place |
 
 ## Tests

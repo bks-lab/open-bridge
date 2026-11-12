@@ -1,6 +1,6 @@
 # Output Formats: the send path
 
-Four optional post-generation steps live in `scripts/`. Use them after the deck
+Five optional post-generation steps live in `scripts/`. Use them after the deck
 HTML is written. Each is independent: run any combination, in any order.
 
 A deck built with `scripts/new-deck.py` already embeds its fonts, tokens and engine
@@ -18,8 +18,9 @@ motion of the `motion` module prints and exports at its end state.
 | PDF copy of the deck | `render-pdf.cjs` | Whenever the user wants a printable, mailable or archival version |
 | Audit for names, identifiers and leftover placeholders | `check-anonymity.py` | Before any external send (mail, customer portal, public link) |
 | Editable PowerPoint copy (section 4) | `render-pptx.py` | Only when someone wants to edit the deck in PowerPoint; PDF stays the send format |
+| PDF and PowerPoint as download buttons inside the deck (section 5) | `embed-downloads.py` | After the PDF and PPTX renders, for a deck page people open and download from |
 
-All four scripts run on a *generated* deck, not on the preset YAMLs.
+All five scripts run on a *generated* deck, not on the preset YAMLs.
 
 ---
 
@@ -245,6 +246,43 @@ it against the shape drawn in the picture.
 Exit codes: 0 written, 1 the render failed or the output cannot be written, 2 wrong
 usage (an unknown track, the output path equal to the input) or a missing dependency.
 On success it prints `render-pptx: wrote <path> (<n> slides, <m> text boxes, <k> tables)`.
+
+---
+
+## 5. `embed-downloads.py`: PDF and PowerPoint inside the deck
+
+A deck in its deck view (`--deck-attr data-view=deck`, `reference/slide-types.md`
+§ Deck view) shows a PDF and a PowerPoint button in its toolbar once the files are in
+the deck. Render them first, then embed:
+
+```bash
+node $SKILL/render-pdf.cjs deck.html deck.pdf
+uv run --with python-pptx --with playwright python $SKILL/render-pptx.py deck.html deck.pptx
+python3 $SKILL/embed-downloads.py deck.html --pdf deck.pdf --pptx deck.pptx [--out deck-send.html]
+```
+
+Each file goes in as base64 inside a `<script type="application/x-deck-download">`
+element between `<!-- deck-downloads:start -->` and `<!-- deck-downloads:end -->`
+before `</body>`. The engine decodes it into a Blob only when the button is clicked, so
+the download works offline and inside a sandboxed frame that allows downloads
+(`sandbox="allow-scripts allow-downloads"`). The files are named after the deck's
+`<title>` ("Quarterly review" gives `Quarterly-review.pdf`), or `--name STEM`. Running
+the script again replaces the region; `--remove` takes it out; `new-deck.py --refresh`
+keeps it as it is (render and embed again after a refresh that changes the slides).
+
+**Size guard:** `--max-total` (default `14MiB`) caps the whole finished HTML file. Above
+it the PowerPoint is skipped first and the script says so on stderr; a PDF that alone
+does not fit is refused (exit 1). A deck hosted next to its files links them instead
+and embeds nothing: `--pdf-url deck.pdf --pptx-url deck.pptx` (the button points at the
+address, so it needs the files beside the page).
+
+The buttons and the toolbar are screen only: print, the PDF and the PPTX never show
+them. A `data-deck="download:pdf"` button on a slide downloads the same file in any
+deck, deck view or not. `check-anonymity.py` skips script bodies, so the base64 never
+reads as a hit; audit the deck before rendering the PDF and PPTX, which are made from it.
+
+Exit codes: 0 written (a skipped PowerPoint is named on stderr), 1 refused or a file is
+missing, 2 wrong usage.
 
 ---
 
