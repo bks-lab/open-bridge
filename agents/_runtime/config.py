@@ -112,8 +112,6 @@ class AgentConfig:
     allowed_tools: str
     cors_origins: list[str]
     max_concurrency: int
-    busy_retry_after_s: float = 5.0
-    slot_wait_timeout_s: float = 0.0
     max_input_chars: int
     max_turns: int
     max_contexts: int
@@ -121,6 +119,10 @@ class AgentConfig:
     skills: list[dict]
     system_prompt: str
     trust: str = "public"
+    # Load shedding (#640): the delay a shed caller is told to wait before asking
+    # again, and how long a turn may wait for a free claude -p slot (0 = shed at once).
+    busy_retry_after_s: float = 5.0
+    slot_wait_timeout_s: float = 0.0
     auth: AuthConfig = field(default_factory=AuthConfig)
     approval: ApprovalConfig = field(default_factory=ApprovalConfig)
     requests: RequestsConfig = field(default_factory=RequestsConfig)

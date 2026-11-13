@@ -251,6 +251,19 @@ class ClaudeAgentExecutor(AgentExecutor):
                 self._running.pop(task.id, None)
             return
 
+        # Resolve the peer's folder before taking a slot: a peer without one gets no
+        # turn, so it must not wait for a slot first, and nothing here can leak one.
+        scope = None
+        if self._scopes is not None:
+            scope = self._scopes.for_peer(peer)
+            if scope is None:
+                # No folder for this peer: nothing to read, and no shared fallback.
+                logger.warning("executor: no folder for peer", extra={"task_id": task.id, "peer": peer})
+                await updater.failed(
+                    message=updater.new_agent_message([new_text_part(self._msg["no_folder"])])
+                )
+                return
+
         # Shed load when every claude -p slot is busy instead of spawning unbounded
         # subprocesses. Answer with failed state and machine-readable metadata
         # (reason: busy, retry_after_s: ...) so the caller recognises it as a
@@ -279,19 +292,6 @@ class ClaudeAgentExecutor(AgentExecutor):
                             "retry_after_s": self._busy_retry_after_s,
                         },
                     )
-                )
-                return
-
-        scope = None
-        if self._scopes is not None:
-            scope = self._scopes.for_peer(peer)
-            if scope is None:
-                # No folder for this peer: nothing to read, and no shared fallback.
-                if acquired_in_wait:
-                    self._concurrency.release()
-                logger.warning("executor: no folder for peer", extra={"task_id": task.id, "peer": peer})
-                await updater.failed(
-                    message=updater.new_agent_message([new_text_part(self._msg["no_folder"])])
                 )
                 return
 

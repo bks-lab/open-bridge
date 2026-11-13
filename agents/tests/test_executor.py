@@ -532,3 +532,67 @@ def test_slot_wait_timeout_sheds_as_failed_if_slot_never_frees():
 
     asyncio.run(_test())
 
+
+
+def _peer_context(task_id: str, peer: str = "alice"):
+    user = SimpleNamespace(is_authenticated=True, user_name=peer)
+    return SimpleNamespace(
+        message=_message(),
+        current_task=None,
+        context_id=f"ctx-{task_id}",
+        task_id=task_id,
+        call_context=SimpleNamespace(user=user),
+    )
+
+
+def test_peer_without_folder_is_refused_without_waiting_for_a_slot():
+    # A peer with no folder gets no turn at all, so it must not sit in the slot
+    # queue first only to be told so (#640).
+    async def _test():
+        runner = _FakeStreamingRunner([{"kind": "answer", "text": "Never reached."}])
+        executor = ClaudeAgentExecutor(
+            runner, max_concurrency=1, slot_wait_timeout_s=5.0,
+            scopes=SimpleNamespace(for_peer=lambda peer: None),
+        )
+        await executor._concurrency.acquire()
+        queue = _RecordingQueue()
+        try:
+            await asyncio.wait_for(executor.execute(_peer_context("nofolder"), queue), 1.0)
+        finally:
+            executor._concurrency.release()
+
+        event = queue.events[-1]
+        assert event.status.state == TaskState.TASK_STATE_FAILED
+        assert event.status.message.parts[0].text == executor._msg["no_folder"]
+        assert executor._concurrency._value == 1
+
+    asyncio.run(_test())
+
+
+def test_error_while_resolving_the_peer_folder_does_not_leak_a_slot():
+    # A slot taken while waiting must come back even when building the peer's
+    # scope raises (#640).
+    def _broken(peer):
+        raise RuntimeError("scope build failed")
+
+    async def _test():
+        runner = _FakeStreamingRunner([{"kind": "answer", "text": "Never reached."}])
+        executor = ClaudeAgentExecutor(
+            runner, max_concurrency=1, slot_wait_timeout_s=1.0,
+            scopes=SimpleNamespace(for_peer=_broken),
+        )
+        await executor._concurrency.acquire()
+
+        async def _delayed_release():
+            await asyncio.sleep(0.05)
+            executor._concurrency.release()
+
+        release = asyncio.create_task(_delayed_release())
+        try:
+            await executor.execute(_peer_context("broken"), _RecordingQueue())
+        except RuntimeError:
+            pass
+        await release
+        assert executor._concurrency._value == 1
+
+    asyncio.run(_test())

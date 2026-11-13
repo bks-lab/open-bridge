@@ -205,3 +205,21 @@ def test_public_trust_on_non_loopback_host_does_not_warn(tmp_path, monkeypatch, 
         )
     assert cfg.trust == "public"
     assert not any("non-loopback" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Load shedding (#640): how long a shed caller should wait, and how long a turn
+# may wait for a free claude -p slot before it is shed.
+# ---------------------------------------------------------------------------
+
+def test_busy_settings_default_when_absent(tmp_path, monkeypatch):
+    cfg = _load(monkeypatch, tmp_path, "busydefault", 'name: "BusyDefault"\n')
+    assert cfg.busy_retry_after_s == 5.0
+    assert cfg.slot_wait_timeout_s == 0.0
+
+
+def test_busy_settings_load_from_agent_yaml(tmp_path, monkeypatch):
+    cfg = _load(monkeypatch, tmp_path, "busyset", 'name: "BusySet"\n'
+                'busy_retry_after_s: 2.5\nslot_wait_timeout_s: 10\n')
+    assert cfg.busy_retry_after_s == 2.5
+    assert cfg.slot_wait_timeout_s == 10.0
