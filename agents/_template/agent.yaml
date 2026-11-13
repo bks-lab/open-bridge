@@ -133,6 +133,11 @@ allowed_tools: "Read,Glob,Grep"
 
 # Public-endpoint guardrails (an ungated endpoint WILL be hit).
 max_concurrency: 2
+# When every slot is busy the task ends `failed` with reason `busy`; a caller is
+# told to ask again after busy_retry_after_s. slot_wait_timeout_s > 0 lets a turn
+# wait that long for a free slot first (0 = shed at once).
+busy_retry_after_s: 5
+slot_wait_timeout_s: 0
 max_input_chars: 4000
 max_turns: 24
 max_contexts: 500
