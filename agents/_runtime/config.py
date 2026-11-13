@@ -112,6 +112,8 @@ class AgentConfig:
     allowed_tools: str
     cors_origins: list[str]
     max_concurrency: int
+    busy_retry_after_s: float = 5.0
+    slot_wait_timeout_s: float = 0.0
     max_input_chars: int
     max_turns: int
     max_contexts: int
@@ -300,6 +302,8 @@ def load_agent_config(instance: str, *, environment: str | None = None) -> Agent
         allowed_tools=allowed_tools,
         cors_origins=cors,
         max_concurrency=int(spec.get("max_concurrency", 2)),
+        busy_retry_after_s=float(spec.get("busy_retry_after_s", 5.0)),
+        slot_wait_timeout_s=float(spec.get("slot_wait_timeout_s", 0.0)),
         max_input_chars=int(spec.get("max_input_chars", 4000)),
         max_turns=int(spec.get("max_turns", 24)),
         max_contexts=int(spec.get("max_contexts", 500)),

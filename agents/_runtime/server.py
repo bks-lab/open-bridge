@@ -128,6 +128,8 @@ def build_app(cfg: AgentConfig) -> Starlette:
         runner=runner,
         max_turns=cfg.max_turns,
         max_concurrency=cfg.max_concurrency,
+        busy_retry_after_s=cfg.busy_retry_after_s,
+        slot_wait_timeout_s=cfg.slot_wait_timeout_s,
         max_input_chars=cfg.max_input_chars,
         max_contexts=cfg.max_contexts,
         messages=cfg.messages,

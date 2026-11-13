@@ -439,3 +439,96 @@ def test_streaming_withholds_an_in_flight_directive_behind_a_trailing_newline():
     # The in-flight check looks at the last non-blank line, as before the rewrite.
     snap = "Text.\n⟦ui:off\n"
     assert ClaudeAgentExecutor._filter_streaming_answer(snap) == "Text."
+
+
+def test_shed_load_when_concurrency_slots_busy_emits_failed_not_completed():
+    # When all concurrency slots are taken, a shed task must NOT end as COMPLETED
+    # with the busy text (which callers mistake for an answer) (#640).
+    async def _test():
+        runner = _FakeStreamingRunner([{"kind": "answer", "text": "Real answer."}])
+        executor = ClaudeAgentExecutor(
+            runner, max_concurrency=1, busy_retry_after_s=7.5
+        )
+        # Satiate the sole concurrency slot
+        await executor._concurrency.acquire()
+
+        context = SimpleNamespace(
+            message=_message("Hello"),
+            current_task=None,
+            context_id="ctx-busy",
+            task_id="task-busy",
+        )
+        queue = _RecordingQueue()
+        await executor.execute(context, queue)
+
+        # Release the lock for cleanup
+        executor._concurrency.release()
+
+        assert queue.events, "expected status update event for shed task"
+        event = queue.events[-1]
+        assert event.status.state == TaskState.TASK_STATE_FAILED
+        assert event.status.state != TaskState.TASK_STATE_COMPLETED
+        msg = event.status.message
+        assert msg.parts[0].text == executor._msg["busy"]
+        assert dict(msg.metadata) == {"reason": "busy", "retry_after_s": 7.5}
+
+    asyncio.run(_test())
+
+
+def test_slot_wait_timeout_recovers_if_slot_frees():
+    # With slot_wait_timeout_s > 0, an incoming task waits and proceeds if a slot frees (#640).
+    async def _test():
+        runner = _FakeStreamingRunner([{"kind": "answer", "text": "Answer after wait."}])
+        executor = ClaudeAgentExecutor(
+            runner, max_concurrency=1, slot_wait_timeout_s=1.0
+        )
+        await executor._concurrency.acquire()
+
+        async def _delayed_release():
+            await asyncio.sleep(0.05)
+            executor._concurrency.release()
+
+        asyncio.create_task(_delayed_release())
+
+        context = SimpleNamespace(
+            message=_message("Question"),
+            current_task=None,
+            context_id="ctx-wait",
+            task_id="task-wait",
+        )
+        queue = _RecordingQueue()
+        await executor.execute(context, queue)
+
+        completed = [e for e in queue.events if getattr(e, "status", None) and e.status.state == TaskState.TASK_STATE_COMPLETED]
+        assert completed, "expected task to complete once slot freed"
+
+    asyncio.run(_test())
+
+
+def test_slot_wait_timeout_sheds_as_failed_if_slot_never_frees():
+    # If no slot frees within slot_wait_timeout_s, it sheds as FAILED (#640).
+    async def _test():
+        runner = _FakeStreamingRunner([{"kind": "answer", "text": "Never reached."}])
+        executor = ClaudeAgentExecutor(
+            runner, max_concurrency=1, slot_wait_timeout_s=0.05, busy_retry_after_s=3.0
+        )
+        await executor._concurrency.acquire()
+
+        context = SimpleNamespace(
+            message=_message("Question"),
+            current_task=None,
+            context_id="ctx-shed-timeout",
+            task_id="task-shed-timeout",
+        )
+        queue = _RecordingQueue()
+        await executor.execute(context, queue)
+
+        executor._concurrency.release()
+
+        assert queue.events, "expected status update event"
+        event = queue.events[-1]
+        assert event.status.state == TaskState.TASK_STATE_FAILED
+        assert dict(event.status.message.metadata) == {"reason": "busy", "retry_after_s": 3.0}
+
+    asyncio.run(_test())
+
