@@ -31,13 +31,13 @@ REQUEST = {"task_id": "t-1", "context_id": "c-1", "peer": "partner-bridge",
            "question": "When is the next release?", "answer": "Friday, after the review."}
 
 
-def start(repo: Path, timeout_sec: float = 20):
+def start(repo: Path, timeout_sec: float = 20, **extra):
     proc = subprocess.Popen(
         [sys.executable, str(APPROVER), "--root", str(repo), "--poll", "0.1"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
     assert proc.stdin is not None
-    proc.stdin.write(json.dumps({**REQUEST, "timeout_sec": timeout_sec}))
+    proc.stdin.write(json.dumps({**REQUEST, "timeout_sec": timeout_sec, **extra}))
     proc.stdin.close()
     return proc
 
@@ -170,3 +170,50 @@ def test_a_long_question_is_cut_between_words(repo):
     head = item.summary.split(": ", 1)[1]
     assert head.endswith("…")
     assert long_q.startswith(head[:-1].rstrip()) and long_q[len(head[:-1].rstrip())] == " "
+
+
+# A restart of the runtime while the owner thinks: the runtime asks again with the
+# same ask_id (agents/_runtime/executor.py resume_pending). One held answer is one
+# item, so the owner gets one notice, and a decision taken meanwhile counts.
+
+def test_asking_again_with_the_same_ask_id_waits_on_the_same_item(repo):
+    first = start(repo, ask_id="a-1")
+    item_id = wait_for_item(repo)
+    first.kill()                                   # the runtime went down mid-approval
+    first.wait(timeout=10)
+    again = start(repo, ask_id="a-1")
+    time.sleep(0.5)
+    box = inbox.Inbox(repo / "work" / "inbox", actor="owner")
+    assert [i.id for i in box.items()] == [item_id]
+    box.approve(item_id)
+    assert finish(again) == {"decision": "approve"}
+    assert box.get(item_id).state == "done"
+
+
+@pytest.mark.parametrize("verb, expected", [("approve", "approve"), ("reject", "reject")])
+def test_a_decision_taken_while_nobody_waited_is_the_answer(repo, verb, expected):
+    first = start(repo, ask_id="a-1")
+    item_id = wait_for_item(repo)
+    first.kill()
+    first.wait(timeout=10)
+    inbox.Inbox(repo / "work" / "inbox", actor="owner").event(item_id, verb)
+    assert finish(start(repo, ask_id="a-1")) == {"decision": expected}
+    assert len(inbox.Inbox(repo / "work" / "inbox", actor="owner").items()) == 1
+
+
+def test_a_released_and_closed_item_still_answers_its_own_ask_id(repo):
+    """The runtime died after the yes reached the approver but before it was recorded."""
+    first = start(repo, ask_id="a-1")
+    item_id = wait_for_item(repo)
+    inbox.Inbox(repo / "work" / "inbox", actor="owner").approve(item_id)
+    assert finish(first) == {"decision": "approve"}
+    assert finish(start(repo, ask_id="a-1")) == {"decision": "approve"}
+
+
+def test_a_new_ask_id_in_the_same_task_never_meets_the_old_yes(repo):
+    first = start(repo, ask_id="a-1")
+    item_id = wait_for_item(repo)
+    inbox.Inbox(repo / "work" / "inbox", actor="owner").approve(item_id)
+    assert finish(first) == {"decision": "approve"}
+    assert finish(start(repo, timeout_sec=1.0, ask_id="a-2")) == {"decision": "timeout"}
+    assert len(inbox.Inbox(repo / "work" / "inbox", actor="owner").items()) == 2

@@ -539,6 +539,9 @@ class ClaudeAgentExecutor(AgentExecutor):
             "peer": peer,
             "question": question,
             "answer": answer,
+            # One id per held answer. The journal keeps it, so the ask after a restart
+            # carries the same one and the approver can wait on what it already filed.
+            "ask_id": uuid.uuid4().hex,
         }
         # Journal first, so a restart while the owner thinks can ask again.
         journaled = self._store is not None and bool(context.task_id)

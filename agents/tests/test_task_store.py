@@ -135,6 +135,10 @@ def test_an_approval_waiting_at_restart_is_asked_again(fakes, verdict, final):
         assert _until(c, tid, lambda s: s == final) == final
         assert len(_FakeApprover.requests) == 2
         assert _FakeApprover.requests[1]["answer"] == ANSWER
+        # Same held answer, same ask_id: the approver can wait on the item it already filed
+        # instead of sending the owner a second notice.
+        assert _FakeApprover.requests[0]["ask_id"]
+        assert _FakeApprover.requests[1]["ask_id"] == _FakeApprover.requests[0]["ask_id"]
         task = _get(c, tid)["result"]
         assert (ANSWER in str(task)) == (verdict == "approve")
     # Decided once: a further restart does not ask again.
@@ -142,6 +146,16 @@ def test_an_approval_waiting_at_restart_is_asked_again(fakes, verdict, final):
         time.sleep(0.2)
         assert _state(c, tid) == final
         assert len(_FakeApprover.requests) == 2
+
+
+def test_each_held_answer_gets_its_own_ask_id(fakes):
+    with TestClient(build_app(_cfg())) as c:
+        first = _send(c, message_id="m-1")["id"]
+        second = _send(c, message_id="m-2")["id"]
+        for tid in (first, second):
+            assert _until(c, tid, lambda s: s == "TASK_STATE_COMPLETED") == "TASK_STATE_COMPLETED"
+    ids = [r["ask_id"] for r in _FakeApprover.requests]
+    assert len(ids) == 2 and len(set(ids)) == 2
 
 
 def test_a_shed_task_fails_with_a_retry_reason(fakes):

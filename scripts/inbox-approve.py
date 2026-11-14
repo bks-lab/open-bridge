@@ -13,7 +13,15 @@ Bridge with an inbox. Declare it in an agent's agent.yaml:
 It reads the request from stdin, files it as an inbox item (kind draft, gate
 only-you, urgency now: an answer leaving to someone else is the owner's call;
 actions approve and reject, expires_at when timeout_sec runs out),
-and waits until a person decided on that item:
+and waits until a person decided on that item.
+
+A request with ``ask_id`` files its item under the key ``agent-approval:<ask_id>``.
+The runtime sends the same ``ask_id`` again when it restarted while the owner
+thought; that ask waits on the item already there (one notice, not two) and
+returns at once if the owner decided in the meantime. Each held answer has
+its own ``ask_id``, so an old yes still never meets a new answer.
+
+Decisions:
 
     python3 scripts/inbox.py approve <id>                 -> {"decision": "approve"}
     python3 scripts/inbox.py approve <id> --text "..."    -> {"decision": "edit", "text": "..."}
@@ -22,9 +30,9 @@ and waits until a person decided on that item:
 
 --sync pushes the new item and, while waiting, fetches and takes only this
 item's folder from the upstream, for an owner who decides on another machine.
-It never rebases or stashes the working tree. Every request is its own item:
-a second answer in the same task never meets the first answer's yes, and a
-decided item is closed at once. The runtime fails closed on anything
+It never rebases or stashes the working tree. Every held answer is its own
+item: a second answer in the same task never meets the first answer's yes, and
+a decided item is closed at once. The runtime fails closed on anything
 else, so a crash here means the answer is not sent. Model: docs/inbox.md.
 """
 from __future__ import annotations
@@ -75,6 +83,24 @@ def decision_of(item) -> dict | None:
     return None
 
 
+def earlier_decision(item) -> dict | None:
+    """The decision on an item this approver filed before (same ``ask_id``), if any.
+
+    Like ``decision_of``, except that the approver's own close after a yes does not
+    hide that yes: the runtime may have stopped before it recorded the answer.
+    """
+    closed = False
+    for event in reversed(item.events):
+        if event.verb == "approve":
+            text = event.data.get("text")
+            return {"decision": "edit", "text": text} if text else {"decision": "approve"}
+        if event.verb in ("reject", "drop"):
+            return {"decision": "reject"}
+        if event.verb == "close":
+            closed = True
+    return {"decision": "reject"} if closed else None
+
+
 def _clip(text: str, limit: int) -> str:
     """At most ``limit`` characters, cut between words: a question cut inside a word
     reads as a typo in the briefing (07.11.2026)."""
@@ -109,15 +135,26 @@ def main(argv=None) -> int:
 
     inbox = _load_inbox()
     box = inbox.Inbox(args.root / "work" / "inbox", actor=args.by)
-    # One item per request, never a dedup key: a second answer in the same task
-    # must never meet the first answer's yes.
-    item_id = box.add(
+    # One item per held answer: keyed by ask_id when the runtime sends one, never by
+    # task: a second answer in the same task must never meet the first answer's yes.
+    ask_id = str(request.get("ask_id") or "").strip()
+    key = f"agent-approval:{ask_id}" if ask_id else None
+    earlier = [i for i in box.items() if i.key == key] if key else []
+    if earlier:
+        decided = earlier_decision(earlier[-1])
+        if decided:
+            if decided["decision"] != "reject" and earlier[-1].state not in ("done", "dropped"):
+                box.close(earlier[-1].id, note="answer released to the agent")
+            print(json.dumps(decided, ensure_ascii=False))
+            return 0
+    item_id = earlier[-1].id if earlier else box.add(
         source=f"agent-approval/{peer}", kind="draft", gate="only-you", urgency="now",
         summary=f"Answer to {peer} waits for your release: {_clip(str(request.get('question') or ''), 80)}",
         detail=f"Question:\n{request.get('question') or ''}\n\nDrafted answer:\n{answer}",
         # A notifier offers exactly these, and shows until when: the runtime gives up after timeout_sec.
         actions=["approve", "reject"],
         expires_at=(dt.datetime.now().astimezone() + dt.timedelta(seconds=timeout)).isoformat(timespec="seconds"),
+        key=key,
     )
     item_path = f"work/inbox/{item_id}"
     inbox_py = Path(__file__).with_name("inbox.py")

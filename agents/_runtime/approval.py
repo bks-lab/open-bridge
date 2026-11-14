@@ -11,6 +11,12 @@ answer, writes one JSON object to its stdin::
 
     {"task_id", "context_id", "peer", "question", "answer", "timeout_sec"}
 
+A held peer answer also carries ``ask_id``, one id per held answer. After a restart
+the runtime asks again for an answer that was still waiting, with the same
+``ask_id``: an approver that already notified the owner waits on that notice (and
+takes a decision made in the meantime) instead of sending a second one. A new
+answer, even in the same task, always gets a new ``ask_id``.
+
 and reads one JSON object from its stdout::
 
     {"decision": "approve"}                       send the answer as drafted
