@@ -383,3 +383,62 @@ def test_a_held_answer_prints_its_task_id(monkeypatch, bridge, capsys):
     monkeypatch.setattr(a2a, "http_json", rec)
     a2a.main(["ask", "open", "Stand?"])
     assert "t-held" in capsys.readouterr().out
+
+
+# ------------------------------------------------------------ busy (#640)
+
+def busy_task(retry_after=2.0, task_id="t-busy"):
+    meta = {"reason": "busy"}
+    if retry_after is not None:
+        meta["retry_after_s"] = retry_after
+    return {"jsonrpc": "2.0", "id": "x", "result": {"task": {
+        "id": task_id, "contextId": "c-1", "status": {"state": "TASK_STATE_FAILED", "message": {
+            "role": "ROLE_AGENT", "parts": [{"text": "A lot of requests are arriving at once."}],
+            "metadata": meta}},
+    }}}
+
+
+def test_a_busy_peer_is_asked_again_after_its_retry_delay(monkeypatch):
+    rec = Recorder([(200, busy_task(retry_after=2.0)), (200, v1_task())])
+    slept = []
+    monkeypatch.setattr(a2a, "http_json", rec)
+    monkeypatch.setattr(a2a.time, "sleep", slept.append)
+    task = a2a.ask(v1_card(), "Frage?", token="x" * 40, context_id="c-1")
+    assert a2a._state(task) == "completed" and a2a.task_text(task) == "Antwort."
+    assert slept == [2.0]
+    assert [c["body"]["method"] for c in rec.calls] == ["SendMessage", "SendMessage"]
+    first, second = (c["body"]["params"]["message"] for c in rec.calls)
+    assert first["messageId"] != second["messageId"]
+    assert second["contextId"] == "c-1"
+
+
+def test_busy_retries_stop_after_the_limit(monkeypatch):
+    rec = Recorder([(200, busy_task())] * 3)
+    monkeypatch.setattr(a2a, "http_json", rec)
+    monkeypatch.setattr(a2a.time, "sleep", lambda s: None)
+    task = a2a.ask(v1_card(), "Frage?", token="x" * 40, busy_retries=2)
+    assert a2a._state(task) == "failed"
+    assert len(rec.calls) == 3
+
+
+def test_busy_retries_can_be_switched_off(monkeypatch):
+    rec = Recorder([(200, busy_task())])
+    monkeypatch.setattr(a2a, "http_json", rec)
+    assert a2a._state(a2a.ask(v1_card(), "Frage?", token="x" * 40, busy_retries=0)) == "failed"
+    assert len(rec.calls) == 1
+
+
+def test_a_failure_without_busy_reason_is_not_retried(monkeypatch):
+    rec = Recorder([(200, v1_task(state="TASK_STATE_FAILED", text="Error: boom"))])
+    monkeypatch.setattr(a2a, "http_json", rec)
+    assert a2a._state(a2a.ask(v1_card(), "Frage?", token="x" * 40)) == "failed"
+    assert len(rec.calls) == 1
+
+
+def test_the_retry_delay_is_capped_and_has_a_default(monkeypatch):
+    rec = Recorder([(200, busy_task(retry_after=3600)), (200, busy_task(retry_after=None)), (200, v1_task())])
+    slept = []
+    monkeypatch.setattr(a2a, "http_json", rec)
+    monkeypatch.setattr(a2a.time, "sleep", slept.append)
+    a2a.ask(v1_card(), "Frage?", token="x" * 40)
+    assert slept == [a2a.BUSY_MAX_WAIT_S, a2a.BUSY_DEFAULT_WAIT_S]

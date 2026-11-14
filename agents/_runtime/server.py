@@ -147,6 +147,7 @@ def build_app(cfg: AgentConfig) -> Starlette:
         grants=GrantCommand(cfg.access) if cfg.access.grant is not None else None,
         task_store=task_store,
         busy_retry_after_s=cfg.busy_retry_after_s,
+        slot_wait_timeout_s=cfg.slot_wait_timeout_s,
     )
     agent_card = build_agent_card(cfg)
 

@@ -283,7 +283,8 @@ outside the A2A executor, so a tool must treat its absence as normal, not an err
 
 An ungated endpoint will be hit. The executor enforces `max_concurrency` (shed load
 rather than spawning unbounded subprocesses: a shed task ends `failed` with the "busy"
-text and `reason: busy`, `retry_after_s` in the message metadata, never `completed`),
+text and `reason: busy`, `retry_after_s` in the message metadata, never `completed`;
+`slot_wait_timeout_s` lets a turn wait that many seconds for a free slot first),
 `max_input_chars` (reject overlong input), `max_turns` (transcript depth per context),
 and `max_contexts` (an LRU bounded in both dimensions — turns per context and number
 of contexts — so a stream of unique session IDs cannot grow memory without bound). Add
