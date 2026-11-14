@@ -24,11 +24,12 @@ Themes live in `themes/*.yaml`.
 | `professional` | en | Neutral, business-friendly (default) |
 | `professional-de` | de | German translation, extends professional |
 | `professional-fr` | fr | French translation, extends professional |
+| `professional-es` | es | Spanish translation, extends professional |
 | `professional-zh-cn` | zh-CN | Simplified Chinese translation, extends professional |
 
 ```yaml
 # bridge-config.yaml
-theme: professional        # professional | professional-de | professional-fr | professional-zh-cn | {custom}
+theme: professional        # professional | professional-de | professional-fr | professional-es | professional-zh-cn | {custom}
 ```
 
 Full vocabulary: see `themes/professional.yaml`.

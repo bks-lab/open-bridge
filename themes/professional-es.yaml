@@ -1,4 +1,3 @@
-
 # themes/professional-es.yaml
 # Spanish locale: professional vocabulary in Spanish.
 # CORE file — lives on the default/core branch.
@@ -56,7 +55,7 @@ vocabulary:
   resume: "Reanudar"
 
 phrases:
-  session_greeting: "Buenos días. Aquí tienes el informe."
+  session_greeting: "Buenos días. Aquí tiene el informe."
   dispatch_confirm: "{agent} ha sido asignado a {task}."
   completion_report: "{agent} ha completado la tarea: {summary}"
   escalation_notice: "{agent} necesita atención — {reason}"
