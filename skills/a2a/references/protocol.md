@@ -22,6 +22,11 @@ server wants input from YOU), `AUTH_REQUIRED`, and the terminal ones `COMPLETED`
 `FAILED`, `CANCELED`, `REJECTED`. A server that waits for its own owner's approval
 should stay `WORKING` with a status message, not `INPUT_REQUIRED`.
 
+A Bridge agent whose slots are all taken ends the task `FAILED` with `reason: busy`
+and `retry_after_s` in the status message metadata. That is "ask again later", not
+an answer: `a2a.py ask` waits the suggested delay (capped at 30 s) and sends the
+question again, at most twice, before it reports the failure.
+
 Security in the card: `securitySchemes` (apiKey, http bearer or basic, oauth2,
 openIdConnect, mtls) plus `securityRequirements`, optionally per skill. Identity,
 delegation and data classification are not part of the protocol.

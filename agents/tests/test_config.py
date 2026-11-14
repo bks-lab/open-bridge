@@ -205,3 +205,9 @@ def test_public_trust_on_non_loopback_host_does_not_warn(tmp_path, monkeypatch, 
         )
     assert cfg.trust == "public"
     assert not any("non-loopback" in r.message for r in caplog.records)
+
+
+def test_slot_wait_defaults_to_zero_and_loads_from_agent_yaml(tmp_path, monkeypatch):
+    assert _load(monkeypatch, tmp_path, "waitdefault", 'name: "W"\n').slot_wait_timeout_s == 0.0
+    cfg = _load(monkeypatch, tmp_path, "waitset", 'name: "W"\nslot_wait_timeout_s: 10\n')
+    assert cfg.slot_wait_timeout_s == 10.0

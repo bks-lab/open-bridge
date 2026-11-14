@@ -140,12 +140,14 @@ class ClaudeAgentExecutor(AgentExecutor):
         grants=None,
         task_store=None,
         busy_retry_after_s: float = 5.0,
+        slot_wait_timeout_s: float = 0.0,
     ) -> None:
         self._runner = runner
         # Durable store (see _runtime/task_store.py): keeps the journal of answers that
         # wait for their owner, so a restart can ask again. None = nothing survives.
         self._store = task_store if hasattr(task_store, "add_pending") else None
         self._busy_retry_after_s = float(busy_retry_after_s)
+        self._slot_wait_timeout_s = max(0.0, float(slot_wait_timeout_s))
         # Approvals re-asked after a restart, by task id, so ``cancel`` reaches them.
         self._resumed: dict[str, asyncio.Task] = {}
         # Per-peer folders and access on request (see _runtime/access.py). ``scopes``
@@ -178,6 +180,25 @@ class ClaudeAgentExecutor(AgentExecutor):
         self._concurrency = asyncio.Semaphore(max(1, max_concurrency))
         self._running: dict[str, asyncio.Task] = {}
         self._msg = {**DEFAULT_MESSAGES, **(messages or {})}
+
+    async def _take_slot(self) -> bool:
+        """Take a claude -p slot; False when none frees within ``slot_wait_timeout_s``.
+
+        A free slot is taken at once (``locked()`` → ``acquire()`` has no await
+        between, so in single-threaded asyncio this cannot block). Without a wait a
+        busy executor sheds at once; with one, ``wait_for`` cancels the pending
+        acquire on timeout, so a timed-out wait holds no slot.
+        """
+        if not self._concurrency.locked():
+            await self._concurrency.acquire()
+            return True
+        if self._slot_wait_timeout_s <= 0:
+            return False
+        try:
+            await asyncio.wait_for(self._concurrency.acquire(), timeout=self._slot_wait_timeout_s)
+        except asyncio.TimeoutError:
+            return False
+        return True
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Handle a message/send or message/stream request."""
@@ -268,22 +289,8 @@ class ClaudeAgentExecutor(AgentExecutor):
                 self._running.pop(task.id, None)
             return
 
-        # Shed load when every claude -p slot is busy instead of spawning unbounded
-        # subprocesses. ``locked()`` → ``acquire()`` has no await between, so in
-        # single-threaded asyncio this cannot block.
-        # A shed task ends failed with a machine-readable reason, never completed: the
-        # busy text is not an answer, and the caller must be able to tell it to retry
-        # (open-bridge#640).
-        if self._concurrency.locked():
-            logger.info("executor: shed, all slots busy", extra={"task_id": task.id, "peer": peer})
-            await updater.failed(
-                message=updater.new_agent_message(
-                    [new_text_part(self._msg["busy"])],
-                    metadata={"reason": "busy", "retry_after_s": self._busy_retry_after_s},
-                )
-            )
-            return
-
+        # The peer's folder comes before the slot: a peer without one gets no turn, so
+        # it hears that, not "busy", and never waits for a slot first.
         scope = None
         if self._scopes is not None:
             scope = self._scopes.for_peer(peer)
@@ -295,7 +302,21 @@ class ClaudeAgentExecutor(AgentExecutor):
                 )
                 return
 
-        await self._concurrency.acquire()
+        # Shed load when every claude -p slot is busy instead of spawning unbounded
+        # subprocesses. With ``slot_wait_timeout_s`` a turn first waits that long for a
+        # slot to free. A shed task ends failed with a machine-readable reason, never
+        # completed: the busy text is not an answer, and the caller must be able to
+        # tell it to retry (open-bridge#640).
+        if not await self._take_slot():
+            logger.info("executor: shed, all slots busy", extra={"task_id": task.id, "peer": peer})
+            await updater.failed(
+                message=updater.new_agent_message(
+                    [new_text_part(self._msg["busy"])],
+                    metadata={"reason": "busy", "retry_after_s": self._busy_retry_after_s},
+                )
+            )
+            return
+
         run_task = asyncio.ensure_future(
             self._run(updater, context, user_text, runtime_context, peer=peer, slot_key=task.id,
                       scope=scope)

@@ -134,6 +134,8 @@ class AgentConfig:
     task_keep_days: float = 30.0
     # Shed caller is told to retry after this many seconds (open-bridge#640).
     busy_retry_after_s: float = 5.0
+    # How long a turn may wait for a free claude -p slot before it is shed (0 = shed at once).
+    slot_wait_timeout_s: float = 0.0
 
 
 def _resolve_path(value: str | None) -> str | None:
@@ -322,6 +324,7 @@ def load_agent_config(instance: str, *, environment: str | None = None) -> Agent
         task_store_path=_task_store_path(inst_dir, spec.get("task_store")),
         task_keep_days=float((spec.get("task_store") or {}).get("keep_days", 30)),
         busy_retry_after_s=float(spec.get("busy_retry_after_s", 5.0)),
+        slot_wait_timeout_s=float(spec.get("slot_wait_timeout_s", 0.0)),
     )
 
 

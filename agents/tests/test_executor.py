@@ -439,3 +439,99 @@ def test_streaming_withholds_an_in_flight_directive_behind_a_trailing_newline():
     # The in-flight check looks at the last non-blank line, as before the rewrite.
     snap = "Text.\n⟦ui:off\n"
     assert ClaudeAgentExecutor._filter_streaming_answer(snap) == "Text."
+
+
+# ---------------------------------------------------------------------------
+# Slot wait (#640 follow-up, idea from #685): a turn may wait a bounded time for
+# a free claude -p slot before it is shed as failed / reason busy.
+# ---------------------------------------------------------------------------
+
+def _plain_context(task_id: str):
+    return SimpleNamespace(message=_message(), current_task=None,
+                           context_id=f"ctx-{task_id}", task_id=task_id)
+
+
+def _peer_context(task_id: str, peer: str = "alice"):
+    ctx = _plain_context(task_id)
+    ctx.call_context = SimpleNamespace(user=SimpleNamespace(is_authenticated=True, user_name=peer))
+    return ctx
+
+
+def _states(queue) -> list:
+    return [e.status.state for e in queue.events if getattr(e, "status", None)]
+
+
+def test_without_slot_wait_a_busy_turn_is_shed_at_once():
+    async def _test():
+        executor = ClaudeAgentExecutor(_FakeStreamingRunner([{"kind": "answer", "text": "x"}]),
+                                       max_concurrency=1)
+        await executor._concurrency.acquire()
+        queue = _RecordingQueue()
+        try:
+            await asyncio.wait_for(executor.execute(_plain_context("t-shed"), queue), 0.5)
+        finally:
+            executor._concurrency.release()
+        assert _states(queue)[-1] == TaskState.TASK_STATE_FAILED
+        assert dict(queue.events[-1].status.message.metadata)["reason"] == "busy"
+
+    asyncio.run(_test())
+
+
+def test_slot_wait_runs_the_turn_once_a_slot_frees():
+    async def _test():
+        executor = ClaudeAgentExecutor(
+            _FakeStreamingRunner([{"kind": "answer", "text": "Answer after wait."}]),
+            max_concurrency=1, slot_wait_timeout_s=2.0)
+        await executor._concurrency.acquire()
+
+        async def _free():
+            await asyncio.sleep(0.05)
+            executor._concurrency.release()
+
+        freeing = asyncio.create_task(_free())
+        queue = _RecordingQueue()
+        await executor.execute(_plain_context("t-wait"), queue)
+        await freeing
+        assert TaskState.TASK_STATE_COMPLETED in _states(queue)
+        assert TaskState.TASK_STATE_FAILED not in _states(queue)
+        assert executor._concurrency._value == 1
+
+    asyncio.run(_test())
+
+
+def test_slot_wait_sheds_as_busy_when_no_slot_frees_in_time():
+    async def _test():
+        executor = ClaudeAgentExecutor(
+            _FakeStreamingRunner([{"kind": "answer", "text": "Never reached."}]),
+            max_concurrency=1, slot_wait_timeout_s=0.05, busy_retry_after_s=3.0)
+        await executor._concurrency.acquire()
+        queue = _RecordingQueue()
+        try:
+            await executor.execute(_plain_context("t-timeout"), queue)
+        finally:
+            executor._concurrency.release()
+        assert _states(queue)[-1] == TaskState.TASK_STATE_FAILED
+        assert dict(queue.events[-1].status.message.metadata) == {"reason": "busy", "retry_after_s": 3.0}
+        assert executor._concurrency._value == 1
+
+    asyncio.run(_test())
+
+
+def test_peer_without_folder_is_told_so_even_when_all_slots_are_busy():
+    # A peer with no folder gets no turn at all: it must hear "nothing set up",
+    # not "busy, ask again", and must not sit out a slot wait first.
+    async def _test():
+        executor = ClaudeAgentExecutor(
+            _FakeStreamingRunner([{"kind": "answer", "text": "Never reached."}]),
+            max_concurrency=1, slot_wait_timeout_s=5.0,
+            scopes=SimpleNamespace(for_peer=lambda peer: None))
+        await executor._concurrency.acquire()
+        queue = _RecordingQueue()
+        try:
+            await asyncio.wait_for(executor.execute(_peer_context("t-nofolder"), queue), 1.0)
+        finally:
+            executor._concurrency.release()
+        assert _states(queue)[-1] == TaskState.TASK_STATE_FAILED
+        assert queue.events[-1].status.message.parts[0].text == executor._msg["no_folder"]
+
+    asyncio.run(_test())

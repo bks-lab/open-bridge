@@ -44,6 +44,12 @@ CARD_PATH = "/.well-known/agent-card.json"
 LEGACY_CARD_PATH = "/.well-known/agent.json"
 SUPPORTED_MAJORS = ("0.", "1.")
 TERMINAL = {"completed", "failed", "canceled", "rejected"}
+# A peer whose slots are all taken ends the task failed with reason "busy" and a
+# suggested retry_after_s (open-bridge#640). ask() waits that long (capped) and asks
+# again, up to busy_retries times, so the busy text never comes back as an answer.
+BUSY_RETRIES = 2
+BUSY_DEFAULT_WAIT_S = 5.0
+BUSY_MAX_WAIT_S = 30.0
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _REF = re.compile(r"^(keychain|env|azure-keyvault|1password|keepass|vault|file)://\S+$")
 
@@ -229,6 +235,20 @@ def _task_of(result: dict) -> dict:
     return result
 
 
+def busy_retry_after(task: dict) -> float | None:
+    """Seconds to wait before asking again when the peer shed the task as busy, else None."""
+    if _state(task) != "failed":
+        return None
+    meta = ((task.get("status") or {}).get("message") or {}).get("metadata") or {}
+    if meta.get("reason") != "busy":
+        return None
+    try:
+        wait = float(meta.get("retry_after_s", BUSY_DEFAULT_WAIT_S))
+    except (TypeError, ValueError):
+        wait = BUSY_DEFAULT_WAIT_S
+    return min(max(wait, 0.0), BUSY_MAX_WAIT_S)
+
+
 def task_text(task: dict) -> str:
     texts = [p.get("text", "") for a in task.get("artifacts") or [] for p in a.get("parts") or []]
     if not any(t.strip() for t in texts):
@@ -246,11 +266,30 @@ def _headers(protocol: str, token: str | None) -> dict:
 
 def ask(card: dict, question: str, *, token: str | None, context_id: str | None = None,
         wait: float = 0, poll_every: float = 5, timeout: float = 200,
-        metadata: dict | None = None, nonblocking: bool = False) -> dict:
-    """Send one question; poll while the peer holds the task (e.g. awaiting approval)."""
+        metadata: dict | None = None, nonblocking: bool = False,
+        busy_retries: int = BUSY_RETRIES) -> dict:
+    """Send one question; poll while the peer holds the task (e.g. awaiting approval).
+
+    A task the peer shed as busy is sent again after its retry delay, at most
+    ``busy_retries`` times; the last busy task is returned as it came.
+    """
     protocol, url = card_endpoint(card)
     if not protocol.startswith(SUPPORTED_MAJORS):
         raise A2AError(f"unsupported protocol version {protocol or 'missing'}")
+    for attempt in range(max(0, busy_retries) + 1):
+        task = _send_once(card, question, protocol, url, token=token, context_id=context_id,
+                          wait=wait, poll_every=poll_every, timeout=timeout,
+                          metadata=metadata, nonblocking=nonblocking)
+        delay = busy_retry_after(task)
+        if delay is None or attempt == max(0, busy_retries):
+            return task
+        time.sleep(delay)
+    return task
+
+
+def _send_once(card: dict, question: str, protocol: str, url: str, *, token: str | None,
+               context_id: str | None, wait: float, poll_every: float, timeout: float,
+               metadata: dict | None, nonblocking: bool) -> dict:
     payload = build_payload(question, context_id, protocol, nonblocking=nonblocking or wait > 0,
                             metadata=metadata)
     status, body = http_json(url, body=payload,
