@@ -1,0 +1,64 @@
+
+# themes/professional-es.yaml
+# Spanish locale: professional vocabulary in Spanish.
+# CORE file — lives on the default/core branch.
+#
+# Extends professional.yaml — only overrides vocabulary with
+# Spanish translations. Alerts and phrases inherit from
+# professional unless overridden here.
+
+schema_version: 1
+
+meta:
+  name: professional-es
+  display_name: "Profesional (Español)"
+  description: "Vocabulario profesional neutro en español"
+  locale: es
+  author: "open-bridge by BKS-Lab"
+  version: "1.0.0"
+  extends: professional
+
+vocabulary:
+  user: "Responsable"
+  assistant: "Asistente"
+  assistant_name: "Orquestador"
+  agents: "Especialistas"
+  agent_singular: "Especialista"
+
+  work_log: "Registro de trabajo"
+  task: "Tarea"
+  tasks: "Tareas"
+  task_board: "Tablero de tareas"
+  active_tasks: "Tareas activas"
+  queued_tasks: "Tareas en espera"
+  completed_tasks: "Tareas completadas"
+
+  incident: "Incidente"
+  warning: "Advertencia"
+  cross_repo: "Entre repositorios"
+  daily_check: "Informe diario"
+  week_archive: "Archivo semanal"
+  analysis: "Análisis detallado"
+  onboarding: "Configuración inicial"
+
+  repos: "Proyectos"
+  remote: "Remoto"
+  remotes: "Remotos"
+  channel: "Canal"
+  channels: "Canales"
+  schedule: "Tarea programada"
+  protocol: "Protocolo"
+  protocols: "Protocolos"
+
+  dispatch: "Asignar"
+  spawn: "Iniciar"
+  park: "Pausar"
+  resume: "Reanudar"
+
+phrases:
+  session_greeting: "Buenos días. Aquí tienes el informe."
+  dispatch_confirm: "{agent} ha sido asignado a {task}."
+  completion_report: "{agent} ha completado la tarea: {summary}"
+  escalation_notice: "{agent} necesita atención — {reason}"
+  log_prefix: ""
+  status_header: "Panel de estado"
