@@ -2,8 +2,8 @@
 
 With an ``approval:`` block the executor holds every finished answer, marks the task
 WORKING with a waiting message, and asks an external approver command. ``approve``
-sends the answer, ``edit`` sends the owner's text instead, ``reject``, a timeout or a
-broken approver end the task REJECTED without the answer. Nothing of the answer may
+sends the answer, ``edit`` sends the owner's text instead, ``reject`` or a broken
+approver end the task REJECTED and a timeout ends it CANCELED, both without the answer. Nothing of the answer may
 reach the caller before the decision: no streamed delta, no step label.
 
 Hermetic: the runner is a fake, the approver is either a fake class or a short
@@ -133,7 +133,9 @@ def test_an_edited_answer_replaces_the_draft(client):
 def test_no_release_means_rejected_without_the_answer(client, verdict):
     _FakeApprover.decision = Decision(verdict)
     task = _final(client, _send(client)["id"])
-    assert task["status"]["state"] == "TASK_STATE_REJECTED"
+    # An approval that lapsed is canceled, not refused.
+    expected = "TASK_STATE_CANCELED" if verdict == "timeout" else "TASK_STATE_REJECTED"
+    assert task["status"]["state"] == expected
     assert SECRET_ANSWER not in json.dumps(task)
 
 

@@ -152,6 +152,10 @@ class OwnerRequests:
                 rule_id = self._add_rule(decision, peer, subject, task_id, notes)
             if owner_note:
                 notes.append(self._msg["owner_note"].format(text=owner_note))
+            if verdict == "timeout":
+                # The owner never decided: the request lapsed, nobody refused it.
+                await updater.cancel(message=self._say(updater, self._msg["request_no_decision"]))
+                return
             if verdict not in ("approve", "reject"):
                 await updater.reject(message=self._say(updater, self._msg["request_no_decision"]))
                 return

@@ -160,3 +160,5 @@ agents/*/share/peers/
 agents/*/share/grants/
 agents/*/access.grants.yaml
 agents/*/.access.lock
+# Durable tasks and the approval journal (agents/_runtime/task_store.py): peer content.
+agents/*/state/

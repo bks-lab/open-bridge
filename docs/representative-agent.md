@@ -156,7 +156,12 @@ extra read-only mounts are added with `--add-dir`; the tool footprint is whateve
 The server is a **plain Starlette app**, not an `A2AStarletteApplication` wrapper —
 a2a-sdk 1.x has no such wrapper. `build_app(cfg)` composes the SDK's JSON-RPC routes
 and agent-card routes into a Starlette app, wired to a `DefaultRequestHandler` over
-an `InMemoryTaskStore`, with the `ClaudeAgentExecutor` as the agent executor. A CORS
+a `SqliteTaskStore` (`_runtime/task_store.py`), with the `ClaudeAgentExecutor` as the
+agent executor. Tasks survive a restart: every save is written through to
+`agents/<instance>/state/tasks.sqlite` (`task_store.path` in `agent.yaml`, `memory` turns
+it off, finished tasks are dropped after `task_store.keep_days`, default 30). An answer
+that waits for its owner is journaled in the same file and the owner is asked again
+after a restart. A CORS
 middleware restricts origins to the configured list. Two small correctness shims live
 here: `enable_v0_3_compat=True` keeps the 0.3-dialect JSON-RPC **wire** working (method
 names on the RPC endpoint — it does not affect the card), and a route wrapper
@@ -277,7 +282,8 @@ outside the A2A executor, so a tool must treat its absence as normal, not an err
 ### Public-endpoint caps
 
 An ungated endpoint will be hit. The executor enforces `max_concurrency` (shed load
-with a friendly "busy" message rather than spawning unbounded subprocesses),
+rather than spawning unbounded subprocesses: a shed task ends `failed` with the "busy"
+text and `reason: busy`, `retry_after_s` in the message metadata, never `completed`),
 `max_input_chars` (reject overlong input), `max_turns` (transcript depth per context),
 and `max_contexts` (an LRU bounded in both dimensions — turns per context and number
 of contexts — so a stream of unique session IDs cannot grow memory without bound). Add

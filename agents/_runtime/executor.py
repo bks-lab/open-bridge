@@ -31,12 +31,13 @@ from a2a.helpers import (
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
-from a2a.types import TaskState, UnsupportedOperationError
+from a2a.types import Role, TaskState, UnsupportedOperationError
 
 from .access import split_access_directive
 from .otlp_logging import transcript_logger
 from .owner_requests import OwnerRequests, request_of
 from .runner import SubprocessClaudeRunner
+from .task_store import FINAL_STATES
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ DEFAULT_MESSAGES = {
     "empty": "Empty request received.",
     "too_long": "Your message is very long ({n} characters, max {max}). Please be a bit more concise.",
     "busy": "A lot of requests are arriving at once — please ask again in a few seconds.",
+    "requests_off": "This agent takes questions only; requests are not set up here, nothing was done.",
     "working": "Working on your request…",
     "error": "Error: {error}",
     "cancelled": "Operation cancelled.",
@@ -136,8 +138,16 @@ class ClaudeAgentExecutor(AgentExecutor):
         requests=None,
         scopes=None,
         grants=None,
+        task_store=None,
+        busy_retry_after_s: float = 5.0,
     ) -> None:
         self._runner = runner
+        # Durable store (see _runtime/task_store.py): keeps the journal of answers that
+        # wait for their owner, so a restart can ask again. None = nothing survives.
+        self._store = task_store if hasattr(task_store, "add_pending") else None
+        self._busy_retry_after_s = float(busy_retry_after_s)
+        # Approvals re-asked after a restart, by task id, so ``cancel`` reaches them.
+        self._resumed: dict[str, asyncio.Task] = {}
         # Per-peer folders and access on request (see _runtime/access.py). ``scopes``
         # builds what a turn may read; ``grants`` opens a topic once the owner said yes.
         # Access requests need an owner to ask.
@@ -177,9 +187,10 @@ class ClaudeAgentExecutor(AgentExecutor):
         if context.message is not None:
             user_text = (get_message_text(context.message) or "").strip()
             runtime_context = self._runtime_context_from(context.message)
-            if self._requests is not None:
-                request_kind, request_subject = request_of(
-                    getattr(context.message, "metadata", None))
+            # Parsed whether or not requests are set up: a request to an agent without
+            # them must be refused, not answered as a question.
+            request_kind, request_subject = request_of(
+                getattr(context.message, "metadata", None))
 
         # a2a-sdk 1.x: enqueue the Task BEFORE any status update.
         task = context.current_task
@@ -228,6 +239,16 @@ class ClaudeAgentExecutor(AgentExecutor):
             )
             return
 
+        if request_kind and self._requests is None:
+            # A request this agent does not take. Answering it as a question would read
+            # as "done" to the caller, so it ends rejected and the model is not asked.
+            logger.info("executor: request without requests set up",
+                        extra={"task_id": task.id, "peer": peer, "kind": request_kind})
+            await updater.reject(
+                message=updater.new_agent_message([new_text_part(self._msg["requests_off"])])
+            )
+            return
+
         if request_kind:
             # Not a question: the owner (or the owner's rule) decides, the model is
             # never involved, so no claude -p slot is taken.
@@ -250,9 +271,16 @@ class ClaudeAgentExecutor(AgentExecutor):
         # Shed load when every claude -p slot is busy instead of spawning unbounded
         # subprocesses. ``locked()`` → ``acquire()`` has no await between, so in
         # single-threaded asyncio this cannot block.
+        # A shed task ends failed with a machine-readable reason, never completed: the
+        # busy text is not an answer, and the caller must be able to tell it to retry
+        # (open-bridge#640).
         if self._concurrency.locked():
-            await updater.complete(
-                message=updater.new_agent_message([new_text_part(self._msg["busy"])])
+            logger.info("executor: shed, all slots busy", extra={"task_id": task.id, "peer": peer})
+            await updater.failed(
+                message=updater.new_agent_message(
+                    [new_text_part(self._msg["busy"])],
+                    metadata={"reason": "busy", "retry_after_s": self._busy_retry_after_s},
+                )
             )
             return
 
@@ -505,15 +533,29 @@ class ClaudeAgentExecutor(AgentExecutor):
             TaskState.TASK_STATE_WORKING,
             message=updater.new_agent_message([new_text_part(self._msg["awaiting_approval"])]),
         )
-        decision = await self._approver(
-            {
-                "task_id": context.task_id,
-                "context_id": cid,
-                "peer": peer,
-                "question": question,
-                "answer": answer,
-            }
-        )
+        request = {
+            "task_id": context.task_id,
+            "context_id": cid,
+            "peer": peer,
+            "question": question,
+            "answer": answer,
+        }
+        # Journal first, so a restart while the owner thinks can ask again.
+        journaled = self._store is not None and bool(context.task_id)
+        if journaled:
+            self._store.add_pending(context.task_id, _owner_of(context), request)
+        try:
+            decision = await self._approver(request)
+        except asyncio.CancelledError:
+            # Shutdown or CancelTask: the entry stays. After a restart ``resume_pending``
+            # asks again, and skips a task that already ended (a cancel).
+            raise
+        except Exception:
+            if journaled:
+                self._store.drop_pending(context.task_id)
+            raise
+        if journaled:
+            self._store.drop_pending(context.task_id)
         logger.info(
             "executor: approval decided",
             extra={"task_id": context.task_id, "context_id": cid, "peer": peer,
@@ -523,9 +565,14 @@ class ClaudeAgentExecutor(AgentExecutor):
             return answer
         if decision.verdict == "edit":
             return decision.text
-        key = "approval_timeout" if decision.verdict == "timeout" else "rejected"
+        if decision.verdict == "timeout":
+            # The owner never decided: the request lapsed, nobody refused it.
+            await updater.cancel(
+                message=updater.new_agent_message([new_text_part(self._msg["approval_timeout"])])
+            )
+            return None
         await updater.reject(
-            message=updater.new_agent_message([new_text_part(self._msg[key])])
+            message=updater.new_agent_message([new_text_part(self._msg["rejected"])])
         )
         return None
 
@@ -574,8 +621,12 @@ class ClaudeAgentExecutor(AgentExecutor):
         )
         # Only an explicit grant opens a topic (see access.py); a plain yes is a no.
         if decision.verdict != "approve" or grant not in ("once", "always"):
-            key = "approval_timeout" if decision.verdict == "timeout" else "access_rejected"
-            await updater.reject(message=updater.new_agent_message([new_text_part(self._msg[key])]))
+            if decision.verdict == "timeout":
+                await updater.cancel(message=updater.new_agent_message(
+                    [new_text_part(self._msg["approval_timeout"])]))
+                return None
+            await updater.reject(message=updater.new_agent_message(
+                [new_text_part(self._msg["access_rejected"])]))
             return None
 
         payload = {**base, "scope": grant, "question": question}
@@ -608,6 +659,67 @@ class ClaudeAgentExecutor(AgentExecutor):
         notice = (lambda: notify(request)) if notify else None
         return answer, notice
 
+    def resume_pending(self) -> int:
+        """Ask the owner again for every answer a restart left waiting.
+
+        The task itself survived in the store, still working. Each journal entry gets
+        the approver again (for the owner, a fresh card that doubles as a reminder);
+        its decision ends the task in the store, where the caller's next ``GetTask``
+        finds it. Returns how many were resumed.
+        """
+        if self._store is None or self._approver is None:
+            return 0
+        entries = self._store.pending()
+        for task_id, owner, request in entries:
+            job = asyncio.ensure_future(self._resume_one(task_id, owner, request))
+            self._resumed[task_id] = job
+            job.add_done_callback(lambda _j, t=task_id: self._resumed.pop(t, None))
+        if entries:
+            logger.info("executor: %d approval(s) resumed after restart", len(entries))
+        return len(entries)
+
+    async def _resume_one(self, task_id: str, owner: str, request: dict) -> None:
+        task = self._store.get_owned(owner, task_id)
+        if task is None or task.status.state in FINAL_STATES:
+            self._store.drop_pending(task_id)
+            return
+        try:
+            decision = await self._approver(request)
+        except asyncio.CancelledError:
+            self._store.drop_pending(task_id)
+            raise
+        except Exception:  # noqa: BLE001 — fail closed, like a crashed approver
+            logger.exception("executor: resumed approval failed", extra={"task_id": task_id})
+            decision = None
+        logger.info("executor: resumed approval decided",
+                    extra={"task_id": task_id, "verdict": getattr(decision, "verdict", "none")})
+        task = self._store.get_owned(owner, task_id)
+        if task is None or task.status.state in FINAL_STATES:
+            self._store.drop_pending(task_id)
+            return
+        verdict = getattr(decision, "verdict", "reject")
+        if verdict in ("approve", "edit"):
+            text = decision.text if verdict == "edit" else request.get("answer", "")
+            state = TaskState.TASK_STATE_COMPLETED
+            art = task.artifacts.add()
+            art.artifact_id = str(uuid.uuid4())
+            art.name = "answer"
+            art.parts.add().text = text
+        elif verdict == "timeout":
+            text, state = self._msg["approval_timeout"], TaskState.TASK_STATE_CANCELED
+        else:
+            text, state = self._msg["rejected"], TaskState.TASK_STATE_REJECTED
+        task.status.state = state
+        task.status.message.Clear()
+        task.status.message.message_id = str(uuid.uuid4())
+        task.status.message.role = Role.ROLE_AGENT
+        task.status.message.task_id = task.id
+        task.status.message.context_id = task.context_id
+        task.status.message.parts.add().text = text
+        task.status.timestamp.GetCurrentTime()
+        self._store.put_owned(owner, task)
+        self._store.drop_pending(task_id)
+
     def _background(self, coro) -> None:
         """Run ``coro`` detached, keeping a reference until it is done."""
         task = asyncio.ensure_future(coro)
@@ -631,6 +743,8 @@ class ClaudeAgentExecutor(AgentExecutor):
         context_id = task.context_id if task is not None else getattr(context, "context_id", None)
 
         run_task = self._running.get(task_id) if task_id else None
+        if run_task is None or run_task.done():
+            run_task = self._resumed.get(task_id) if task_id else None
         if run_task is None or run_task.done():
             raise UnsupportedOperationError(self._msg["no_running"])
 
@@ -809,6 +923,13 @@ class ClaudeAgentExecutor(AgentExecutor):
             lines += transcript + [""]
         lines.append(f"{ROLE_USER}: {user_text}")
         return "\n".join(lines)
+
+
+def _owner_of(context) -> str:
+    """The task store's owner key for ``context`` (the a2a-sdk default: the user name)."""
+    call = getattr(context, "call_context", None)
+    user = getattr(call, "user", None)
+    return getattr(user, "user_name", "") or ""
 
 
 def _peer_of(context) -> str | None:

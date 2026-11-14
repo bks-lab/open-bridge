@@ -136,6 +136,14 @@ max_concurrency: 2
 max_input_chars: 4000
 max_turns: 24
 max_contexts: 500
+# Shed caller is told to retry after this many seconds (the task ends failed, reason busy).
+busy_retry_after_s: 5
+
+# Tasks survive a restart (see _runtime/task_store.py). The file holds peer content,
+# so state/ is gitignored. "memory" keeps tasks in memory only.
+task_store:
+  path: state/tasks.sqlite
+  keep_days: 30
 
 cors_origins:
   - "https://<your-site>"
