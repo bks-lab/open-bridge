@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from contextlib import asynccontextmanager
 
 import click
 import uvicorn
@@ -42,6 +43,7 @@ from .otlp_logging import current_status as logging_status
 from .otlp_logging import setup_otlp_logging, setup_transcript_logging
 from .otlp_logging import transcript_status
 from .runner import SubprocessClaudeRunner
+from .task_store import SqliteTaskStore
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +126,11 @@ def build_app(cfg: AgentConfig) -> Starlette:
             "spawn_error", "The agent is briefly overloaded. Please try again in a moment."
         ),
     )
+    # Tasks survive a restart unless the instance opts out (task_store.path: memory).
+    task_store = (
+        SqliteTaskStore(cfg.task_store_path, keep_days=cfg.task_keep_days)
+        if cfg.task_store_path else InMemoryTaskStore()
+    )
     executor = ClaudeAgentExecutor(
         runner=runner,
         max_turns=cfg.max_turns,
@@ -138,12 +145,14 @@ def build_app(cfg: AgentConfig) -> Starlette:
             inline_grounding=cfg.inline_grounding, compose=compose_inline_grounding,
         ) if cfg.access.enabled else None,
         grants=GrantCommand(cfg.access) if cfg.access.grant is not None else None,
+        task_store=task_store,
+        busy_retry_after_s=cfg.busy_retry_after_s,
     )
     agent_card = build_agent_card(cfg)
 
     request_handler = DefaultRequestHandler(
         agent_executor=executor,
-        task_store=InMemoryTaskStore(),
+        task_store=task_store,
         agent_card=agent_card,
     )
 
@@ -194,7 +203,14 @@ def build_app(cfg: AgentConfig) -> Starlette:
             )
         )
 
+    @asynccontextmanager
+    async def lifespan(_app):
+        # Answers a restart left waiting for their owner are asked for again.
+        executor.resume_pending()
+        yield
+
     return Starlette(
+        lifespan=lifespan,
         routes=routes,
         middleware=[
             *middleware,

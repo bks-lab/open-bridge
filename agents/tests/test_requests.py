@@ -189,7 +189,8 @@ def test_no_decision_means_nothing_happens(make_client, tmp_path, verdict):
     cfg = _cfg(tmp_path, execute=(sys.executable, "-c", "raise SystemExit('must not run')"))
     _FakeApprover.decision = Decision(verdict)
     task = _run(make_client(cfg))
-    assert task["status"]["state"] == "TASK_STATE_REJECTED"
+    expected = "TASK_STATE_CANCELED" if verdict == "timeout" else "TASK_STATE_REJECTED"
+    assert task["status"]["state"] == expected
     assert "executed" not in [e["event"] for e in _ledger(cfg)]
 
 
@@ -300,10 +301,13 @@ def test_a_plain_question_still_goes_to_the_model(make_client, tmp_path):
     assert task["status"]["state"] == "TASK_STATE_COMPLETED"
 
 
-def test_with_requests_off_a_request_is_treated_as_a_question(make_client, tmp_path):
+def test_with_requests_off_a_request_is_refused_not_answered(make_client, tmp_path):
+    # Answering it as a question read as "done" to the caller.
     cfg = dataclasses.replace(_cfg(tmp_path), requests=RequestsConfig())
-    _run(make_client(cfg))
-    assert _FakeRunner.calls == 1
+    task = _run(make_client(cfg))
+    assert task["status"]["state"] == "TASK_STATE_REJECTED"
+    assert "requests are not set up" in json.dumps(task)
+    assert _FakeRunner.calls == 0
 
 
 def test_the_card_names_the_request_and_policy_skills_when_on(tmp_path):

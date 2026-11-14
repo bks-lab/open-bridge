@@ -129,6 +129,11 @@ class AgentConfig:
     base_system_prompt: str = ""
     inline_grounding: list[str] = field(default_factory=list)
     project_root: str = field(default=str(PROJECT_ROOT))
+    # Durable tasks (see _runtime/task_store.py): SQLite file, or "" for memory only.
+    task_store_path: str = ""
+    task_keep_days: float = 30.0
+    # Shed caller is told to retry after this many seconds (open-bridge#640).
+    busy_retry_after_s: float = 5.0
 
 
 def _resolve_path(value: str | None) -> str | None:
@@ -314,4 +319,19 @@ def load_agent_config(instance: str, *, environment: str | None = None) -> Agent
         base_system_prompt=base_system_prompt,
         inline_grounding=inline_patterns,
         project_root=str(PROJECT_ROOT),
+        task_store_path=_task_store_path(inst_dir, spec.get("task_store")),
+        task_keep_days=float((spec.get("task_store") or {}).get("keep_days", 30)),
+        busy_retry_after_s=float(spec.get("busy_retry_after_s", 5.0)),
     )
+
+
+def _task_store_path(inst_dir: Path, spec) -> str:
+    """Where tasks persist: ``task_store.path`` relative to the instance folder,
+    default ``state/tasks.sqlite``; ``memory`` keeps them in memory only.
+    ``AGENT_TASK_STORE`` overrides it, like ``AGENT_HOST`` and ``AGENT_PORT``."""
+    raw = (spec or {}).get("path", "state/tasks.sqlite") if isinstance(spec, dict) else "state/tasks.sqlite"
+    raw = str(os.getenv("AGENT_TASK_STORE") or raw).strip()
+    if raw.lower() == "memory":
+        return ""
+    path = Path(os.path.expanduser(raw))
+    return str(path if path.is_absolute() else (inst_dir / path).resolve())

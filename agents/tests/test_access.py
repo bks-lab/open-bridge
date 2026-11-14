@@ -345,7 +345,9 @@ def test_no_yes_opens_nothing(make_client, tmp_path, verdict):
     _FakeRunner.script = ["One moment.\n⟦access:bigpc⟧"]
     _FakeApprover.decisions = [Decision(verdict)]
     task = _ask(make_client(cfg), ALICE)
-    assert task["status"]["state"] == "TASK_STATE_REJECTED"
+    # An owner who never decided lapses the request (canceled); a no or an error refuses it.
+    expected = "TASK_STATE_CANCELED" if verdict == "timeout" else "TASK_STATE_REJECTED"
+    assert task["status"]["state"] == expected
     assert _grant_log(tmp_path) == []
     assert len(_FakeRunner.scopes) == 1
 
