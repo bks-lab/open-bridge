@@ -684,6 +684,49 @@ def test_a_command_item_measures_what_the_command_prints(tree):
     assert row["state"] == "ok"
 
 
+def test_the_instance_card_row_measures_what_context_index_prints(tree):
+    """`--registries` appends the instance block, and the meter never runs
+    `--registries`: it renders each registry file itself. The block is
+    therefore measured as its own command row, and that row has to equal what
+    the command prints, byte for byte."""
+    import shutil
+    import subprocess
+
+    # The meter runs the literal `python3`, under the HOME this suite isolates.
+    # A machine whose `python3` finds PyYAML only in the user site under HOME
+    # cannot run the command here at all; that is the machine, not the meter.
+    probe = subprocess.run(["python3", "-c", "import yaml"], capture_output=True)
+    if probe.returncode != 0:
+        pytest.skip("`python3` cannot import PyYAML with HOME isolated")
+    for rel in ("scripts/context-index.py", "scripts/lib/context_index.py"):
+        (tree / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(REPO_ROOT / rel, tree / rel)
+    _write(tree, "infra/instances/acme-bridge.yaml",
+           "name: acme-bridge\nscope: user\nrelationship: sibling\n"
+           'purpose: "client work"\nlocation:\n  path: ~/work/acme\n')
+    key = "cmd:python3 scripts/context-index.py --instances"
+    _write(tree, "context-budget.user.yaml",
+           f'items:\n  "{key}":\n    source: phase1\n    max_bytes: 2500\n')
+    done = subprocess.run(
+        [sys.executable, str(tree / "scripts" / "context-index.py"),
+         "--repo-root", str(tree), "--instances"],
+        capture_output=True, text=True, check=True,
+    )
+    assert "acme-bridge" in done.stdout
+    row = _row(tree, key)
+    assert row["source"] == "phase1"
+    assert row["bytes"] == len(done.stdout.encode("utf-8"))
+    assert row["state"] == "ok"
+
+
+def test_the_live_budget_caps_the_instance_card():
+    budget = mc.load_budget(REPO_ROOT)
+    item = budget["items"].get("cmd:python3 scripts/context-index.py --instances")
+    assert item, "the instance block of --registries is unmeasured"
+    assert item.get("source") == "phase1"
+    assert 0 < item.get("max_bytes", 0) <= 2500
+
+
 def test_a_command_item_over_its_cap_is_over(tree):
     _write(
         tree,

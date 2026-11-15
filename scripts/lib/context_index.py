@@ -64,6 +64,63 @@ def registry_files(repo_root) -> list[str]:
     )
     return found
 
+
+INSTANCES_DIR = "infra/instances"
+INSTANCES_HEAD = (
+    "# infra/instances: other Bridges\n\n"
+    "Named by the user? Answer from its line and its entry. To work in it, open a "
+    "session at its path. Do not read its files from here, unless its entry says "
+    "read-only-from-here or a workspace binds it.\n\n"
+)
+
+
+def instance_files(repo_root) -> list[str]:
+    """Every entry in `infra/instances/`, by name; `_template`/`_schema` are reserved."""
+    base = Path(repo_root) / INSTANCES_DIR
+    if not base.is_dir():
+        return []
+    return [
+        f"{INSTANCES_DIR}/{path.name}"
+        for path in sorted(base.glob("*.yaml"))
+        if path.is_file() and not path.name.startswith("_")
+    ]
+
+
+def render_instances(repo_root) -> str:
+    """One line per other Bridge: name, relationship, status unless active, purpose, path.
+
+    The block `--registries` ends with. A lookup, not a copy: `notes`,
+    `surface` and `access.how` stay in the entry. An entry that does not parse
+    is listed as unreadable rather than left out, for the same reason a card
+    names every key: absent looks like never there. Empty when there is no
+    entry, so a fresh clone prints what it printed before.
+    """
+    rels = instance_files(repo_root)
+    if not rels:
+        return ""
+    out = [INSTANCES_HEAD.rstrip("\n"), ""]
+    for rel in rels:
+        stem = Path(rel).stem
+        try:
+            data = yaml.safe_load((Path(repo_root) / rel).read_text(encoding="utf-8"))
+        except (OSError, ValueError, yaml.YAMLError):
+            # ValueError covers UnicodeDecodeError: a file that is not UTF-8.
+            data = None
+        if not isinstance(data, dict):
+            out.append(f"- **{stem}**: unreadable entry, open {rel}")
+            continue
+        tags = [str(data.get("relationship") or "?")]
+        if data.get("status") not in (None, "active"):
+            tags.append(str(data["status"]))
+        purpose = " ".join(str(data.get("purpose") or "").split())
+        if len(purpose) > DEFAULT_LABEL_CHARS:
+            purpose = purpose[: DEFAULT_LABEL_CHARS - 1].rstrip() + "…"
+        location = data.get("location")
+        path = (location.get("path") if isinstance(location, dict) else None) or "no path"
+        name = data.get("name") or stem
+        out.append(f"- **{name}** ({', '.join(tags)}): {purpose} | {path}")
+    return "\n".join(out) + "\n"
+
 # A top-level key: column zero, not a comment, not a document marker, and NOT
 # a list item. `- name: public` at column zero is legal YAML and was read as a
 # key called `- name` until a sweep over 120 real files said otherwise. The

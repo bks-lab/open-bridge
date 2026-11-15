@@ -46,7 +46,11 @@ what the slice exists to stop:
    repo/customer/workspace). Fetch an entry with
    `python3 scripts/context-index.py <file> --get <name>`, using the file the
    card names. Skip silently when no registry exists, which is the normal
-   state before onboarding
+   state before onboarding. The index ends with one line per other Bridge in
+   `infra/instances/` (`python3 scripts/context-index.py --instances` prints
+   only those). When the user names another Bridge, answer from that line and
+   its entry: to work in it, open a session at its path; never read its files
+   from here
 4. Read the memory index: `python3 scripts/memory-location.py index`, and
    `get <name>` for one fact when the work names it. This is how the memory
    base reaches a harness that reads only `AGENTS.md`; inside Claude Code with

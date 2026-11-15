@@ -261,6 +261,14 @@ items:
     note: >-
       Six of twenty-one blocks. Empty in a fresh clone, since a fresh clone has
       no bridge-config.yaml, and that is not an error.
+  "cmd:python3 scripts/context-index.py --instances":
+    source: phase1
+    max_bytes: 2500
+    note: >-
+      The block `--registries` ends with: one line per other Bridge in
+      infra/instances/, about 110 bytes each plus a short head. The meter
+      renders each registry file by itself and never runs `--registries`, so
+      this block is measured here. Empty in a fresh clone.
   "cmd:python3 scripts/memory-location.py index":
     source: phase1
     max_bytes: 25600

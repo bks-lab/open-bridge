@@ -108,7 +108,7 @@ draws exactly this, from the same file as the tables below:
 | SOUL/IDENTITY | identity/agent/SOUL.md and IDENTITY.md, imported by AGENTS.md once onboarding has created them. |
 | family index | kernel/families.yaml: which config folder to read when, generated from this file and imported by AGENTS.md. |
 | config slice | `python3 scripts/bridge-config.py --session`: the six bridge-config.yaml blocks a session needs; the others are read by the skill that owns them. |
-| registry card | `python3 scripts/context-index.py --registries`: the settings plus one line per entry of ecosystem.yaml and every ecosystem.<name>.yaml; an entry itself comes with `<file> --get <name>` (docs/context-index.md). |
+| registry card | `python3 scripts/context-index.py --registries`: the settings plus one line per entry of ecosystem.yaml and every ecosystem.<name>.yaml, then one line per Bridge in infra/instances/; an entry itself comes with `<file> --get <name>` (docs/context-index.md). |
 | order index | `python3 scripts/standing-orders.py --index`, plus the bodies of the orders marked `load: eager`. |
 | log + board | `python3 scripts/worklog.py --recent 3` and work/board.md, never the whole log. |
 | skill list | Name and description of every skill, injected by the harness (measured as listing:skills). |

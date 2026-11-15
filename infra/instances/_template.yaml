@@ -3,9 +3,11 @@
 # Register ANOTHER Bridge this hub should be aware of.
 # Copy to instances/{slug}.yaml and customize.
 #
-# AWARENESS + NAVIGATION ONLY — registering an instance does NOT authorise
-# reaching into it. From this session: read/check it read-only; NEVER
-# modify / push / pull / cross-log it. Operate it in its OWN session.
+# AWARENESS + NAVIGATION ONLY: registering an instance does NOT authorise
+# reaching into it. When the user names it, answer from this entry and open a
+# session at its path to work in it. Read its files from here only when
+# access.mode says read-only-from-here (or a workspace binds it); NEVER
+# modify, push, pull or cross-log it from here.
 
 name: my-other-bridge
 scope: user                  # REQUIRED — a real instance names a repo/customer → always user/private, never promoted

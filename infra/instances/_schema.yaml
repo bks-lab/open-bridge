@@ -7,9 +7,11 @@
 #
 # IT IS AWARENESS + NAVIGATION ONLY. Knowing an instance exists is NOT a
 # licence to reach into it. The instance-isolation hard rule still governs
-# (docs/multi-instance.md): from THIS session you may read/check an
-# instance read-only, but NEVER modify / push / pull / cross-log it — operate
-# an instance by opening its OWN session at its path.
+# (docs/multi-instance.md, rules/multi-instance-isolation.md): when the user
+# names an instance, answer from its entry and open a session at its path to
+# work in it. Its files are read from THIS session only when access.mode is
+# read-only-from-here (or a workspace binds it), and never modified, pushed,
+# pulled or cross-logged.
 #
 # Validation:
 #   check-jsonschema --schemafile infra/instances/_schema.yaml \
@@ -144,13 +146,15 @@ properties:
   access:
     type: object
     additionalProperties: true
-    description: "How to reach it — and the hard read-only boundary."
+    description: "How to reach it, and whether this session may read its files at all."
     properties:
       mode:
         enum: [read-only-from-here, operate-own-session]
+        default: operate-own-session
         description: |
-          read-only-from-here — you may inspect it read-only; NEVER mutate from this session
-          operate-own-session — to do work, open a session at location.path (its own branch)
+          read-only-from-here: this session may read its files, never mutate them
+          operate-own-session (the default): answer from this entry, and to do any work,
+          open a session at location.path (its own branch); its files are not read from here
       how:    {type: string, description: "Concrete how-to (e.g. 'cd ~/work/acme/acme-bridge && claude')"}
 
   status:

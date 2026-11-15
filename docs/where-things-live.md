@@ -44,6 +44,7 @@ searches again.
 | Which cloud tenant and subscription does a command need? | [`docs/cloud-accounts.md`](cloud-accounts.md) |
 | Which design (colours, fonts, brand) does this piece of work use, and where does another brand go? | [`DESIGN.md`](../DESIGN.md#designs-in-this-bridge), then `python3 scripts/designs.py resolve`; brands live in `identity/designs/` |
 | Which machine is "my PC", and how do I reach it? | [`skills/remote/references/fleet.md`](../skills/remote/references/fleet.md#stage-1--identify-target), then the instance's `infra/remotes/` |
+| Where is another Bridge the user names, and how do I reach it? | [`docs/multi-instance.md`](multi-instance.md#instance-registry), then the instance's `infra/instances/` |
 
 ## Gates: how an operation is guarded
 

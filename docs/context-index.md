@@ -106,6 +106,19 @@ so a fork that never declares one loses nothing. The budget measures each
 registry as `--registries` prints it, so the gate and the session see the same
 bytes. No registry needs an `@`-import any more.
 
+The registries name repos; `infra/instances/` names the other Bridges. So
+`--registries` ends with one line per entry there: name, relationship, the
+status when it is not `active`, the purpose cut at 120 characters, and the
+path. `notes`, `surface` and `access.how` stay in the entry, and an entry that
+does not parse is listed as unreadable rather than left out. With no entry the
+block is empty and the output is what it was before. The block's head says
+what to do with a line: when the user names that Bridge, answer from the line
+and its entry, open a session at its path to work in it, and never read its
+files from here, unless the entry says `read-only-from-here` or a workspace
+binds it. `--instances` prints the block alone. The meter renders each
+registry file by itself and never runs `--registries`, so the block is
+measured as its own budget row, `cmd:python3 scripts/context-index.py --instances`.
+
 The memory base gets the same split without a `card:`, because its index is
 already a table of contents: Phase 1 runs
 `python3 scripts/memory-location.py index` and a fact arrives with
