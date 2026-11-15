@@ -107,6 +107,11 @@ def main(argv=None) -> int:
         action="store_true",
         help="print the card of ecosystem.yaml and of every ecosystem.<name>.yaml at the repo root",
     )
+    parser.add_argument(
+        "--instances",
+        action="store_true",
+        help="print one line per other Bridge in infra/instances/ (the block --registries ends with)",
+    )
     parser.add_argument("--repo-root", default=str(HERE.parent))
     args = parser.parse_args(argv)
 
@@ -128,15 +133,28 @@ def main(argv=None) -> int:
     if args.check:
         return _check(ci, root, args.path)
 
+    if args.instances:
+        # The other Bridges alone. Phase 1 gets the same block at the end of
+        # `--registries`; this form exists so the meter can measure it as its
+        # own row, since the meter renders each registry file by itself.
+        if args.path or args.get or args.list or args.registries:
+            parser.error("--instances takes no path, --get, --list or --registries")
+        sys.stdout.write(ci.render_instances(root))
+        return 0
+
     if args.registries:
         # One card per registry, the form Phase 1 runs. `--get` and `--list`
         # stay per file: the card already names the file each body lives in.
+        # It ends with one line per other Bridge in infra/instances/.
         if args.path or args.get or args.list:
             parser.error("--registries takes no path, --get or --list")
         cards = []
         for rel in ci.registry_files(root):
             text = (root / rel).read_text(encoding="utf-8")
             cards.append(ci.render_card(text, ci.card_for(root, rel), rel))
+        instances = ci.render_instances(root)
+        if instances:
+            cards.append(instances)
         if cards:
             sys.stdout.write("\n".join(cards))
         return 0

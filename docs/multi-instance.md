@@ -1,7 +1,7 @@
 ---
 summary: "Running multiple Bridge instances for data isolation across organizations — shared CORE upstream, separate USER data per instance."
 type: guide
-last_updated: 2026-06-21
+last_updated: 2026-11-15
 related:
   - docs/structure.md
   - docs/extension-model.md
@@ -50,8 +50,12 @@ where each instance lives, what it's for, and its data/push policy —
 **awareness and navigation only**: knowing an instance exists is not a
 licence to reach into it. The isolation hard rule
 ([`rules/multi-instance-isolation.md`](../rules/multi-instance-isolation.md))
-still governs: read-only from here, operate each instance in its own
-session at its path.
+still governs. When the user names another Bridge, answer from its line
+in the Phase 1 index (`python3 scripts/context-index.py --instances` prints
+those lines alone) and from its entry, and say how to reach it: to work in
+it, open a session at its path. Never read its files from here, unless its
+entry says `access.mode: read-only-from-here` or a workspace binds it
+([`rules/multi-instance-isolation.md` § Naming another Bridge](../rules/multi-instance-isolation.md#naming-another-bridge)).
 
 ### Subscribing an instance to org overlays
 

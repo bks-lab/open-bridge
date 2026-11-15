@@ -50,7 +50,7 @@ always_on:
   - label: "config slice"
     what: "`python3 scripts/bridge-config.py --session`: the six bridge-config.yaml blocks a session needs; the others are read by the skill that owns them."
   - label: "registry card"
-    what: "`python3 scripts/context-index.py --registries`: the settings plus one line per entry of ecosystem.yaml and every ecosystem.<name>.yaml; an entry itself comes with `<file> --get <name>` (docs/context-index.md)."
+    what: "`python3 scripts/context-index.py --registries`: the settings plus one line per entry of ecosystem.yaml and every ecosystem.<name>.yaml, then one line per Bridge in infra/instances/; an entry itself comes with `<file> --get <name>` (docs/context-index.md)."
   - label: "order index"
     what: "`python3 scripts/standing-orders.py --index`, plus the bodies of the orders marked `load: eager`."
   - label: "log + board"
@@ -182,7 +182,7 @@ families:
     references: ["location.host → infra/remotes/", "promote_config_ref → bridge-config.yaml upstreams"]
     writer: "a person; the overlay engine keeps subscribes_overlays current"
     read: named
-    route: "another Bridge this one should know about"
+    route: "another Bridge this one should know about; when the user names one, answer from its entry, open a session at its path to work in it, and never read its files from here"
     guide: ["docs/multi-instance.md"]
 
   - path: infra/remotes/

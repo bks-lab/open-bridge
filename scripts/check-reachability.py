@@ -104,6 +104,7 @@ SCENARIOS = [
     ("is the backup healthy", ["backups"], "infra/backups/"),
     ("where does this recording go, if not into git", ["object"], "infra/object-stores/"),
     ("put it in the calendar", ["calendar"], "workflow/calendars/"),
+    ("the user names another Bridge", ["another Bridge"], "infra/instances/"),
     ("what rule applies here", ["rules/"], "rules/"),
 ]
 

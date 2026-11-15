@@ -210,6 +210,13 @@ entries:
     reaches: [session]
     optional: true
 
+  - command: "python3 scripts/context-index.py --instances"
+    tier: user
+    role: the sibling-Bridge card, the block --registries ends with
+    read: command
+    via: [rules/operations.md]
+    reaches: [session]
+
   - command: "python3 scripts/standing-orders.py --index"
     tier: mixed
     role: the standing-order index
