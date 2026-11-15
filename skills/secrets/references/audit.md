@@ -71,6 +71,10 @@ A public key is in the list on purpose, and not because it is secret. It is not.
 It is there because it usually travels with the private one, and a tree that
 carries the public half is worth a second look at the folder it sits in.
 
+An access key ID is in the list on purpose too: the ID half of a key pair is a
+credential for this skill, even though it cannot sign a request alone
+([`rules/secret-placement.md` § What counts as a secret](../../../rules/secret-placement.md#what-counts-as-a-secret)).
+
 The two marked "neither" in the last column are the ones that belong to this
 skill alone. The overlay scan runs over CODE and deliberately does not run the
 key-and-value heuristic there, where it is wrong more often than right; and

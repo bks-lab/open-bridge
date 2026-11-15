@@ -111,9 +111,31 @@ reference (`audit`), and the per-kind placement policy (`where`) ship in the
 `secrets` skill ([`skills/secrets/SKILL.md`](../skills/secrets/SKILL.md)). The
 convention below is what those verbs follow.
 
+## What counts as a secret
+
+Anything a secret scanner flags in a tracked file is a secret, whether or not it
+works on its own. That includes the identifier half of a credential: an AWS
+access key ID (`AKIA` or `ASIA` plus sixteen characters) cannot sign a request
+alone, yet it names the account to attack and every scanner reports it. The
+same goes for the other shapes in `skills/secrets/engine/patterns.py`, which
+`secrets.sh audit` runs over the tree.
+
+- Such a value goes only as a reference URI, in the place you were about to
+  paste it: `access_key_ref: <reference URI>`, never `access_key_id: <value>`.
+- "It is only the ID", "it is revoked" and "it is the documented example key"
+  are not exemptions. A fixture that must carry one assembles it at run time or
+  ends the line with `# pragma: allowlist secret`.
+- Not a secret: a tenant, subscription or account number, an IBAN, a customer
+  number. They locate or identify and unlock nothing, so the scanner does not
+  flag them and they stay where they are used.
+- A value that was committed is rotated. Deleting it from the tree does not
+  un-leak a clone.
+
 ## Hard rules
 
 - Raw secret values never appear in any repo file, commit, log, or artifact.
+- A credential identifier the scanner flags (an access key ID, a token prefix) is a raw
+  secret for this rule.
 - The account YAML is `scope: user`/`org`; the shipped `.gitignore` ignores it by default, and
   a private origin re-allows it (`scripts/user-data.py arm`) and tracks it with the rest of
   your commits. Either way it holds **only** the URI, never the value, so a leak of the file

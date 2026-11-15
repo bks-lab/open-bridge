@@ -1,7 +1,7 @@
 ---
 summary: "Secrets in a Bridge: files carry reference URIs, never values; the secrets skill resolves a reference for the program that needs it, says where a new secret belongs, and finds plaintext that should have been a reference."
 type: guide
-last_updated: 2026-09-24
+last_updated: 2026-11-15
 related:
   - ../rules/secret-placement.md
   - ../skills/secrets/SKILL.md
@@ -60,6 +60,11 @@ Store declarations are machine and tenant inventory, so they are `scope: user`
 Personal data is deliberately not a kind. An IBAN or a tax id identifies a
 person rather than authenticating one, so it belongs where it is used, not in a
 vault.
+
+Identifiers count as secrets too, when a scanner flags them. An AWS access key
+ID is the ID half of a key pair: it goes into a file as a reference, never as a
+field value. See
+[`rules/secret-placement.md` § What counts as a secret](../rules/secret-placement.md#what-counts-as-a-secret).
 
 ## What the secrets skill does
 
