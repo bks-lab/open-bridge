@@ -366,8 +366,6 @@ def test_a_promote_file_without_the_section_compares_nothing_and_says_so(tmp_pat
 
 
 # ---------------------------------------------------------------------------
-# the copy nothing compares
-# ---------------------------------------------------------------------------
 # the placement rule says what the list means
 # ---------------------------------------------------------------------------
 
@@ -392,6 +390,8 @@ def test_the_placement_rule_says_credential_identifiers_are_secrets():
         "the account template is where the ID gets pasted; it has to say so there")
 
 
+# ---------------------------------------------------------------------------
+# the copy nothing compares
 # ---------------------------------------------------------------------------
 
 #: The shell scan `rules/promote-safety.md` hands a person to run before a
