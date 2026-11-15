@@ -146,10 +146,11 @@ properties:
   access:
     type: object
     additionalProperties: true
-    description: "How to reach it — and the hard read-only boundary."
+    description: "How to reach it, and whether this session may read its files at all."
     properties:
       mode:
         enum: [read-only-from-here, operate-own-session]
+        default: operate-own-session
         description: |
           read-only-from-here: this session may read its files, never mutate them
           operate-own-session (the default): answer from this entry, and to do any work,

@@ -103,7 +103,8 @@ def render_instances(repo_root) -> str:
         stem = Path(rel).stem
         try:
             data = yaml.safe_load((Path(repo_root) / rel).read_text(encoding="utf-8"))
-        except (OSError, yaml.YAMLError):
+        except (OSError, ValueError, yaml.YAMLError):
+            # ValueError covers UnicodeDecodeError: a file that is not UTF-8.
             data = None
         if not isinstance(data, dict):
             out.append(f"- **{stem}**: unreadable entry, open {rel}")

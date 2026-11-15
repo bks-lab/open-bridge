@@ -1354,6 +1354,38 @@ def test_render_instances_lists_a_broken_entry_rather_than_dropping_it(tmp_path)
     assert "- **scalar**: unreadable entry, open infra/instances/scalar.yaml" in out
 
 
+def _bad_bytes(root: Path) -> None:
+    # Not UTF-8: read_text raises UnicodeDecodeError, a ValueError, which is
+    # neither an OSError nor a YAMLError.
+    path = root / "infra" / "instances" / "bytes.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\xff\xfename: x\n")
+
+
+def test_render_instances_lists_an_entry_that_is_not_utf8(tmp_path):
+    _bad_bytes(tmp_path)
+    _instance(tmp_path, "good", _entry("good"))
+    out = ci.render_instances(tmp_path)
+
+    assert "- **bytes**: unreadable entry, open infra/instances/bytes.yaml" in out
+    assert "- **good** (sibling)" in out
+
+
+@pytest.mark.parametrize("flag", ["--instances", "--registries"])
+def test_an_entry_that_is_not_utf8_does_not_cost_the_card(tmp_path, capsys, flag):
+    # One bad instance file must not take the registry card down with it.
+    _registry_tree(tmp_path, ["ecosystem.yaml"])
+    _bad_bytes(tmp_path)
+
+    rc = _load_cli().main(["--repo-root", str(tmp_path), flag])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "- **bytes**: unreadable entry" in out
+    if flag == "--registries":
+        assert "# ecosystem.yaml — index" in out
+
+
 def test_registries_end_with_the_instance_block(tmp_path, capsys):
     _registry_tree(tmp_path, ["ecosystem.yaml", "ecosystem.acme.yaml"])
     _instance(tmp_path, "acme-bridge", _entry("acme-bridge"))
