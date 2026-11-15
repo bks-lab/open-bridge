@@ -3,7 +3,9 @@
 # combined). Contexts reference accounts by id via `accounts: [id, ...]`.
 #
 # Accounts describe WHERE mail/calendar data lives and HOW Claude reaches it.
-# Credentials never live here — only access method + KeyVault/1Password URIs.
+# Credentials never live here: only access method + KeyVault/1Password URIs.
+# That includes the ID half of a key pair (an AWS access key ID): write
+# `access_key_ref: <reference URI>`, never the ID itself.
 
 scope: user                        # REQUIRED — core→open-bridge · org→your org overlay · user/private→local.
                                    # Org tenant / customer access = org; personal account = user.

@@ -90,7 +90,9 @@ properties:
     additionalProperties: true
 
 # Notes (advisory):
-# - Never store raw secrets — only reference URIs. Supported schemes:
+# - Never store raw secrets, only reference URIs. That includes the ID half of
+#   a key pair (an AWS access key ID): write `access_key_ref: <reference URI>`.
+#   Supported schemes:
 #     azure-keyvault://<vault>/<secret>          (Azure Key Vault)
 #     keychain://<service>[/<account>]           (macOS Keychain)
 #     1password://<vault>/<item>/<field>         (1Password)

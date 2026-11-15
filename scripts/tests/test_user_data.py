@@ -326,6 +326,35 @@ def test_scan_passes_a_reference_uri(bridge):
     assert _run(repo, "scan-staged", env=env).returncode == 0
 
 
+# The ID half of an AWS key pair cannot sign a request alone, and it is still a
+# secret for this scan (rules/secret-placement.md, "What counts as a secret"):
+# it names the account to attack, and every scanner reports it. Assembled at
+# run time, so this file carries no literal a scanner would have to skip.
+AWS_ID = "AK" + "IA" + "7Q2XM4TB9LNC5DRE"      # aws-access-key shape, not a key
+AWS_TMP = "AS" + "IA" + "7Q2XM4TB9LNC5DRE"     # aws-temp-key shape, not a key
+
+
+@pytest.mark.parametrize("field,value,name", [
+    ("aws_access_key_id", AWS_ID, "aws-access-key"),
+    ("AccessKeyId", AWS_ID, "aws-access-key"),
+    ("access_key_id", AWS_TMP, "aws-temp-key"),
+])
+def test_scan_blocks_a_key_id_in_an_account_file(bridge, field, value, name):
+    repo, env = bridge
+    _stage(repo, "identity/accounts/cloud.yaml", f"{field}: {value}\n", env)
+    out = _run(repo, "scan-staged", env=env)
+    assert out.returncode == 1, out.stdout + out.stderr
+    assert name in out.stdout
+    assert value not in out.stdout + out.stderr
+
+
+def test_scan_passes_the_reference_form_of_a_key_id(bridge):
+    repo, env = bridge
+    _stage(repo, "identity/accounts/cloud.yaml",
+           "access_key_ref: keychain://aws-prod/access-key-id\n", env)
+    assert _run(repo, "scan-staged", env=env).returncode == 0
+
+
 def test_scan_reads_the_index_not_the_working_tree(bridge):
     """A secret typed after `git add` is not in the commit; one removed after is."""
     repo, env = bridge

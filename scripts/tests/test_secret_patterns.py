@@ -368,6 +368,31 @@ def test_a_promote_file_without_the_section_compares_nothing_and_says_so(tmp_pat
 # ---------------------------------------------------------------------------
 # the copy nothing compares
 # ---------------------------------------------------------------------------
+# the placement rule says what the list means
+# ---------------------------------------------------------------------------
+
+def test_the_placement_rule_says_credential_identifiers_are_secrets():
+    # An access key ID cannot sign a request alone, which is the argument for
+    # pasting it into an account file. The rule answers that argument, and
+    # this case holds the answer to the list it points at: the day the source
+    # list drops the AWS shapes, or the rule stops naming the list, the
+    # sentence "the scanner flags it" is no longer true.
+    rule = (REPO / "rules" / "secret-placement.md").read_text(encoding="utf-8")
+    heading = "## What counts as a secret"
+    assert heading in rule, "the placement rule lost its section on identifiers"
+    section = rule.split(heading, 1)[1].split("\n## ", 1)[0]
+    for marker in ("AKIA", "ASIA"):
+        assert marker in patterns.MARKERS, f"{marker} left the source list"
+        assert f"`{marker}`" in section, f"the section no longer names {marker}"
+    source = "skills/secrets/engine/patterns.py"
+    assert source in section and (REPO / source).is_file()
+    assert "access key ID" in section
+    template = (REPO / "identity" / "accounts" / "_template.yaml").read_text(encoding="utf-8")
+    assert "access key ID" in template, (
+        "the account template is where the ID gets pasted; it has to say so there")
+
+
+# ---------------------------------------------------------------------------
 
 #: The shell scan `rules/promote-safety.md` hands a person to run before a
 #: commit, as an alternation of the shapes it looks for.

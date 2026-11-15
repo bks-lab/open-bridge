@@ -191,6 +191,8 @@ User wants to...
 
 ## Hard Rules (non-negotiable)
 
+- **A credential identifier is a secret.** An access key ID or a token prefix
+  the scanner flags is reported, never printed, and answered with a reference.
 - **Never print a value.** Not in an answer, not in a file, not in a commit, not
   in a test fixture. Names, byte counts and fingerprints are the whole
   vocabulary. If a value is needed, it is needed by a program, and `run` is how
