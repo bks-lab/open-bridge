@@ -476,6 +476,18 @@ def test_the_live_manifest_is_true():
     assert report.problems == [], "\n".join(report.problems)
 
 
+def test_the_manifest_names_the_instance_card():
+    import yaml
+    manifest = yaml.safe_load((REPO / "kernel" / "manifest.yaml").read_text(encoding="utf-8"))
+    entries = manifest["entries"] if isinstance(manifest, dict) else manifest
+    entry = next((e for e in entries
+                  if e.get("command") == "python3 scripts/context-index.py --instances"), None)
+    assert entry, "the instance block Phase 1 loads is not in the manifest"
+    assert entry["read"] == "command" and entry["reaches"] == ["session"]
+    for via in entry["via"]:
+        assert "context-index.py --instances" in (REPO / via).read_text(encoding="utf-8")
+
+
 def test_the_family_index_lives_in_kernel_and_carries_no_placement_debt():
     report = ck.evaluate(ck.gather(REPO))
     assert (REPO / "kernel" / "families.yaml").is_file()

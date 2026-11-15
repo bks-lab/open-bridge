@@ -37,7 +37,7 @@ families:
   skill: channel
   guide: [docs/channels.md]
 - path: infra/instances/
-  read_when: another Bridge this one should know about
+  read_when: another Bridge this one should know about; when the user names one, answer from its entry, open a session at its path to work in it, and never read its files from here
   guide: [docs/multi-instance.md]
 - path: infra/object-stores/
   read_when: 'where content that is not configuration lives: recordings, documents, exports'

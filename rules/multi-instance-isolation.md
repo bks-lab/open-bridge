@@ -35,6 +35,20 @@ sample.
 This is the inbound mirror of `docs/multi-instance.md` § don't-touch-other-instances:
 **don't pull in** is as load-bearing as **don't reach out**.
 
+## Naming another Bridge
+
+The user may name another Bridge ("the client Bridge", "ask the other one").
+That is a lookup, not a read.
+
+- Answer from its line in the Phase 1 index (the block at the end of
+  `python3 scripts/context-index.py --registries`) and its entry in
+  `infra/instances/<slug>.yaml`: what it is for, where it lives, its status.
+- Say how to reach it: to work in it, open a session at its path, on its own
+  branch.
+- Never read its files from here. Two exceptions, both declared and neither
+  assumed: the entry says `access.mode: read-only-from-here`, or a workspace
+  binds it (Gate 1). Even then nothing is written, pushed or logged there.
+
 ## Gate 2 — branding is advised, not assumed
 
 Per-instance presentation (wordmark, subtitle, colour mode, calendar tags) is a

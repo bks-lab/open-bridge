@@ -1249,6 +1249,184 @@ def test_registries_is_exclusive(tmp_path, extra):
     assert exc.value.code == 2
 
 
+# -------------------------------------------------------------- instances --
+#
+# `--registries` ends with one line per other Bridge in `infra/instances/`.
+# The registries name repos; the instance entries name Bridges. A session that
+# hears "the other Bridge" needs the line that says where it is and how to
+# reach it, and that line must never invite reading its files from here.
+
+
+def _instance(root: Path, slug: str, body: str) -> Path:
+    path = root / "infra" / "instances" / f"{slug}.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def _entry(name, purpose="a sibling for client work", relationship="sibling",
+           status=None, path="~/work/acme/acme-bridge"):
+    lines = [f"name: {name}", "scope: user", f"relationship: {relationship}",
+             f'purpose: "{purpose}"', "location:", f"  path: {path}",
+             "access:", "  mode: operate-own-session",
+             '  how: "cd ~/work/acme/acme-bridge && claude"',
+             'notes: "a note the card must not inline"']
+    if status:
+        lines.append(f"status: {status}")
+    return "\n".join(lines) + "\n"
+
+
+def test_instance_files_skips_reserved_and_foreign_files(tmp_path):
+    _instance(tmp_path, "beta", _entry("beta"))
+    _instance(tmp_path, "alpha", _entry("alpha"))
+    _instance(tmp_path, "_template", _entry("template"))
+    _instance(tmp_path, "_schema", "type: object\n")
+    base = tmp_path / "infra" / "instances"
+    (base / "README.md").write_text("# instances\n", encoding="utf-8")
+    (base / "notes.txt").write_text("x\n", encoding="utf-8")
+    (base / "dir.yaml").mkdir()
+
+    assert ci.instance_files(tmp_path) == [
+        "infra/instances/alpha.yaml",
+        "infra/instances/beta.yaml",
+    ]
+
+
+def test_instance_files_without_the_folder_is_empty(tmp_path):
+    assert ci.instance_files(tmp_path) == []
+    assert ci.render_instances(tmp_path) == ""
+
+
+def test_render_instances_one_line_per_entry(tmp_path):
+    _instance(tmp_path, "acme-bridge", _entry("acme-bridge"))
+    _instance(tmp_path, "lab", _entry("lab", purpose="experiments", relationship="upstream",
+                                       path="~/work/lab"))
+    out = ci.render_instances(tmp_path)
+    lines = [line for line in out.splitlines() if line.startswith("- ")]
+
+    assert len(lines) == 2
+    assert lines[0] == "- **acme-bridge** (sibling): a sibling for client work | ~/work/acme/acme-bridge"
+    assert lines[1] == "- **lab** (upstream): experiments | ~/work/lab"
+    # The card is a lookup, not a copy of the entry.
+    assert "a note the card must not inline" not in out
+    assert "cd ~/work" not in out
+
+
+def test_render_instances_says_how_to_reach_and_not_to_read(tmp_path):
+    _instance(tmp_path, "acme-bridge", _entry("acme-bridge"))
+    out = ci.render_instances(tmp_path)
+    head = out.split("\n- ", 1)[0]
+
+    assert head.startswith("# infra/instances")
+    assert "open a session at its path" in head
+    assert "read-only-from-here" in head
+    assert "Do not read its files from here" in head
+
+
+@pytest.mark.parametrize("status,shown", [
+    ("active", False), (None, False), ("dormant", True), ("archived", True), ("unknown", True),
+])
+def test_render_instances_names_a_status_other_than_active(tmp_path, status, shown):
+    _instance(tmp_path, "old", _entry("old", status=status))
+    line = next(l for l in ci.render_instances(tmp_path).splitlines() if l.startswith("- "))
+    tag = line.split("(", 1)[1].split(")", 1)[0]
+    if shown:
+        assert tag == f"sibling, {status}"
+    else:
+        assert tag == "sibling"
+
+
+def test_render_instances_cuts_a_long_purpose(tmp_path):
+    _instance(tmp_path, "wordy", _entry("wordy", purpose="word " * 60))
+    line = next(l for l in ci.render_instances(tmp_path).splitlines() if l.startswith("- "))
+    purpose = line.split("): ", 1)[1].rsplit(" | ", 1)[0]
+
+    assert len(purpose) <= ci.DEFAULT_LABEL_CHARS
+    assert purpose.endswith("…")
+
+
+def test_render_instances_lists_a_broken_entry_rather_than_dropping_it(tmp_path):
+    _instance(tmp_path, "broken", "name: [unclosed\n")
+    _instance(tmp_path, "scalar", "just a string\n")
+    out = ci.render_instances(tmp_path)
+
+    assert "- **broken**: unreadable entry, open infra/instances/broken.yaml" in out
+    assert "- **scalar**: unreadable entry, open infra/instances/scalar.yaml" in out
+
+
+def test_registries_end_with_the_instance_block(tmp_path, capsys):
+    _registry_tree(tmp_path, ["ecosystem.yaml", "ecosystem.acme.yaml"])
+    _instance(tmp_path, "acme-bridge", _entry("acme-bridge"))
+
+    rc = _load_cli().main(["--repo-root", str(tmp_path), "--registries"])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert out.index("# ecosystem.yaml — index") < out.index("# ecosystem.acme.yaml — index")
+    assert out.index("# ecosystem.acme.yaml — index") < out.index("# infra/instances")
+    assert out.endswith(ci.render_instances(tmp_path))
+
+
+def test_registries_without_instances_are_unchanged(tmp_path, capsys):
+    _registry_tree(tmp_path, ["ecosystem.yaml"])
+    text = (tmp_path / "ecosystem.yaml").read_text(encoding="utf-8")
+    expected = ci.render_card(text, ci.card_for(tmp_path, "ecosystem.yaml"), "ecosystem.yaml")
+
+    rc = _load_cli().main(["--repo-root", str(tmp_path), "--registries"])
+    assert rc == 0
+    assert capsys.readouterr().out == expected
+
+
+def test_registries_with_only_instances_print_only_the_block(tmp_path, capsys):
+    _instance(tmp_path, "acme-bridge", _entry("acme-bridge"))
+    rc = _load_cli().main(["--repo-root", str(tmp_path), "--registries"])
+    assert rc == 0
+    assert capsys.readouterr().out == ci.render_instances(tmp_path)
+
+
+def test_instances_cli_prints_only_the_block(tmp_path, capsys):
+    _registry_tree(tmp_path, ["ecosystem.yaml"])
+    _instance(tmp_path, "acme-bridge", _entry("acme-bridge"))
+
+    rc = _load_cli().main(["--repo-root", str(tmp_path), "--instances"])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert out == ci.render_instances(tmp_path)
+    assert "ecosystem.yaml" not in out
+
+
+def test_instances_cli_empty_tree_is_silent(tmp_path, capsys):
+    rc = _load_cli().main(["--repo-root", str(tmp_path), "--instances"])
+    assert rc == 0
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [["ecosystem.yaml"], ["--get", "x"], ["--list"], ["--registries"]],
+    ids=["path", "get", "list", "registries"],
+)
+def test_instances_is_exclusive(tmp_path, extra):
+    with pytest.raises(SystemExit) as exc:
+        _load_cli().main(["--repo-root", str(tmp_path), "--instances", *extra])
+    assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("rel", [
+    "kernel/families.yaml",
+    "rules/multi-instance-isolation.md",
+    "docs/multi-instance.md",
+    "rules/operations.md",
+])
+def test_the_lookup_not_read_sentence_reaches_every_channel(rel):
+    """The families route is the one channel that reaches sub-agents; the
+    rules and the guide carry the same instruction for a session."""
+    text = " ".join((REPO_ROOT / rel).read_text(encoding="utf-8").split())
+    assert "open a session at its path" in text, rel
+    assert "never read its files" in text.lower() or "do not read its files" in text.lower(), rel
+
+
 def test_overlay_fragment_pattern_matches_registry_pattern():
     """The overlay writes registry fragments, Phase 1 indexes them.
 
