@@ -7,7 +7,8 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DESK_PARTS, LAUNCH_EFFORTS, LAUNCH_MODELS, MAX_STATIONS, bandsProblem, dropAmong, featureDisabled, featureGroups, flowModeOf, flowModePatch,
-  homeCatalog, homeChosen, homeView, homeViewSet, jevModelValid, launchPatch, moveAmong, personOf, presetBoard, presetChanges, presetOn, restartNotice,
+  featuresLocked, homeCatalog, homeChosen, homeView, homeViewSet, jevModelValid, launchPatch, moveAmong, personOf, presetBoard, presetChanges, presetOn,
+  restartNotice,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
@@ -348,7 +349,7 @@ function PresetsCard({ f, busy, c }) {
   const [asking, setAsking] = useState(null)
   const keys = useRoving()
   const presets = f.presets ?? []
-  const on = presetOn(presets)
+  const on = presetOn(presets, f.items)
   const ask = presets.find(p => p.id === asking) ?? null
   return html`<${Card} title=${w.presetsTitle} intro=${w.presetsIntro}>
     <div class="view-pick" role="radiogroup" aria-label=${w.presetsTitle} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
@@ -387,11 +388,13 @@ function FeatureRow({ x, items, busy, block, c }) {
   const w = T().features
   const name = w.label[x.id] ?? x.id
   const off = featureDisabled(x, items)
-  const parent = off && !x.sub ? items.find(y => y.id === x.requires) : null
-  return html`<div class=${`feat-row${x.sub ? ' feat-sub' : ''}${x.sub && off ? ' is-off' : ''}`} data-feature=${x.id}>
+  const na = x.available === false
+  const parent = off && !x.sub && !na ? items.find(y => y.id === x.requires) : null
+  return html`<div class=${`feat-row${x.sub ? ' feat-sub' : ''}${(x.sub && off) || na ? ' is-off' : ''}`} data-feature=${x.id}>
     <${Row} label=${name} explain=${w.explain[x.id]} mark=${featureMarks(x)} note=${x.id === 'files_search' ? html`<${BlockLine} words=${block} />` : null}>
+      ${na ? html`<span class="muted small set-aside">${w.unavailable}</span>` : null}
       ${parent ? html`<span class="muted small set-aside">${w.needs(w.label[parent.id] ?? parent.id)}</span>` : null}
-      <${Switch} on=${x.value === true} label=${name} disabled=${busy || off} onChange=${v => c.saveFeatures({ [x.id]: v })} />
+      <${Switch} on=${x.value === true} label=${name} disabled=${busy || off || na} onChange=${v => c.saveFeatures({ [x.id]: v })} />
     <//>
   </div>`
 }
@@ -400,9 +403,10 @@ function FeatureRow({ x, items, busy, block, c }) {
 function ChoiceRow({ x, items, busy, c }) {
   const w = T().features
   const name = w.label[x.id] ?? x.id
-  return html`<div class="feat-row" data-feature=${x.id}>
-    <${Row} label=${name} explain=${w.explain[x.id]} mark=${featureMarks(x)} wide>
-      <${PickCards} label=${name} family=${x.id} current=${x.value} busy=${busy || featureDisabled(x, items)} onPick=${v => c.saveFeatures({ [x.id]: v })}
+  const na = x.available === false
+  return html`<div class=${`feat-row${na ? ' is-off' : ''}`} data-feature=${x.id}>
+    <${Row} label=${name} explain=${w.explain[x.id]} mark=${featureMarks(x)} wide note=${na ? html`<span class="muted small feat-note">${w.unavailable}</span>` : null}>
+      <${PickCards} label=${name} family=${x.id} current=${x.value} busy=${busy || na || featureDisabled(x, items)} onPick=${v => c.saveFeatures({ [x.id]: v })}
         options=${(x.values ?? []).map(v => ({ value: v, title: featureWord(x, v), line: w.choiceLine[x.id]?.[v] }))} />
     <//>
   </div>`
@@ -415,15 +419,16 @@ function HelperTile({ x, items, busy, c }) {
   const w = t.features
   const name = w.label[x.id] ?? x.id
   const on = x.value === true
+  const na = x.available === false
   const area = x.area && AREAS[x.area] ? x.area : null
   return html`<div class=${`view-opt feat-tile${on ? ' is-on' : ''}`} data-feature=${x.id}>
     <${Sketch} family=${x.id} small />
     <span class="set-label">${name}${featureMarks(x)}</span>
-    <span class="muted small">${w.explain[x.id]}</span>
+    <span class="muted small">${na ? w.unavailable : w.explain[x.id]}</span>
     <span class="feat-tile-foot">
       ${area ? html`<${Btn} size="xs" variant="ghost" title=${w.detailsTitle(t.settings.section[area]?.title ?? area)}
         onClick=${() => c.setSettingsSection(area)}>${w.details}<//>` : null}
-      <${Switch} on=${on} label=${name} disabled=${busy || featureDisabled(x, items)} onChange=${v => c.saveFeatures({ [x.id]: v })} />
+      <${Switch} on=${on} label=${name} disabled=${busy || na || featureDisabled(x, items)} onChange=${v => c.saveFeatures({ [x.id]: v })} />
     </span>
   </div>`
 }
@@ -451,7 +456,7 @@ function FlowCard({ f, subs, busy, c }) {
 }
 
 // the line about a restart, by the phase logic.js restartNotice gives
-const RESTART_WORDS = { restarting: 'restarting', slow: 'restartSlow', needed: 'restartNeeded' }
+const RESTART_WORDS = { restarting: 'restarting', slow: 'restartSlow', needed: 'restartNeeded', waiting: 'restartWaiting' }
 
 /** Features: the switches beside bridge-config.yaml (state.features, features.py), built as the start page's area is:
  *  Work through first as the headline, the presets as picker cards, then one card per group, every choice as picker
@@ -463,8 +468,10 @@ function FeaturesArea({ s, c }) {
   const f = s.features
   if (!f?.items) return html`<${Card} title=${t.settings.section.features.title}><${Empty}>${w.noServer}<//><//>`
   const notice = restartNotice(s.ui.featuresRestart, f.restart)
-  // a save in flight, or a server that restarts: every control waits
-  const busy = !!(s.ui.busy?.features_save || s.ui.busy?.features_preset || s.ui.busy?.features_reset) || notice === 'restarting' || notice === 'slow'
+  // a features verb in flight, or a restart under way (logic.js featuresLocked): every control waits. A change that
+  // only waits for a restart locks nothing
+  const verbs = ['features_save', 'features_preset', 'features_reset', 'features_restart']
+  const busy = verbs.some(v => s.ui.busy?.[v]) || featuresLocked(s.ui.featuresRestart, f.restart)
   const groups = featureGroups(f.items)
   // Work through and what requires it in its group make the headline card; Only Work through is one of its cards
   const flow = f.items.find(x => x.id === 'flow')
@@ -486,6 +493,8 @@ function FeaturesArea({ s, c }) {
     </div>` : null}
     ${notice ? html`<div class="banner feat-restart" role="status">
       <${StateLine} token=${notice === 'restarting' ? 'info' : 'warning'} strong word=${w[RESTART_WORDS[notice]]} />
+      ${notice === 'waiting' ? html`<${Btn} size="xs" variant="primary" busy=${busy} title=${w.restartNowTitle}
+        onClick=${() => c.restartFeatures()}>${w.restartNow}<//>` : null}
     </div>` : null}
     ${f.warnings?.length ? html`<div class="banner set-warnings" role="status">
       <${StateLine} token="warning" strong word=${w.warnings} />

@@ -81,6 +81,9 @@ test('presetChanges: the features a preset names whose value differs now, unknow
   assert.deepEqual(logic.presetChanges({ features: { flow: true, flow_seen: true, describe: 'stale', gone: true } }, items), ['flow_seen', 'describe'])
   assert.deepEqual(logic.presetChanges({ features: { flow: true } }, items), [])
   assert.deepEqual(logic.presetChanges({}, items), [])
+  // a feature this cockpit does not offer (available false) changes nothing when a preset names it
+  const served = [...items, item('triage_daily', { value: false, available: false })]
+  assert.deepEqual(logic.presetChanges({ features: { triage_daily: true, flow_seen: true } }, served), ['flow_seen'])
 })
 
 test('presetOn: of the presets that match, the one naming most features; none matching, none', () => {
@@ -94,6 +97,29 @@ test('presetOn: of the presets that match, the one naming most features; none ma
   // a tie keeps the order the server sends
   assert.equal(logic.presetOn([{ id: 'x', features: { a: 1 }, matches: true }, { id: 'y', features: { b: 1 }, matches: true }]), 'x')
   assert.equal(logic.presetOn(undefined), null)
+})
+
+test('presetOn with the items: a feature this cockpit does not offer neither breaks a match nor counts toward one', () => {
+  const items = [item('flow', { value: true }), item('voice', { group: 'page', value: false }), item('triage_daily', { value: false, available: false })]
+  // full names the daily sort, which this cockpit never switches on: the rest matches, so full is marked
+  const full = { id: 'full', features: { flow: true, triage_daily: true }, matches: false }
+  assert.equal(logic.presetOn([full], items), 'full')
+  // a preset that names only what this cockpit does not offer matches nothing
+  assert.equal(logic.presetOn([{ id: 'sort', features: { triage_daily: true }, matches: false }], items), null)
+  // of two that match, the one naming more of what this cockpit offers
+  const wide = { id: 'wide', features: { flow: true, voice: false }, matches: false }
+  assert.equal(logic.presetOn([full, wide], items), 'wide')
+  // what the server says still counts
+  assert.equal(logic.presetOn([{ id: 'srv', features: { voice: true }, matches: true }], items), 'srv')
+})
+
+test('savableSettings: a save never carries a feature this cockpit does not offer', () => {
+  const items = [item('flow', { value: true }), item('triage_daily', { value: false, available: false })]
+  assert.deepEqual(logic.savableSettings({ flow: false, triage_daily: true }, items), { flow: false })
+  assert.deepEqual(logic.savableSettings({ triage_daily: true }, items), {})
+  // an id the page does not know goes as it is: the server answers for it
+  assert.deepEqual(logic.savableSettings({ later: true }, items), { later: true })
+  assert.deepEqual(logic.savableSettings({ flow: false }, null), { flow: false })
 })
 
 test('flowModeOf: Work through and Only Work through read as one choice of three, from the values or the config', () => {
@@ -121,6 +147,8 @@ test('flowModePatch: a pick of the Work through picker saves only what changes',
   // a server without Only Work through: the patch never names it
   assert.deepEqual(logic.flowModePatch('beside', [item('flow')]), { flow: true })
   assert.deepEqual(logic.flowModePatch('only', [item('flow')]), { flow: true })
+  // nor one this cockpit does not offer
+  assert.deepEqual(logic.flowModePatch('only', [item('flow'), item('flow_only', { requires: 'flow', available: false })]), { flow: true })
 })
 
 test('presetBoard: one mark per feature in the order of the cards: switched on, at its default, or left as it is', () => {
@@ -155,15 +183,74 @@ test('restartStep: needed says so until the server is back, none changes nothing
   assert.deepEqual(logic.restartStep(null, { kind: 'answer' }), { phase: null, reload: false })
 })
 
-test('restartNotice: the phase of this page first, else what the server says is pending', () => {
-  assert.equal(logic.restartNotice('restarting', { pending: false, can: true }), 'restarting')
-  assert.equal(logic.restartNotice(null, { pending: true, can: false }), 'needed')
-  assert.equal(logic.restartNotice(null, { pending: true, can: true }), 'restarting')
-  assert.equal(logic.restartNotice(null, { pending: false, can: true }), null)
+test('restartNotice: the restart of this page first, then what the server says: under way, waiting, or by hand', () => {
+  assert.equal(logic.restartNotice('restarting', { pending: false, requested: false, can: true }), 'restarting')
+  assert.equal(logic.restartNotice('slow', { pending: true, requested: true, can: true }), 'slow')
+  // the server was asked to restart, from this page or another
+  assert.equal(logic.restartNotice(null, { pending: true, requested: true, can: true }), 'restarting')
+  // a change waits and nobody asked yet: the area offers Restart now where the server can, the commands where not
+  assert.equal(logic.restartNotice(null, { pending: true, requested: false, can: true }), 'waiting')
+  assert.equal(logic.restartNotice(null, { pending: true, requested: false, can: false }), 'needed')
+  assert.equal(logic.restartNotice('needed', { pending: false, requested: false, can: false }), 'needed')
+  assert.equal(logic.restartNotice(null, { pending: false, requested: false, can: true }), null)
   assert.equal(logic.restartNotice(null, undefined), null)
 })
 
+test('featuresLocked: only a restart under way locks the area, never a change that only waits', () => {
+  assert.equal(logic.featuresLocked('restarting', { pending: false, requested: false }), true)
+  assert.equal(logic.featuresLocked(null, { pending: true, requested: true }), true)
+  assert.equal(logic.featuresLocked(null, { pending: true, requested: false, can: true }), false)
+  assert.equal(logic.featuresLocked(null, { pending: true, requested: false, can: false }), false)
+  // past the fallback the page says how to restart by hand, and the switches are free again
+  assert.equal(logic.featuresLocked('slow', { pending: true, requested: false }), false)
+  assert.equal(logic.featuresLocked('needed', undefined), false)
+  assert.equal(logic.featuresLocked(null, undefined), false)
+})
+
+test('lostRestart: a save whose answer was lost restarts the server when it changed a config feature', () => {
+  const f = { restart: { pending: false, requested: false, can: true }, items: [
+    item('flow', { value: false }), item('voice', { group: 'page', value: false }),
+    item('ticker', { group: 'helpers', store: 'ticker', value: false }),
+    item('describe', { kind: 'choice', values: ['off', 'missing', 'stale'], value: 'off', overridden: false })],
+    presets: [{ id: 'team', features: { flow: true } }, { id: 'news', features: { ticker: true } }, { id: 'same', features: { flow: false } }] }
+  assert.equal(logic.lostRestart('features_save', { settings: { flow: true } }, f), 'now')
+  assert.equal(logic.lostRestart('features_save', { settings: { ticker: true } }, f), 'none')     // a store acts at once
+  assert.equal(logic.lostRestart('features_save', { settings: { voice: false } }, f), 'none')    // nothing changed
+  assert.equal(logic.lostRestart('features_preset', { preset: 'team' }, f), 'now')
+  assert.equal(logic.lostRestart('features_preset', { preset: 'news' }, f), 'none')
+  assert.equal(logic.lostRestart('features_preset', { preset: 'same' }, f), 'none')
+  assert.equal(logic.lostRestart('features_reset', {}, f), 'none')
+  const changed = { ...f, items: f.items.map(x => (x.id === 'describe' ? { ...x, value: 'stale', overridden: true } : x)) }
+  assert.equal(logic.lostRestart('features_reset', {}, changed), 'now')
+  assert.equal(logic.lostRestart('features_restart', {}, f), 'now')
+  // a server that cannot restart itself: the commands by hand
+  const cannot = { ...f, restart: { ...f.restart, can: false } }
+  assert.equal(logic.lostRestart('features_save', { settings: { flow: true } }, cannot), 'needed')
+  assert.equal(logic.lostRestart('features_save', { settings: { flow: true } }, null), 'none')
+  // saving a feature this cockpit does not offer is a no-op on the server, never a restart
+  const served = { ...f, items: [...f.items, item('triage_daily', { value: false, available: false })] }
+  assert.equal(logic.lostRestart('features_save', { settings: { triage_daily: true } }, served), 'none')
+})
+
+test('helloReload: another tab loads anew when the server started again while a restart waited or was asked for', () => {
+  const waits = { pending: true, requested: false, can: true }
+  assert.equal(logic.helloReload(null, 1000, waits), false)              // the first hello of this page
+  assert.equal(logic.helloReload(1000, 1000, waits), false)              // the stream only reconnected
+  assert.equal(logic.helloReload(1000, 2000, waits), true)
+  assert.equal(logic.helloReload(1000, 2000, { pending: false, requested: true, can: true }), true)
+  assert.equal(logic.helloReload(1000, 2000, { pending: false, requested: false, can: true }), false)
+  assert.equal(logic.helloReload(1000, 2000, undefined), false)
+  assert.equal(logic.helloReload(1000, undefined, waits), false)
+})
+
 // ---------------------------------------------------------------- the mock state
+
+test('mock: ?served=1 shows a served cockpit, where the daily sort is not available', () => {
+  const plain = mock.buildState(NOW).features.items
+  assert.ok(plain.every(x => x.available === true))
+  const served = mock.buildState(NOW, { served: true }).features.items
+  assert.deepEqual(served.filter(x => x.available === false).map(x => x.id), ['triage_daily'])
+})
 
 test('mock: the demo carries the whole catalogue, two built-in presets and one from a file, nothing changed', () => {
   const f = mock.buildState(NOW).features
@@ -293,6 +380,19 @@ test('features area: Work through is a picker of three cards with sketches, the 
   const changed = mount(html`<${SettingsPage} s=${featuresPage({ overridden: 1, items: itemsWith(s0, { flow: { value: true, config: false, overridden: true } }) })} c=${recorder()} />`)
   const chip = heroOf(changed).$$('.chip').find(ch => ch.text() === en.features.changed)
   assert.equal(chip?.getAttribute('title'), en.features.configWas(en.features.flowMode.off.title))
+})
+
+test('features area: a feature this cockpit does not offer stands greyed with a line why, its control dead', () => {
+  const s0 = featuresPage()
+  const el = mount(html`<${SettingsPage} s=${featuresPage({ items: itemsWith(s0, { triage_daily: { available: false } }) })} c=${recorder()} />`)
+  assert.ok(switchOf(el, 'triage_daily').hasAttribute('disabled'))
+  assert.ok(rowOf(el, 'triage_daily').text().includes(en.features.unavailable))
+  assert.ok(!switchOf(el, 'voice').hasAttribute('disabled'))
+  assert.ok(!rowOf(el, 'voice').text().includes(en.features.unavailable))
+  // a choice the same way: its cards wait
+  const choice = mount(html`<${SettingsPage} s=${featuresPage({ items: itemsWith(s0, { chat_layout: { available: false } }) })} c=${recorder()} />`)
+  assert.ok(rowOf(choice, 'chat_layout').$$('[role="radio"]').every(r => r.hasAttribute('disabled')))
+  assert.ok(rowOf(choice, 'chat_layout').text().includes(en.features.unavailable))
 })
 
 test('features area: a feature that requires one of another group says what it needs beside its greyed control', () => {
@@ -464,10 +564,36 @@ test('features area: a click on a preset asks in its card first; Cancel leaves i
   assert.deepEqual(c.calls.at(-1), ['applyFeaturePreset', 'team'])
 })
 
+test('features area: a change that waits offers Restart now, locks nothing, and Reset stays free', () => {
+  const s0 = featuresPage()
+  const s = featuresPage({ overridden: 1, restart: { pending: true, requested: false, can: true },
+    items: itemsWith(s0, { flow: { value: false, config: true, overridden: true } }) })
+  const c = recorder()
+  const el = mount(html`<${SettingsPage} s=${s} c=${c} />`)
+  const notice = el.$('.feat-restart')
+  assert.ok(notice.text().includes(en.features.restartWaiting))
+  notice.button(en.features.restartNow).click()
+  assert.deepEqual(c.calls.at(-1), ['restartFeatures'])
+  assert.ok(!switchOf(el, 'voice').hasAttribute('disabled'), 'a waiting change locks no switch')
+  assert.ok(el.$$('[role="radio"]').every(r => !r.hasAttribute('disabled')), 'nor a picker card')
+  el.$('.set-banner').button(en.features.reset).click()
+  assert.deepEqual(c.calls.at(-1), ['resetFeatures'])
+  // a server that cannot restart itself: the commands by hand instead of the button
+  const cannot = mount(html`<${SettingsPage} s=${featuresPage({ restart: { pending: true, requested: false, can: false } })} c=${recorder()} />`)
+  assert.ok(cannot.text().includes(en.features.restartNeeded))
+  assert.equal(cannot.button(en.features.restartNow), null)
+  assert.ok(!switchOf(cannot, 'voice').hasAttribute('disabled'))
+  // asked for, here or in another browser: it restarts, and the area waits for it
+  const asked = mount(html`<${SettingsPage} s=${featuresPage({ restart: { pending: true, requested: true, can: true } })} c=${recorder()} />`)
+  assert.ok(asked.text().includes(en.features.restarting))
+  assert.equal(asked.button(en.features.restartNow), null)
+  assert.ok(switchOf(asked, 'voice').hasAttribute('disabled'))
+})
+
 test('features area: the restart line while the server restarts, and the hint when a restart is needed', () => {
   const restarting = mount(html`<${SettingsPage} s=${featuresPage({}, { featuresRestart: 'restarting' })} c=${recorder()} />`)
   assert.ok(restarting.text().includes(en.features.restarting))
-  const needed = mount(html`<${SettingsPage} s=${featuresPage({ restart: { pending: true, can: false } })} c=${recorder()} />`)
+  const needed = mount(html`<${SettingsPage} s=${featuresPage({ restart: { pending: true, requested: false, can: false } })} c=${recorder()} />`)
   assert.ok(needed.text().includes(en.features.restartNeeded))
   const slow = mount(html`<${SettingsPage} s=${featuresPage({}, { featuresRestart: 'slow' })} c=${recorder()} />`)
   assert.ok(slow.text().includes(en.features.restartSlow))

@@ -2838,7 +2838,7 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .feat-sub { padding-left: 20px; }
 .feat-sub > .set-row { padding: 10px 0; border-top-style: dashed; }
 .feat-sub .set-label { font-weight: 400; }
-.feat-sub.is-off .set-text { opacity: 0.6; }
+.feat-sub.is-off .set-text, .feat-row.is-off:not(.feat-sub) .set-text { opacity: 0.6; }
 .feat-note { display: block; max-width: 60ch; margin-top: 2px; }
 .feat-ask {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 12px; padding: 10px 14px;
@@ -2846,7 +2846,7 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 }
 .feat-ask-acts { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .view-opt.is-asked { border-color: var(--accent); }
-.feat-restart { display: flex; align-items: center; gap: 8px; }
+.feat-restart { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
 /* Work through as the headline of the area: an accent edge, the title a step larger */
 .feat-hero { border-color: var(--accent-line); box-shadow: inset 3px 0 0 var(--accent); }
 .feat-hero .set-card-name { font-size: var(--text-h3); }

@@ -19,8 +19,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import signal
 import sys
 import threading
+import time
+import types
 from pathlib import Path
 
 import pytest
@@ -67,7 +70,7 @@ CONFIG_IDS = [i for i in TABLE if i not in STORES]
 READ = {
     "flow": lambda c: c.flow["enabled"],
     "flow_only": lambda c: (c.work_view == "flow" and c.work_views == ("files", "flow")) or
-                           (False if c.work_view == "due" and c.work_views == WORK_VIEWS else None),
+                           (False if c.work_views == WORK_VIEWS else None),
     "flow_themes": lambda c: c.flow["themes"]["enabled"],
     "flow_summary": lambda c: c.flow["summary"]["enabled"],
     "flow_instruct": lambda c: c.flow["instruct"]["enabled"],
@@ -132,7 +135,8 @@ def test_requires_names_a_switch_of_the_catalogue():
 
 @pytest.mark.parametrize("fid,value", [(fid, v) for fid in CONFIG_IDS for v in values_of(fid)])
 def test_each_config_feature_loads_clean_and_reads_back(tmp_path, fid, value):
-    cfg = load_web_config(tmp_path, BASE, overrides={fid: value})
+    # flow_only acts only with Work through on (finding 6)
+    cfg = load_web_config(tmp_path, BASE, overrides={fid: value, **({"flow": True} if fid == "flow_only" else {})})
     assert cfg.config_warnings == ()
     assert READ[fid](cfg) == value
     assert ft.value_of(cfg, fid) == value
@@ -142,9 +146,9 @@ def test_each_config_feature_loads_clean_and_reads_back(tmp_path, fid, value):
     assert plain.config_warnings == () and READ[fid](plain) == value
 
 
-def test_flow_only_patches_both_view_keys():
+def test_flow_only_patches_the_view_keys_and_off_keeps_the_config_s_work_view():
     assert ft.patch("flow_only", True) == {"work_view": "flow", "work_views": ["files", "flow"]}
-    assert ft.patch("flow_only", False) == {"work_view": "due", "work_views": list(WORK_VIEWS)}
+    assert ft.patch("flow_only", False) == {"work_views": list(WORK_VIEWS)}
     assert ft.patch("flow_prio_haiku", True) == {"flow": {"prio": {"haiku": {"enabled": True}}}}
     assert ft.patch("describe", "stale") == {"describe": {"auto": "stale"}}
 
@@ -223,6 +227,37 @@ def test_no_cockpit_block_takes_overrides_onto_an_empty_one(tmp_path):
     assert cfg.voice is True and cfg.enabled is False
 
 
+def test_flow_only_without_flow_is_refused_with_a_warning(tmp_path):
+    cfg = load_web_config(tmp_path, BASE, overrides={"flow_only": True})
+    assert cfg.work_views == WORK_VIEWS and cfg.work_view == "due"
+    assert any(w.startswith("features.json.flow_only:") and "flow" in w for w in cfg.config_warnings)
+    on = load_web_config(tmp_path, BASE, overrides={"flow": True, "flow_only": True})
+    assert on.work_views == ("files", "flow") and on.config_warnings == ()
+    by_config = load_web_config(tmp_path, {"cockpit": {"enabled": True, "flow": {"enabled": True}}}, overrides={"flow_only": True})
+    assert by_config.work_views == ("files", "flow") and by_config.config_warnings == ()
+
+
+def test_flow_only_off_keeps_a_custom_config_and_a_stale_override_drops_again(tmp_path):
+    custom = {"cockpit": {"enabled": True, "flow": {"enabled": True}, "work_views": ["due", "files", "flow"], "work_view": "files"}}
+    cfg = load_web_config(tmp_path, custom, overrides={"flow_only": False})      # it equals the config now: no override
+    assert cfg.work_views == ("due", "files", "flow") and cfg.work_view == "files" and cfg.config_warnings == ()
+    stale = load_web_config(tmp_path, custom, overrides={"flow": True, "voice": False})
+    assert stale.flow["enabled"] is True and stale.config_warnings == ()
+    only = {"cockpit": {"enabled": True, "flow": {"enabled": True}, "work_views": ["files", "flow"], "work_view": "flow"}}
+    off = load_web_config(tmp_path, only, overrides={"flow_only": False})
+    assert off.work_views == WORK_VIEWS and off.work_view == "flow"           # the config's own work_view stays
+
+
+def test_a_file_nested_too_deep_is_no_override(tmp_path):
+    root, state = tmp_path / "bridge", tmp_path / "state"
+    root.mkdir()
+    state.mkdir()
+    (root / "bridge-config.yaml").write_text("cockpit:\n  enabled: true\n", encoding="utf-8")
+    (state / "features.json").write_text("[" * 200_000, encoding="utf-8")
+    assert load_web_config(root, state_dir=state).enabled is True
+    assert ft.read_overrides(state / "features.json") == {}
+
+
 # ---------------------------------------------------------------- the store
 
 def test_save_validates_everything_before_writing(world):
@@ -288,6 +323,35 @@ def test_the_value_is_the_one_after_a_restart_and_restart_is_pending(world):
     assert f.pending() is False
 
 
+def test_save_refuses_flow_only_while_flow_stays_off(world):
+    with pytest.raises(ft.FeatureError) as error:
+        world.app.features.save({"flow_only": True})
+    assert error.value.status == 400 and error.value.field == "flow_only"
+    assert not (world.state / "features.json").exists()
+    world.app.features.save({"flow": True, "flow_only": True})
+    assert read_file(world.state / "features.json") == {"flow": True, "flow_only": True}
+    world.app.features.save({"flow": False})                 # Work through off takes its flow_only along
+    assert read_file(world.state / "features.json") == {}
+    world.app.features.save({"flow": True, "flow_only": True})
+    world.app.features.save({"flow_only": False})            # off is the config's own value: the override goes
+    assert read_file(world.state / "features.json") == {"flow": True}
+
+
+def test_a_served_cockpit_never_sorts_by_itself(world):
+    import dataclasses
+    world.app.cfg = dataclasses.replace(world.app.cfg, served=True)
+    f = world.app.features
+    items = {i["id"]: i for i in f.state()["items"]}
+    assert items["triage_daily"]["available"] is False
+    assert all(i["available"] for k, i in items.items() if k != "triage_daily")
+    world.app.on_restart = lambda: None
+    res = world.act("features_save", settings={"triage_daily": True})
+    assert res["restart"] == "none" and read_file(world.state / "features.json") in (None, {})
+    res = world.act("features_preset", preset="full")         # the rest of full applies
+    assert "triage_daily" not in read_file(world.state / "features.json")
+    assert next(p for p in res["features"]["presets"] if p["id"] == "full")["matches"] is True
+
+
 # ---------------------------------------------------------------- 3. presets
 
 def test_the_built_in_basic_puts_every_feature_at_its_default():
@@ -343,6 +407,17 @@ def test_a_bare_off_in_a_preset_file_is_off(tmp_path):
                                          "features: {describe: off, voice: off}\n")
     presets, warnings = ft.load_presets(tmp_path)
     assert presets[0]["features"] == {"describe": "off", "voice": False} and warnings == []
+
+
+def test_a_preset_with_flow_only_but_not_flow_leaves_it_out(tmp_path):
+    write_preset(tmp_path, "views.yaml", "schema_version: 1\nscope: user\nid: views\ntitle: V\n"
+                                         "features: {flow_only: true, voice: true}\n")
+    write_preset(tmp_path, "both.yaml", "schema_version: 1\nscope: user\nid: both\ntitle: B\n"
+                                        "features: {flow: true, flow_only: true}\n")
+    presets, warnings = ft.load_presets(tmp_path)
+    by = {p["id"]: p["features"] for p in presets}
+    assert by == {"both": {"flow": True, "flow_only": True}, "views": {"voice": True}}
+    assert any(w.startswith("workflow/cockpit-presets/views.yaml: flow_only") for w in warnings)
 
 
 def test_no_folder_is_no_preset_file(tmp_path):
@@ -422,20 +497,21 @@ def test_the_state_has_the_contract_shape(tmp_path):
         items = {i["id"]: i for i in state["items"]}
         assert [i["id"] for i in state["items"]] == list(TABLE)
         assert items["flow"] == {"id": "flow", "group": "work", "kind": "switch", "value": False, "config": False,
-                                 "overridden": False, "requires": None, "ai": False, "store": None, "area": None}
+                                 "overridden": False, "requires": None, "ai": False, "store": None, "area": None,
+                                 "available": True}
         assert items["describe"] == {"id": "describe", "group": "work", "kind": "choice", "values": ["off", "missing", "stale"],
                                      "value": "off", "config": "off", "overridden": False, "requires": None, "ai": True,
-                                     "store": None, "area": None}
+                                     "store": None, "area": None, "available": True}
         assert items["launch_model"] == {"id": "launch_model", "group": "helpers", "kind": "switch", "value": False,
                                          "config": False, "overridden": False, "requires": None, "ai": True,
-                                         "store": "launch", "area": "launch"}
+                                         "store": "launch", "area": "launch", "available": True}
         assert items["flow_themes"]["requires"] == "flow"
         assert [p["id"] for p in state["presets"]] == ["basic", "full", "team"]
         basic = state["presets"][0]
         assert set(basic) == {"id", "builtin", "title", "description", "scope", "features", "matches"}
         assert basic["builtin"] is True and basic["title"] is None and basic["description"] is None and basic["scope"] is None
         assert state["presets"][2]["builtin"] is False and state["presets"][2]["scope"] == "org"
-        assert state["overridden"] == 0 and state["restart"] == {"pending": False, "can": False}
+        assert state["overridden"] == 0 and state["restart"] == {"pending": False, "requested": False, "can": False}
         assert state["files_block"] == ["secret", "private"]
         assert any("unknown feature nonsense" in x for x in state["warnings"])
         w.app.on_restart = lambda: None
@@ -453,7 +529,8 @@ def test_save_through_the_action_layer_without_a_restart_hook(world, monkeypatch
     assert items["flow"]["value"] is True and items["flow"]["overridden"] is True and res["features"]["overridden"] == 2
     assert [e for e, _ in events].count("features") == 1
     assert read_file(world.state / "features.json") == {"flow": True, "flow_seen": True}
-    assert world.app.restart_requested is True
+    assert world.app.restart_requested is False                 # nothing can restart it: nothing is in flight
+    assert res["features"]["restart"] == {"pending": True, "requested": False, "can": False}
 
 
 def test_a_store_change_needs_no_restart(world, monkeypatch):
@@ -468,13 +545,70 @@ def test_a_store_change_needs_no_restart(world, monkeypatch):
     assert called == []
 
 
-def test_a_server_that_can_restart_restarts_after_the_answer(world):
-    fired = threading.Event()
-    world.app.on_restart = fired.set
+def test_the_verb_itself_never_starts_the_restart(world):
+    """The verb says `now`; the restart starts only once the HTTP handler wrote the answer (finding 3)"""
+    fired = []
+    world.app.on_restart = lambda: fired.append(1)
     res = world.act("features_save", settings={"chat_layout": "workspaces"})
-    assert res["restart"] == "now" and world.app.restart_requested is True
-    assert res["features"]["restart"] == {"pending": True, "can": True}
+    assert res["restart"] == "now" and world.app.restart_requested is False
+    assert res["features"]["restart"] == {"pending": True, "requested": False, "can": True}
+    assert world.app._restart_timer is None and fired == []
+
+
+def test_the_answer_is_written_before_the_restart_is_asked(world, monkeypatch):
+    from lib.bridge_cockpit import server as srv
+    order, fired, events = [], threading.Event(), []
+    real_send = srv.Handler.send_json
+    real_request = world.app.request_restart
+
+    def send_json(self, status, payload):
+        real_send(self, status, payload)
+        if isinstance(payload, dict) and payload.get("verb") == "features_save":
+            order.append("sent")
+
+    def request_restart():
+        order.append("restart")
+        return real_request()
+    monkeypatch.setattr(srv.Handler, "send_json", send_json)
+    monkeypatch.setattr(world.app, "request_restart", request_restart)
+    monkeypatch.setattr(srv, "RESTART_DELAY_S", 0.01)
+    monkeypatch.setattr(world.app, "broadcast", lambda e, p: events.append((e, p)))
+    world.app.on_restart = fired.set
+    status, _, data = world.post("/api/action", {"verb": "features_save", "args": {"settings": {"chat_layout": "workspaces"}}})
+    assert status == 200 and json.loads(data)["restart"] == "now"
     assert fired.wait(3)
+    assert order == ["sent", "restart"]
+    assert world.app.restart_requested is True
+    # once in flight, the page hears it: requested true
+    sent = [p for e, p in events if e == "features"]
+    assert sent[-1]["restart"] == {"pending": True, "requested": True, "can": True}
+
+
+def test_an_answer_without_a_restart_asks_none(world, monkeypatch):
+    calls = []
+    monkeypatch.setattr(world.app, "request_restart", lambda: calls.append(1))
+    world.app.on_restart = lambda: None
+    status, _, data = world.post("/api/action", {"verb": "features_save", "args": {"settings": {"voice": False}}})
+    assert status == 200 and json.loads(data)["restart"] == "none" and calls == []
+
+
+def test_a_hand_edited_config_is_pending_but_not_requested(world):
+    """A change of bridge-config.yaml while the server runs: pending, never in flight, so the page offers Restart now"""
+    config = world.root / "bridge-config.yaml"
+    config.write_text(config.read_text(encoding="utf-8").replace("  relay: true\n", "  relay: true\n  voice: true\n"),
+                      encoding="utf-8")
+    assert world.app.features.state()["restart"] == {"pending": True, "requested": False, "can": False}
+    world.app.on_restart = lambda: None
+    assert world.app.features.state()["restart"] == {"pending": True, "requested": False, "can": True}
+
+
+def test_restart_now_is_a_verb_of_its_own(world):
+    res = world.act("features_restart")
+    assert res["restart"] == "needed" and world.app.restart_requested is False
+    world.app.on_restart = lambda: None
+    res = world.act("features_restart")
+    assert res["restart"] == "now" and res["features"]["restart"]["can"] is True
+    assert world.app.restart_requested is False           # the HTTP handler asks for it after the answer
 
 
 def test_saving_the_value_it_has_asks_no_restart(world):
@@ -494,13 +628,11 @@ def test_a_bad_save_is_refused_and_writes_nothing(world, settings, field):
 
 
 def test_preset_and_reset_through_the_action_layer(world):
-    fired = threading.Event()
-    world.app.on_restart = fired.set
+    world.app.on_restart = lambda: None
     res = world.act("features_preset", preset="full")
     assert res["restart"] == "now"
     assert next(p for p in res["features"]["presets"] if p["id"] == "full")["matches"] is True
     assert world.app.ticker.settings()["enabled"] is True
-    assert fired.wait(3)
     res = world.act("features_reset")
     assert res["features"]["overridden"] == 0 and read_file(world.state / "features.json") == {}
     assert res["restart"] == "none"                     # back to what the server runs
@@ -513,11 +645,28 @@ def test_preset_and_reset_through_the_action_layer(world):
     assert error.value.status == 400 and error.value.field == "preset"
 
 
+VERBS = ("features_save", "features_preset", "features_reset", "features_restart")
+
+
 def test_the_verbs_are_the_owners_only():
-    for verb in ("features_save", "features_preset", "features_reset"):
+    for verb in VERBS:
         assert verb in ab.SPEC and verb in ab.LOCAL_VERBS
         assert verb not in ac.PERSON_VERBS and verb in ac.OWNER_VERBS
     assert "features" in ac.OWNER_EVENTS and "features" in ac.STATE_NEUTRAL
+
+
+@pytest.mark.parametrize("verb", VERBS)
+def test_a_person_is_refused_every_verb_and_never_sees_the_features(world, verb):
+    args = {"features_save": {"settings": {"flow": True}}, "features_preset": {"preset": "full"}}.get(verb, {})
+    with pytest.raises(ActionError) as error:
+        world.app.actions.execute(verb, args, viewer="x")
+    assert error.value.status == 403
+    assert not (world.state / "features.json").exists() and world.app.restart_requested is False
+    world.app.features.save({"flow": True})
+    owner = world.app.state_payload()["features"]
+    assert owner["overridden"] == 1
+    assert world.app.access.state("x")["features"] == ac.STATE_NEUTRAL["features"]
+    assert world.app.access.event("x", "features", owner) is None
 
 
 def test_the_answer_leaves_before_the_restart(world, monkeypatch):
@@ -527,7 +676,9 @@ def test_the_answer_leaves_before_the_restart(world, monkeypatch):
     assert world.app.request_restart() is True
     assert calls == []
     world.app.on_restart = None
-    assert world.app.request_restart() is False
+    world.app._restart_timer = None
+    world.app.restart_requested = False
+    assert world.app.request_restart() is False and world.app.restart_requested is False
 
 
 # a store's own verbs (Model choice, News ticker, the decision guide): (feature, save verb and args, the same verb with
@@ -579,7 +730,7 @@ def cli():
 
 def cli_root(tmp_path) -> tuple[Path, Path]:
     root = tmp_path / "bridge"
-    root.mkdir()
+    root.mkdir(parents=True)
     (root / "bridge-config.yaml").write_text("cockpit:\n  enabled: true\n", encoding="utf-8")
     state = tmp_path / "state"
     state.mkdir()
@@ -599,6 +750,8 @@ class FakeApp:
         self.on_restart = None
         self.restart_requested = False
         self.stopped = False
+        self.cancelled = []
+        self.actions = types.SimpleNamespace(write_lock=threading.Lock())
 
     def start(self):
         pass
@@ -606,54 +759,135 @@ class FakeApp:
     def stop(self):
         self.stopped = True
 
+    def cancel_restart(self, why):
+        self.restart_requested = False
+        self.cancelled.append(why)
+
+
+class Execed(Exception):
+    """os.execv never returns: the fake raises this once an exec would have worked"""
+
 
 class FakeServer:
-    """serve_forever asks for a restart the way the verb does and returns once shutdown ran"""
+    """serve_forever plays one way of the server's end: a restart the page asked for (while a write verb runs, or one
+    that outlasts the lock), a SIGTERM after it, or a plain stop"""
 
-    def __init__(self, restart: bool):
+    def __init__(self, way: str, handlers: dict):
         self.app = FakeApp()
-        self.restart = restart
+        self.way = way
+        self.handlers = handlers
         self.down = threading.Event()
         self.closed = False
+        self.verb_done = self.shutdown_at = None
 
     def serve_forever(self, poll_interval=0.5):
-        if self.restart:
-            self.app.restart_requested = True
-            self.app.on_restart()
+        if self.way == "plain":
+            return
+        self.app.restart_requested = True             # as App.request_restart does once a hook is set
+        if self.way == "sigterm":
+            self.handlers[signal.SIGTERM](signal.SIGTERM, None)
+            assert self.down.wait(5)
+            return
+        lock = self.app.actions.write_lock
+        held = threading.Event()
+
+        def verb():
+            with lock:
+                held.set()
+                time.sleep(0.3 if self.way == "restart" else 1.0)
+                self.verb_done = time.monotonic()
+        threading.Thread(target=verb, daemon=True).start()
+        assert held.wait(5)
+        self.app.on_restart()                         # the timer's call: waits for the verb, then the shutdown
+        if self.way == "restart":
             assert self.down.wait(5), "on_restart did not shut the server down"
 
     def shutdown(self):
+        self.shutdown_at = time.monotonic()
         self.down.set()
 
     def server_close(self):
         self.closed = True
 
 
-@pytest.mark.parametrize("restart", [True, False])
-def test_serve_wires_the_restart_and_execs_itself_after_cleanup(tmp_path, monkeypatch, restart):
-    import types
+def serve(tmp_path, monkeypatch, way, execv=None):
     from lib.bridge_cockpit import server as srv
     root, state = cli_root(tmp_path)
     module = cli()
-    fake = FakeServer(restart)
+    handlers = {}
+    fake = FakeServer(way, handlers)
     seen = {}
 
     def make_server(r, **kwargs):
         seen.update(kwargs, root=r)
         return fake
     monkeypatch.setattr(srv, "make_server", make_server)
-    monkeypatch.setattr(module.signal, "signal", lambda *a: None)
+    monkeypatch.setattr(module.signal, "signal", lambda signum, handler: handlers.__setitem__(signum, handler))
     execs = []
-    monkeypatch.setattr(module.os, "execv", lambda exe, argv: execs.append((exe, argv)))
+
+    def fake_execv(exe, argv):
+        execs.append((exe, argv, fake.app.actions.write_lock.locked()))
+        raise Execed()
+    monkeypatch.setattr(module.os, "execv", execv or fake_execv)
     monkeypatch.setattr(sys, "argv", ["bridge-cockpit.py", "--root", str(root), "serve"])
     args = types.SimpleNamespace(ignore_disabled=False, port=0, served=False)
-    assert module.cmd_serve(args, root, state) == 0
+    return module, fake, seen, execs, (lambda: module.cmd_serve(args, root, state)), root, state
+
+
+def test_serve_execs_itself_after_cleanup_once_the_running_write_ended(tmp_path, monkeypatch):
+    module, fake, seen, execs, run, root, state = serve(tmp_path, monkeypatch, "restart")
+    with pytest.raises(Execed):
+        run()
     assert seen["state_dir"] == state and seen["cfg"].voice is True
     assert fake.app.stopped and fake.closed and callable(fake.app.on_restart)
-    if restart:
-        assert execs == [(sys.executable, [sys.executable, str(CLI.resolve()), "--root", str(root), "serve"])]
-    else:
-        assert execs == []
+    assert fake.shutdown_at >= fake.verb_done                   # the write ended before the shutdown began
+    # the same interpreter and arguments, the write lock still held at the exec, so no write starts after it
+    assert execs == [(sys.executable, [sys.executable, str(CLI.resolve()), "--root", str(root), "serve"], True)]
+
+
+def test_a_plain_stop_never_execs(tmp_path, monkeypatch):
+    module, fake, seen, execs, run, root, state = serve(tmp_path, monkeypatch, "plain")
+    assert run() == 0 and execs == []
+
+
+def test_a_sigterm_after_a_requested_restart_stops_for_good(tmp_path, monkeypatch):
+    module, fake, seen, execs, run, root, state = serve(tmp_path, monkeypatch, "sigterm")
+    assert run() == 0 and execs == []
+    assert fake.app.restart_requested is False and fake.app.on_restart is None
+
+
+def test_a_write_that_outlasts_the_lock_cancels_the_restart(tmp_path, monkeypatch):
+    module, fake, seen, execs, run, root, state = serve(tmp_path, monkeypatch, "slow")
+    monkeypatch.setattr(module, "RESTART_LOCK_S", 0.05)
+    assert run() == 0 and execs == []
+    assert fake.app.cancelled and fake.shutdown_at is None and fake.app.restart_requested is False
+
+
+def test_an_exec_that_fails_tries_another_python_then_says_so(tmp_path, monkeypatch, capsys):
+    tried = []
+
+    def failing(exe, argv):
+        tried.append(exe)
+        raise OSError(8, "Exec format error")
+    module, fake, seen, execs, run, root, state = serve(tmp_path, monkeypatch, "restart", execv=failing)
+    monkeypatch.setattr(module, "_python_with_yaml", lambda: "/fake/yaml/python3")
+    monkeypatch.setattr(module.shutil, "which", lambda name: "/fake/path/python3")
+    code = run()
+    assert code != 0 and tried == [sys.executable, "/fake/yaml/python3", "/fake/path/python3"]
+    err = capsys.readouterr().err
+    assert "could not start again" in err and "bridge-cockpit.py" in err
+
+    def second_works(exe, argv):
+        tried.append(exe)
+        if exe == sys.executable:
+            raise OSError(2, "No such file or directory")
+        raise Execed()
+    tried.clear()
+    module, fake, seen, execs, run, root, state = serve(tmp_path / "again", monkeypatch, "restart", execv=second_works)
+    monkeypatch.setattr(module, "_python_with_yaml", lambda: "/fake/yaml/python3")
+    with pytest.raises(Execed):
+        run()
+    assert tried == [sys.executable, "/fake/yaml/python3"]
 
 
 # ---------------------------------------------------------------- docs

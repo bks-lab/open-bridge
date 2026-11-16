@@ -27,6 +27,9 @@ properties:
     additionalProperties: false
     minProperties: 1
     description: The features this preset sets; the others keep their value.
+    # flow_only true acts only with Work through on, so a preset that sets it sets flow true too
+    if: {properties: {flow_only: {const: true}}, required: [flow_only]}
+    then: {properties: {flow: {const: true}}, required: [flow]}
     properties:
       flow: {type: boolean}
       flow_only: {type: boolean}

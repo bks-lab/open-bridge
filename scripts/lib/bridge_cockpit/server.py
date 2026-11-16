@@ -337,22 +337,32 @@ class App:
         self.hub.publish(event, payload)
 
     def request_restart(self) -> bool:
-        """A config feature changed (features.py): ask for a restart. True when this server restarts itself, the hook
-        called on a short timer so the HTTP answer leaves first; False without a hook (under tests, or make_server
-        without serve), and the change then acts after the next start"""
-        self.restart_requested = True
+        """Restart this server (a change of the Features area, or Restart now). Called by the HTTP handler once the
+        answer of the verb that said `now` is written; the hook then runs on a short timer. True when this server
+        restarts itself; False without a hook (under tests, or make_server without serve), nothing is then in flight
+        and the change acts after the next start"""
         if self.on_restart is None:
             return False
+        self.restart_requested = True
         if self._restart_timer is None:
             self._restart_timer = threading.Timer(RESTART_DELAY_S, self._restart_now)
             self._restart_timer.daemon = True
             self._restart_timer.start()
+        self.broadcast("features", self.features.state())     # requested: the page says it restarts
         return True
 
     def _restart_now(self) -> None:
         hook = self.on_restart
-        if hook is not None:
+        if hook is not None and self.restart_requested:
             hook()
+
+    def cancel_restart(self, why: str) -> None:
+        """A restart that cannot go ahead (bridge-cockpit.py cmd_serve): nothing is in flight any more, the page offers
+        Restart now again"""
+        self.restart_requested = False
+        self._restart_timer = None
+        self.log_error(f"restart: {why}")
+        self.broadcast("features", self.features.state())
 
     def client_count(self) -> int:
         """The pages someone can see: the tab poll, the full pass and the ticker run for these only."""
@@ -1879,7 +1889,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(status, payload)
             elif path == "/api/action":
                 done = app.actions.execute(body.get("verb"), body.get("args"), viewer=person)
-                self.send_json(200, {"ok": bool(done.get("ok"))} if person else done)
+                try:
+                    self.send_json(200, {"ok": bool(done.get("ok"))} if person else done)
+                finally:
+                    # a verb of the Features area that said `now`: the restart starts once its answer is written
+                    if person is None and done.get("restart") == "now":
+                        app.request_restart()
             elif path == "/api/ask":
                 for name in body:
                     if name not in ("kind", "args", "via", "model", "conv", "place", "origin", "keys"):

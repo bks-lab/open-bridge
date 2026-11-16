@@ -60,7 +60,7 @@ OWNER_VERBS = frozenset("""
     a2a_ask a2a_forget a2a_poll account_status adopt advise approve_all area ask_via_tab chat_remind chat_tab checkin_stuck
     task_next work_on
     collect_context describe_apply describe_discard describe_run do_it explain_note files_ask finding_ack
-    features_preset features_reset features_save
+    features_preset features_reset features_restart features_save
     finding_unack flow_activity_summary flow_attach flow_instruct flow_merge flow_theme_move flow_theme_new
     flow_theme_rename flow_themes_run github_board github_board_default guide_read guide_settings
     guide_settings_reset hide home_tiles inbox_reopen inbox_unmute issue_check issue_done issue_review
@@ -95,8 +95,8 @@ STATE_NEUTRAL: dict[str, Any] = {
                "default_model": None, "default_effort": None, "router": "off", "settings": {}},
     "ticker": {"rev": 0, "enabled": False, "settings": {"enabled": False}, "defaults": {}},
     "guide": {"enabled": False, "auto": False, "per_hour": 0, "available": False, "overridden": [], "rev": 0, "entries": {}},
-    "features": {"items": [], "presets": [], "overridden": 0, "restart": {"pending": False, "can": False}, "files_block": [],
-                 "warnings": []},
+    "features": {"items": [], "presets": [], "overridden": 0, "restart": {"pending": False, "requested": False, "can": False},
+                 "files_block": [], "warnings": []},
     "tour": {"enabled": False, "done": None},
     "themes": {"enabled": False, "max_themes": 0, "themes": [], "assign": {}, "by_person": [], "suggest": {}, "at_ms": None,
                "budget_left": 0, "running": False, "last_error": None},

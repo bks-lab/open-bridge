@@ -15,7 +15,7 @@ features:
   flow_themes: true            # its themes, small model calls within a daily budget
   describe: stale              # 'off' | missing | stale: each item's brief kept by a small model ('off' quoted)
   triage_daily: true           # the daily sort, one model call a day
-  # flow_only: false           # Work through alone in the work tab, beside Files
+  # flow_only: false           # Work through alone in the work tab, beside Files; true needs flow: true
   # flow_summary: false
   # flow_instruct: false
   # flow_checkin: false

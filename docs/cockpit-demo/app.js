@@ -19,7 +19,7 @@ import {
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, prioOn, prioRows, prioLoaded, jevReady, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
   FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace, infoPoint, pointOpen, pointViewOn,
-  pointBack, pointList, ghWalkAt, flowOpenKey, machineModel, restartStep, RESTART_SLOW_MS,
+  pointBack, pointList, ghWalkAt, flowOpenKey, machineModel, restartStep, RESTART_SLOW_MS, lostRestart, helloReload, savableSettings,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
 
@@ -513,6 +513,12 @@ const handlers = {
   hello(p) {
     // a save of Settings, Features restarted the server: it is back, the page loads anew with what it now serves
     if (featuresRestart({ kind: 'hello' })) { window.location.reload(); return }
+    // the server started again while a restart waited or was asked for, from another tab or by hand: this tab loads
+    // anew too, once nobody types, since a config feature such as the chat layout shapes the page (logic.js helloReload)
+    const started = Number.isFinite(p?.started_ms) ? p.started_ms : null
+    const again = helloReload(serverStarted, started, store.get().features?.restart)
+    if (started != null) serverStarted = started
+    if (again && !restartReload) { restartReload = true; reloadWhenSafe() }
     const seen = codeSeen(pageCode, p?.code)
     pageCode = seen.code
     if (seen.newer && !store.get().ui.newCode) {
@@ -966,6 +972,21 @@ function workspacesAnswer(r) {
 
 // the timer that says how to restart by hand when the server has not come back (logic.js RESTART_SLOW_MS)
 let restartTimer = null
+// when the server this page last said hello to started (hello started_ms), and whether a reload for a restart made
+// elsewhere is under way already (handlers.hello)
+let serverStarted = null
+let restartReload = false
+
+/** A verb of Settings, Features, and its answer (featuresAnswer). An answer lost to a network error right after a
+ *  change of a config feature counts as the restart it most likely caused (logic.js lostRestart): the page waits for
+ *  the server's next hello, and says how to restart by hand after the fallback */
+async function featuresVerb(verb, args) {
+  const before = store.get().features
+  const r = await act(verb, args)
+  if (r) return featuresAnswer(r)
+  if (refusals.get(args)?.error?.code === 'network') featuresRestart({ kind: 'answer', restart: lostRestart(verb, args, before) })
+  return r
+}
 
 /** One step of the restart after a save of Settings, Features (logic.js restartStep): the phase goes to ui, a
  *  restart the server makes itself gets its timer; true when the page should load anew now */
@@ -1950,9 +1971,15 @@ const ctl = {
   // what a waiting tab's pane in the chat shows: the reading, both, or the terminal; kept in this browser
   guideRead: async ref => guideAnswer(await act('guide_read', { tab_ref: ref })),
   // Settings, Features: a switch saves at once, a preset only after its confirm line, the reset forgets every change
-  saveFeatures: async settings => featuresAnswer(await act('features_save', { settings })),
-  applyFeaturePreset: async preset => featuresAnswer(await act('features_preset', { preset })),
-  resetFeatures: async () => featuresAnswer(await act('features_reset', {})),
+  // never with a feature this cockpit does not offer (logic.js savableSettings); nothing left, nothing sent
+  saveFeatures: settings => {
+    const clean = savableSettings(settings, store.get().features?.items)
+    return Object.keys(clean).length ? featuresVerb('features_save', { settings: clean }) : Promise.resolve(null)
+  },
+  applyFeaturePreset: preset => featuresVerb('features_preset', { preset }),
+  resetFeatures: () => featuresVerb('features_reset', {}),
+  // a change that waits for a restart: Restart now asks the server to restart itself (features_restart)
+  restartFeatures: () => featuresVerb('features_restart', {}),
   saveGuide: async patch => guideAnswer(await act('guide_settings', patch)),
   resetGuide: async () => guideAnswer(await act('guide_settings_reset', {})),
   // the first-run tour: a step opens its page; the end goes back to where it began and is kept on the server
@@ -2392,7 +2419,7 @@ async function boot() {
       lang: params.get('lang') || 'en', offline: params.get('offline') === '1', empty: params.get('empty') === '1',
       auth: params.get('auth') === '0' ? false : undefined, tour: params.get('tour') === '1',
       work: params.get('work'), focusToFiles: params.get('focus_to_files') === '1', filesScope: params.get('files_scope'),
-      flow: params.get('flow') !== '0', seen: params.get('seen') === '1', workPage: params.get('work_page') === '1', taskboard: params.get('taskboard') === '1', chat: params.get('chat'),
+      flow: params.get('flow') !== '0', seen: params.get('seen') === '1', served: params.get('served') === '1', workPage: params.get('work_page') === '1', taskboard: params.get('taskboard') === '1', chat: params.get('chat'),
       views: params.get('views') ? params.get('views').split(',').map(x => x.trim()).filter(Boolean) : null,
     })
   }

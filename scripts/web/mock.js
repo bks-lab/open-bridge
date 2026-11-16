@@ -466,12 +466,14 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
 /** The features block of the state: each feature's value over what the config says, the presets and whether each
  *  matches now. A changed config feature waits for a restart the demo cannot make */
-function featuresState(config, values) {
-  const items = FEATURE_CATALOG.map(x => ({ ...x, value: values[x.id], config: config[x.id], overridden: !same(values[x.id], config[x.id]) }))
+function featuresState(config, values, served = false) {
+  // a served cockpit never sorts by itself (features.py SERVED_OFF): the daily sort is no switch there
+  const items = FEATURE_CATALOG.map(x => ({ ...x, value: values[x.id], config: config[x.id], overridden: !same(values[x.id], config[x.id]),
+    available: !(served && x.id === 'triage_daily') }))
   const presets = [...Object.entries(FEATURE_BUILTINS).map(([id, features]) => ({ id, builtin: true, title: null, description: null, scope: null, features })), FEATURE_TEAM]
     .map(p => ({ ...p, matches: Object.entries(p.features).every(([k, v]) => same(values[k], v)) }))
   const pending = items.some(x => !x.store && x.overridden)
-  return { items, presets, overridden: items.filter(x => x.overridden).length, restart: { pending, can: false }, files_block: ['Health'], warnings: [] }
+  return { items, presets, overridden: items.filter(x => x.overridden).length, restart: { pending, requested: false, can: false }, files_block: ['Health'], warnings: [] }
 }
 
 /** Raised on every change of the ticker block, like the server's Ticker.rev: the page keeps the newer state */
@@ -1260,7 +1262,8 @@ export function buildState(now = Date.now(), opts = {}) {
     ticker: tickerState(TICKER_CONFIG, now),
     guide: guideState(tabs, now),
     // Settings, Features: nothing changed beside the config in the demo
-    features: featuresState(featureConfig(opts, seenOn), featureConfig(opts, seenOn)),
+    // ?served=1: a served cockpit, where the daily sort is not available
+    features: featuresState(featureConfig(opts, seenOn), featureConfig(opts, seenOn), opts.served === true),
     workspaces: { rev: 0, enabled: true, off: [], inactive: [], gone: [], items: [
       { key: 'Acme', area: 'Acme', id: 'acme', title: 'Acme', parent: null, children: ['acme-billing'], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null, active: true, active_held_by: null, fixed: false },
       { key: 'Billing', area: 'Billing', id: 'acme-billing', title: 'Billing', parent: 'acme', children: [], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null, active: true, active_held_by: null, fixed: false },
@@ -3045,9 +3048,11 @@ export function createMockTransport(opts = {}) {
           const before = Object.fromEntries(items.map(x => [x.id, x.value]))
           const patch = verb === 'features_save' ? args.settings ?? {} : verb === 'features_preset'
             ? state.features.presets.find(p => p.id === args.preset)?.features ?? {} : config
-          const next = { ...before, ...Object.fromEntries(Object.entries(patch).filter(([k]) => Object.hasOwn(before, k))) }
+          // a feature this cockpit does not offer is a no-op, as on the server
+          const offered = new Set(items.filter(x => x.available !== false).map(x => x.id))
+          const next = { ...before, ...Object.fromEntries(Object.entries(patch).filter(([k]) => offered.has(k))) }
           const restart = items.some(x => !x.store && !same(next[x.id], before[x.id])) ? 'needed' : 'none'
-          state.features = featuresState(config, next)
+          state.features = featuresState(config, next, items.some(x => x.available === false))
           result.features = state.features
           result.restart = restart
           result.note = verb === 'features_reset' ? 'Mock: switches from the config again' : verb === 'features_preset' ? 'Mock: preset applied'

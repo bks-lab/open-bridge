@@ -23,7 +23,7 @@ from typing import Any
 import yaml
 
 from .config import WORK_VIEWS, WebConfigError, _show, load_web_config, read_config_file
-from .store import atomic_write_json, read_json
+from .store import atomic_write_json, read_json as _read_json
 
 FILE = "features.json"
 PRESET_DIR = "workflow/cockpit-presets"
@@ -77,9 +77,13 @@ CATALOG: tuple[Feature, ...] = (
 )
 BY_ID = {f.id: f for f in CATALOG}
 CONFIG_FEATURES = tuple(f for f in CATALOG if f.store is None)
-# flow_only: Work through alone in the work tab, beside the Files tab (docs/bridge-cockpit.md, cockpit.work_views)
+# flow_only: Work through alone in the work tab, beside the Files tab (docs/bridge-cockpit.md, cockpit.work_views). Off
+# is stored only where the config itself has it on, and then gives every view back but keeps the config's work_view
 FLOW_ONLY = {True: {"work_view": "flow", "work_views": ["files", "flow"]},
-             False: {"work_view": "due", "work_views": list(WORK_VIEWS)}}
+             False: {"work_views": list(WORK_VIEWS)}}
+# a served cockpit (serve --served) never sorts by itself (server.served_config): the switch is no switch there
+SERVED_OFF = frozenset({"triage_daily"})
+FLOW_ONLY_NEEDS = "needs flow (Work through) on"
 
 
 # ---------------------------------------------------------------- one feature
@@ -126,6 +130,14 @@ def deep_merge(base: Any, top: dict) -> dict:
 
 # ---------------------------------------------------------------- the overrides (load_web_config)
 
+def read_json(path: Path) -> Any:
+    """store.read_json, and a file nested too deep for the parser is no JSON either"""
+    try:
+        return _read_json(path)
+    except RecursionError:
+        return None
+
+
 def state_path(root: Path | str, state_dir: Path | str | None = None) -> Path:
     """<state>/features.json; the state dir defaults to <root>/.bridge/cockpit (server.default_state_dir)"""
     return Path(state_dir or Path(root) / ".bridge" / "cockpit") / FILE
@@ -154,9 +166,16 @@ def check_overrides(data: Any) -> tuple[dict, list[str]]:
     return out, warnings
 
 
-def merged(raw: dict, overrides: Any) -> tuple[dict, list[str]]:
-    """bridge-config with the overrides deep merged into its cockpit: block, and the warnings; `raw` is not changed"""
+def merged(raw: dict, overrides: Any, base: Any = None) -> tuple[dict, list[str]]:
+    """bridge-config with the overrides deep merged into its cockpit: block, and the warnings; `raw` is not changed.
+    `base` is the WebConfig of `raw` alone: an override equal to it is none (the config may have changed since it
+    was saved, and a stale value must not overwrite keys beside it), and flow_only needs flow on"""
     clean, warnings = check_overrides(overrides)
+    if base is not None:
+        clean = {k: v for k, v in clean.items() if v != value_of(base, k)}
+    if clean.get("flow_only") is True and not clean.get("flow", value_of(base, "flow") if base is not None else False):
+        del clean["flow_only"]
+        warnings.append(f"{FILE}.flow_only: {FLOW_ONLY_NEEDS}; ignored")
     if not clean:
         return raw, warnings
     block = raw.get("cockpit")
@@ -222,6 +241,9 @@ def load_presets(root: Path | str) -> tuple[list[dict], list[str]]:
                 warnings.append(f"{rel}: {key} {wants(f)}, got {_show(value)}; left out")
             else:
                 features[key] = value
+        if features.get("flow_only") is True and features.get("flow") is not True:
+            del features["flow_only"]          # a preset means the same whatever is on: flow_only comes with flow
+            warnings.append(f"{rel}: flow_only {FLOW_ONLY_NEEDS} in the same preset (flow: true); left out")
         if not features:
             warnings.append(f"{rel}: no feature left to set; skipped")
             continue
@@ -289,9 +311,16 @@ class Features:
         out.update({f.id: bool(self.store_of(f).settings().get("enabled")) for f in CATALOG if f.store})
         return {f.id: out[f.id] for f in CATALOG}
 
+    def unavailable(self) -> frozenset:
+        """Features this cockpit never runs whatever they say: a served one never sorts by itself"""
+        return SERVED_OFF if getattr(self.app.cfg, "served", False) else frozenset()
+
     def pending(self) -> bool:
-        """A config feature differs from what the server started with: it acts after a restart"""
-        return self.values() != self.at_start
+        """A config feature differs from what the server started with (a change of the page, or of bridge-config.yaml
+        by hand): it acts after a restart"""
+        off = self.unavailable()
+        now = self.values()
+        return any(now[k] != self.at_start.get(k) for k in now if k not in off)
 
     # ------------------------------------------------------------ changes
 
@@ -311,11 +340,18 @@ class Features:
         the config's is dropped, as launch.py does, so the page can mark what differs), a store feature into its
         store. Returns what changed: {config: whether a config feature's value moved, stores: [store, ...]}"""
         self.check(change)
+        off = self.unavailable()
+        change = {k: v for k, v in change.items() if k not in off}        # a no-op, never a restart
         config = self.config_values()
         with self.lock:
             before = self.values(config)
-            if any(BY_ID[k].store is None for k in change):
-                kept = {**self.overrides(), **{k: v for k, v in change.items() if BY_ID[k].store is None}}
+            ours = {k: v for k, v in change.items() if BY_ID[k].store is None}
+            if ours.get("flow_only") is True and not ours.get("flow", before["flow"]):
+                raise FeatureError(400, "invalid_argument", FLOW_ONLY_NEEDS, "flow_only")
+            if ours:
+                kept = {**self.overrides(), **ours}
+                if not kept.get("flow", config["flow"]):
+                    kept.pop("flow_only", None)      # Work through off takes its flow_only along: the config's own
                 atomic_write_json(self.path, {f.id: kept[f.id] for f in CONFIG_FEATURES
                                               if f.id in kept and kept[f.id] != config[f.id]})
             after = self.values(config)
@@ -358,28 +394,32 @@ class Features:
         return self.save(dict(preset["features"]))
 
     @staticmethod
-    def matches(preset: dict, now: dict) -> bool:
-        """Every feature the preset names has that value now"""
-        return all(now.get(k) == v for k, v in preset["features"].items())
+    def matches(preset: dict, now: dict, off: frozenset = frozenset()) -> bool:
+        """Every feature the preset names has that value now (one this cockpit never runs aside)"""
+        return all(now.get(k) == v for k, v in preset["features"].items() if k not in off)
 
     # ------------------------------------------------------------ the page
 
     def state(self) -> dict:
         config = self.config_values()
         now = self.current(config)
+        off = self.unavailable()
         items = []
         for f in CATALOG:
             item: dict = {"id": f.id, "group": f.group, "kind": f.kind}
             if f.kind == "choice":
                 item["values"] = list(f.values)
             item.update({"value": now[f.id], "config": config[f.id], "overridden": now[f.id] != config[f.id],
-                         "requires": f.requires, "ai": f.ai, "store": f.store, "area": f.area})
+                         "requires": f.requires, "ai": f.ai, "store": f.store, "area": f.area,
+                         "available": f.id not in off})
             items.append(item)
         presets, warnings = self.presets()
         block = (getattr(self.config_cfg(), "files_search", None) or {}).get("block") or []
         return {"items": items,
-                "presets": [{**p, "features": dict(p["features"]), "matches": self.matches(p, now)} for p in presets],
+                "presets": [{**p, "features": dict(p["features"]), "matches": self.matches(p, now, off)} for p in presets],
                 "overridden": sum(1 for i in items if i["overridden"]),
-                "restart": {"pending": self.pending(), "can": getattr(self.app, "on_restart", None) is not None},
+                # pending: a config value differs from the start; requested: this process restarts now; can: it is able to
+                "restart": {"pending": self.pending(), "requested": bool(getattr(self.app, "restart_requested", False)),
+                            "can": getattr(self.app, "on_restart", None) is not None},
                 "files_block": list(block),
                 "warnings": check_overrides(read_json(self.path))[1] + warnings}

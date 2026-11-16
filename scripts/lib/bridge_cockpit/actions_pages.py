@@ -204,6 +204,10 @@ class PageVerbs:
         """Back to what bridge-config.yaml says, the three stores' own switches included"""
         self.features_changed(ctx, self.app.features.reset())
 
+    def v_features_restart(self, ctx: Ctx) -> None:
+        """Restart now: what differs from the start (a change here, or of bridge-config.yaml by hand) acts after it"""
+        self.features_answer(ctx, "now" if self.app.on_restart is not None else "needed")
+
     @staticmethod
     def switched(store) -> bool:
         """Whether a store of the settings page (launch.py, ticker.py, guide.py) is switched on now"""
@@ -230,11 +234,16 @@ class PageVerbs:
                 app.tabs.schedule(0)          # switched on: the waiting tabs are read at the next poll
         restart = "none"
         if done["config"] and app.features.pending():
-            restart = "now" if app.request_restart() else "needed"
-        state = app.features.state()
+            restart = "now" if app.on_restart is not None else "needed"
+        self.features_answer(ctx, restart)
+
+    def features_answer(self, ctx: Ctx, restart: str) -> None:
+        """The answer of a Features verb. `now` starts no restart here: the HTTP handler asks for it once this answer
+        is written (server.py, /api/action), so the page always gets it"""
+        state = self.app.features.state()
         ctx.extra["features"] = state
         ctx.extra["restart"] = restart
-        app.broadcast("features", state)
+        self.app.broadcast("features", state)
 
     def v_workspace_switch(self, ctx: Ctx, area: str, on: bool) -> None:
         """An area in or out of the bar, kept beside the config; nothing else changes"""

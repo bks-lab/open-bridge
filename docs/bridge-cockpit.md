@@ -3503,11 +3503,11 @@ Those carry an AI mark: small calls of about a cent each, within the daily budge
 | Feature | Card | What it switches |
 |---|---|---|
 | `flow` | work | `flow.enabled`, Work through ([Work through](#work-through-flow)) |
-| `flow_only` | work | on: `work_view: flow` and `work_views: [files, flow]`, Work through alone in the work tab; off: `work_view: due` and every view |
+| `flow_only` | work | on: `work_view: flow` and `work_views: [files, flow]`, Work through alone in the work tab, only while `flow` is on (otherwise it is refused, or ignored with a warning in a file); off is the config's own value, and where the config itself has it on, off gives every view back and keeps the config's `work_view` |
 | `flow_themes`, `flow_summary`, `flow_instruct`, `flow_checkin`, `flow_seen`, `flow_attach` | work | `flow.<name>.enabled` of the block of that name |
 | `flow_prio_haiku` | work | `flow.prio.haiku.enabled` |
 | `describe` | work | `describe.auto`: `off`, `missing` or `stale` |
-| `triage_daily` | work | `triage_daily` |
+| `triage_daily` | work | `triage_daily`; a served cockpit (`serve --served`) never sorts by itself, so there the row is not available and a save of it changes nothing |
 | `chat_layout` | chat | `chat_layout`: `classic` or `workspaces` |
 | `files_scope` | files | `files_scope`: `active` or `all` |
 | `files_search` | files | `files_search.enabled`; the row shows the words of `files_search.block`, or says that there are none and every record may then reach the model |
@@ -3519,7 +3519,8 @@ The page never writes `bridge-config.yaml`. A change of a config feature is kept
 the config says, and the server merges it into the `cockpit:` block when it reads the config, so
 everything the cockpit runs, `status` and the check of the block see the same values as if the key
 stood in the file, the keys beside it untouched (`flow.themes.max_themes` stays what the config says
-when the page switches `flow_themes`). Only the ids of the catalogue are read from it: a key of the
+when the page switches `flow_themes`). A value that the config itself says by now, because the file
+was edited since, counts as no override and changes nothing. Only the ids of the catalogue are read from it: a key of the
 block that is no feature (`enabled`, `port`, `served`, `relay`) or a value a feature does not take
 is ignored and named among the warnings of `status` and the settings page; a file that is missing
 or no JSON changes nothing. The three helpers keep their switch in their own files, as before
@@ -3529,10 +3530,17 @@ with **Reset**: it empties `features.json` and gives the three helpers back the 
 switch, their other settings kept.
 
 The helpers act at once. A config feature acts after a restart of the server: once a change differs
-from what it runs, the server answers, waits half a second and starts itself again, in the same
-process, so its pid, `server.json` and a login item stay valid, and the page reloads when it is back.
-A server that cannot restart itself (one made without `serve`) keeps the change for its next start,
-and the page says to restart it (`python3 scripts/bridge-cockpit.py stop`, then `/cockpit`).
+from what it runs, the server writes its answer first, then waits half a second, lets a write that
+is under way end (at most 30 seconds, else the restart is called off and the page offers it again)
+and starts itself again, in the same process, so its pid, `server.json` and a login item stay
+valid, and the page reloads when it is back. The state says three things about it: `pending` (a
+value differs from what the server started with, also after a hand edit of `bridge-config.yaml`),
+`requested` (this server restarts now) and `can` (it is able to). Pending and not requested, the
+page offers **Restart now**. A stop from outside (`stop`, SIGTERM) during a pending restart stops
+for good. When the process cannot run Python again, it tries one that has PyYAML, then `python3` on
+the PATH, and otherwise exits with an error (a login item then starts it again). A server that
+cannot restart itself (one made without `serve`) keeps the change for its next start, and the page
+says to restart it (`python3 scripts/bridge-cockpit.py stop`, then `/cockpit`).
 
 A **preset** is a named set of feature values; a click applies it after a line that says how many
 switches it sets. Applying one sets exactly the features it names, the others keep their value, and
@@ -3545,8 +3553,9 @@ those two it leaves as they are. More presets are files in `workflow/cockpit-pre
 1`, `scope` (`user`, `org` or `personal`), `id` (the file name), `title`, `description` (optional)
 and `features: {feature: value}`. An org overlay can ship them, so a team starts with the same set.
 A file whose id is `basic` or `full`, or not its file name, is skipped; a feature it does not know,
-or a value the feature does not take, is left out and named on the page, the rest applies. A file
-that starts with `_` is never a preset.
+or a value the feature does not take, is left out and named on the page, the rest applies; so is
+`flow_only: true` without `flow: true` in the same preset. A file that starts with `_` is never a
+preset.
 
 ### On this machine
 

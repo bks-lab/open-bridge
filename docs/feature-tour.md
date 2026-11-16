@@ -52,6 +52,7 @@ self-contained. Skim the index, jump to what you need, ignore the rest.
 | infra | [utilities](#infrautilities) | a supply contract at a location: power, gas, water, heat |
 | workflow | [briefings](#workflowbriefings) | what a briefing shows, from which trackers |
 | workflow | [mail-profiles](#workflowmail-profiles) | one occasion for writing mail: footer, theme, greeting |
+| workflow | [cockpit-presets](#workflowcockpit-presets) | a named set of cockpit feature switches one click applies |
 | workflow | [calendars](#workflowcalendars) | scheduled outbound: emails, reports, digests, with recipients |
 | workflow | [meetings](#workflowmeetings) | a recurring meeting series: cadence, folders, protocol target |
 | workflow | [contexts](#workflowcontexts) | per-domain routing rules (document intake, mail attachments) |
@@ -425,6 +426,25 @@ recipients it is picked on its own.
 (`mail-draft.sh explain --to <who>` shows which profile a recipient gets and
 why). The signature comes from [`identity/mail-footers/`](#identitymail-footers).
 Full doc: [`docs/mail-draft.md`](mail-draft.md).
+
+## workflow/cockpit-presets/
+
+A named set of the cockpit's feature switches (Work through and its helpers,
+the chat view, each item's brief, the daily sort, Ask AI in Files, the model
+choice, the ticker, the decision guide) that one click in Settings, Features
+applies. Applying a preset sets exactly the features it names; the cockpit keeps
+the values beside the config in `.bridge/cockpit/features.json` and never writes
+`bridge-config.yaml`. Two presets are built in (`basic`, `full`); an org overlay
+can ship its team's preset here (`scope: org`).
+
+**Create:** `cp workflow/cockpit-presets/_template.yaml workflow/cockpit-presets/<id>.yaml`
+(`id:` must equal the filename stem; `basic` and `full` are taken).
+
+**Schema:** `workflow/cockpit-presets/_schema.yaml`; an unknown feature or a bad
+value is left out and named on the page.
+
+**Used by:** the cockpit's Settings, Features area. Full doc:
+[`docs/bridge-cockpit.md`](bridge-cockpit.md#features-and-presets).
 
 ## workflow/calendars/
 
