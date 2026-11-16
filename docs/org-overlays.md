@@ -397,7 +397,7 @@ opts this overlay's dests into normal git tracking instead of the default
 default; can also be set later by hand-editing `materialize.track_managed_dests`
 in `bridge-config.yaml` and re-running `sync`/`apply`.
 
-### `sync [name] [--dry-run] [--yes] [--unattended]`
+### `sync [name] [--dry-run] [--yes] [--accept UNIT...] [--unattended]`
 
 Pull the cache up to date and re-materialize. Fetches the ref, recomputes the
 sparse selection and hashes, runs the 3-way comparison against the lock,
@@ -406,6 +406,20 @@ prunes files the upstream deleted, and bumps `resolved_sha`. No `name` syncs all
 subscribed overlays. `--yes` is valid **only** for non-behavioural batches;
 behavioural units always prompt, and without a person they are withheld whole
 (`withheld=` in the summary).
+
+`--accept UNIT...` is that `[y]`, given by name, for a place where no prompt can
+be answered: an agent session, a shell without a tty. A unit is a skill folder
+(`skills/<name>/`, with or without the slash, or any file inside it) or the path
+of another behavioural file; `status` lists the exact names under `withheld`.
+It covers what the interactive `[y]` covers, the whole folder, and nothing
+else: every unit nobody named stays withheld. `--yes` never implies it, because
+`--yes` names nothing. A name no gate asked about fails the run (exit 1), so a
+typo cannot read as "installed". `--unattended` refuses it (exit 2): the
+scheduled run takes no person's answer.
+
+```bash
+python3 scripts/overlay.py sync --yes --accept skills/example-skill/
+```
 
 `--unattended` is the scheduled run, and what `scripts/overlay-autosync.sh`
 calls. It applies an overlay only when its whole plan needs nobody:
@@ -431,11 +445,11 @@ installs a daily LaunchAgent at 07:15, after the CORE auto-update at 07:00, with
 the same Signal notification. It notifies when the outcome changes, not every
 morning. `--print` renders the job without installing it.
 
-### `apply [name]`
+### `apply [name] [--yes] [--accept UNIT...]`
 
 **Offline** re-materialize from cache + lock only — no network. Idempotent: on a
 clean tree it reports all-clean and writes nothing. Use it to rebuild the live
-files after a fresh checkout without re-fetching.
+files after a fresh checkout without re-fetching. `--accept` works as in `sync`.
 
 ### `status [name]`
 

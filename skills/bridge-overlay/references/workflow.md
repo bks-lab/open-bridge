@@ -187,7 +187,10 @@ missing `references/` file. config / rule files **batch-confirm**. `--yes` is
 honoured **only** for non-behavioural files; with `--yes` or no TTY a gated
 unit is **withheld + reported** (`WITHHELD skills/<name>/`, count `withheld=`),
 never auto-applied. Its lock entries stay as they were, so the next run and
-`status` see it again.
+`status` see it again. `--accept <unit>...` is the same `[y]` given by name
+(`sync` / `apply` / `add`), for a run that cannot answer a prompt: it writes the
+named units whole, leaves every other gated unit withheld, fails on a name no
+gate asked about, and is refused under `--unattended`.
 
 The one answer covers the whole unit. A file upstream removed from a withheld
 folder is not pruned (Step 14 keeps it and its lock entry), since the unchanged
