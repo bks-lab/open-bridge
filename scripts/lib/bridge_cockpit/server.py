@@ -77,6 +77,7 @@ from .review import Review
 from .sessions import Sessions
 from .tab_history import QUERY_MAX as HISTORY_QUERY_MAX, TabHistory, paging as history_paging
 from .guide import Guide
+from .features import Features
 from . import prio
 from .usage import Usage
 from .quick import resolve_claude
@@ -126,6 +127,8 @@ SCREEN_HASH_RE = re.compile(r"^[0-9a-f]{1,64}\Z")
 SEEN_PAGE_RE = re.compile(r"^[^\s/\\\x00-\x1f\x7f]{1,64}\Z")
 SEEN_RE = re.compile(r"^@?[a-z0-9][a-z0-9_-]{0,63}\Z")
 COST_REF_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}\Z")     # a cost center or persona id, or all / none
+# a change of the Features area restarts the server this long after it was asked, so the answer leaves first
+RESTART_DELAY_S = 0.5
 
 
 def cost_ledger():
@@ -308,6 +311,12 @@ class App:
         self.workspaces = Workspaces(self)             # the switches of the settings page (workspaces.py)
         self.views = Views(self)                       # the pages and sections switched off on this machine (views.py)
         self.guide = Guide(self)                       # the decision guide of waiting tabs (guide.py)
+        # the Features area of the settings page: switches beside the config, and presets (features.py); a config
+        # feature acts after a restart, which `serve` does itself through on_restart (bridge-cockpit.py cmd_serve)
+        self.on_restart: Callable[[], None] | None = None
+        self.restart_requested = False
+        self._restart_timer: threading.Timer | None = None
+        self.features = Features(self)
         self.watcher = Watcher(self)
         self.last_tabs_json: str | None = None
         self.last_model_tabs_json: str | None = None   # the tabs without their last line: what the model reads
@@ -326,6 +335,24 @@ class App:
 
     def broadcast(self, event: str, payload: Any) -> None:
         self.hub.publish(event, payload)
+
+    def request_restart(self) -> bool:
+        """A config feature changed (features.py): ask for a restart. True when this server restarts itself, the hook
+        called on a short timer so the HTTP answer leaves first; False without a hook (under tests, or make_server
+        without serve), and the change then acts after the next start"""
+        self.restart_requested = True
+        if self.on_restart is None:
+            return False
+        if self._restart_timer is None:
+            self._restart_timer = threading.Timer(RESTART_DELAY_S, self._restart_now)
+            self._restart_timer.daemon = True
+            self._restart_timer.start()
+        return True
+
+    def _restart_now(self) -> None:
+        hook = self.on_restart
+        if hook is not None:
+            hook()
 
     def client_count(self) -> int:
         """The pages someone can see: the tab poll, the full pass and the ticker run for these only."""
@@ -579,6 +606,8 @@ class App:
                 # Prio's second ranker: whether Haiku can read in, its runs left today, the fallback (prio.py)
                 "prio": prio.state(self),
                 "launch": self.launch_model.state(), "ticker": self.ticker.state(), "guide": self.guide.state(),
+                # the Features area of the settings page: every switch, the presets, whether a restart waits
+                "features": self.features.state(),
                 "workspaces": self.workspaces.state(), "views": self.views.state(),
                 "tour": self.tour_state(), "work": self.work_state(), "themes": self.themes.state(), "seen": self.seen.state(),
                 # the model calls of the Activity tab and the instruction line: the runs left today (activity.py)
@@ -2032,8 +2061,8 @@ def make_server(root: Path | str, port: int | None = None, runner: Runner | None
                 code_root: Path | str | None = None) -> WebServer:
     """Bind 127.0.0.1:<port> (0 = ephemeral) and wire the app; `background` starts its threads."""
     root = Path(root).resolve()
-    cfg = cfg or load_web_config(root)
     state_dir = Path(state_dir) if state_dir else default_state_dir(root)
+    cfg = cfg or load_web_config(root, state_dir=state_dir)      # with the Features overrides of this state dir
     runner = runner or Runner(root, code=code_root)
     clock = clock or (lambda: time.time() * 1000)
     token = stable_token(state_dir)

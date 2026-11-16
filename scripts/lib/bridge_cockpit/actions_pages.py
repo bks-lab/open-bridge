@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Verbs of the start page and the settings page (tiles, pins, the first-run tour, launch and ticker settings, the decision
-guide, the return channel), of a briefing page's own rows (an account's status, a board's mode, a command row's steps),
+guide, the Features area and its presets, the return channel), of a briefing page's own rows (an account's status, a board's mode, a command row's steps),
 of a background job of the workers view (Analyse in a tab) and of the explain window ("What bothers you here?").
 """
 from __future__ import annotations
@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from . import model as m
+from .features import FeatureError
 from .guide import GuideError
 from .launch import LaunchError
 from .ticker import TickerError
@@ -83,16 +84,20 @@ class PageVerbs:
 
     def v_launch_settings(self, ctx: Ctx, settings: dict) -> None:
         """The settings page's change of how an agent picks its model; kept beside the config, never in it"""
+        before = self.switched(self.app.launch_model)
         try:
             self.app.launch_model.save(settings)
         except LaunchError as error:
             raise ActionError(error.status, error.code, error.message, error.field) from None
         self.settings_changed(ctx)
+        self.features_follow(ctx, self.app.launch_model, before)
 
     def v_launch_settings_reset(self, ctx: Ctx) -> None:
         """Back to what bridge-config.yaml says"""
+        before = self.switched(self.app.launch_model)
         self.app.launch_model.reset()
         self.settings_changed(ctx)
+        self.features_follow(ctx, self.app.launch_model, before)
 
     def settings_changed(self, ctx: Ctx) -> None:
         state = self.app.launch_model.state()
@@ -104,16 +109,20 @@ class PageVerbs:
 
     def v_ticker_settings(self, ctx: Ctx, settings: dict) -> None:
         """The settings page's change of the ticker; kept beside the config, never in it"""
+        before = self.switched(self.app.ticker)
         try:
             self.app.ticker.save(settings)
         except TickerError as error:
             raise ActionError(error.status, error.code, error.message, error.field) from None
         self.ticker_changed(ctx)
+        self.features_follow(ctx, self.app.ticker, before)
 
     def v_ticker_settings_reset(self, ctx: Ctx) -> None:
         """Back to what bridge-config.yaml says"""
+        before = self.switched(self.app.ticker)
         self.app.ticker.reset()
         self.ticker_changed(ctx)
+        self.features_follow(ctx, self.app.ticker, before)
 
     def v_ticker_refresh(self, ctx: Ctx) -> None:
         """Read the feeds now; a refresh already running is no error"""
@@ -157,17 +166,75 @@ class PageVerbs:
     def v_guide_settings(self, ctx: Ctx, enabled: bool | None = None, auto: bool | None = None) -> None:
         """The settings page's switches of the guide; kept beside the config, never in it"""
         change = {k: v for k, v in (("enabled", enabled), ("auto", auto)) if v is not None}
+        before = self.switched(self.app.guide)
         try:
             self.app.guide.save(change)
         except GuideError as error:
             raise ActionError(error.status, error.code, error.message, error.field) from None
         self.guide_changed(ctx)
         self.app.tabs.schedule(0)          # switched on: the waiting tabs are read at the next poll
+        self.features_follow(ctx, self.app.guide, before)
 
     def v_guide_settings_reset(self, ctx: Ctx) -> None:
         """Back to what bridge-config.yaml says"""
+        before = self.switched(self.app.guide)
         self.app.guide.reset()
         self.guide_changed(ctx)
+        self.features_follow(ctx, self.app.guide, before)
+
+    # the Features area (features.py): a config feature acts after a restart, a store feature at once
+
+    def v_features_save(self, ctx: Ctx, settings: dict) -> None:
+        """The settings page's switches, every value checked before one is written; kept beside the config, never in it"""
+        try:
+            done = self.app.features.save(settings)
+        except FeatureError as error:
+            raise ActionError(error.status, error.code, error.message, error.field) from None
+        self.features_changed(ctx, done)
+
+    def v_features_preset(self, ctx: Ctx, preset: str) -> None:
+        """A preset: exactly the features it names, the others keep their value"""
+        try:
+            done = self.app.features.apply(preset)
+        except FeatureError as error:
+            raise ActionError(error.status, error.code, error.message, error.field) from None
+        self.features_changed(ctx, done)
+
+    def v_features_reset(self, ctx: Ctx) -> None:
+        """Back to what bridge-config.yaml says, the three stores' own switches included"""
+        self.features_changed(ctx, self.app.features.reset())
+
+    @staticmethod
+    def switched(store) -> bool:
+        """Whether a store of the settings page (launch.py, ticker.py, guide.py) is switched on now"""
+        return bool(store.settings().get("enabled"))
+
+    def features_follow(self, ctx: Ctx, store, before: bool) -> None:
+        """A store's own verb moved its `enabled`: the Features area shows that switch too, so it hears of it"""
+        if self.switched(store) != before:
+            state = self.app.features.state()
+            ctx.extra["features"] = state
+            self.app.broadcast("features", state)
+
+    def features_changed(self, ctx: Ctx, done: dict) -> None:
+        """The stores that changed say so on their own events; a config feature that now differs from what the server
+        runs asks for a restart: `now` when the server restarts itself, `needed` when it cannot, `none` for none"""
+        app = self.app
+        for store in done["stores"]:
+            if store == "launch":
+                app.broadcast("launch", app.launch_model.state())
+            elif store == "ticker":
+                app.broadcast("ticker", app.ticker.state())
+            elif store == "guide":
+                app.broadcast("guide", app.guide.state())
+                app.tabs.schedule(0)          # switched on: the waiting tabs are read at the next poll
+        restart = "none"
+        if done["config"] and app.features.pending():
+            restart = "now" if app.request_restart() else "needed"
+        state = app.features.state()
+        ctx.extra["features"] = state
+        ctx.extra["restart"] = restart
+        app.broadcast("features", state)
 
     def v_workspace_switch(self, ctx: Ctx, area: str, on: bool) -> None:
         """An area in or out of the bar, kept beside the config; nothing else changes"""

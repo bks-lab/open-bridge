@@ -767,9 +767,18 @@ def served_access_of(block: Any):
     return si.Settings(**block["access"])
 
 
-def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
+def load_web_config(root: Path | str, data: dict | None = None, state_dir: Path | str | None = None,
+                    overrides: dict | None = None) -> WebConfig:
+    """The cockpit: block as the cockpit runs it. Read from bridge-config.yaml (data None), the settings page's
+    Features overrides (<state_dir>/features.json, features.py) are deep merged into the block first, so every
+    consumer and check_block see one effective block; with `data` given only what `overrides` names is merged."""
     root = Path(root).resolve()
     raw = read_config_file(root) if data is None else data
+    feature_warnings: list[str] = []
+    if overrides is not None or data is None:
+        from . import features as ft     # it reads this module, not the other way round
+        found = overrides if overrides is not None else ft.read_json(ft.state_path(root, state_dir))
+        raw, feature_warnings = ft.merged(raw, found)
     where = "cockpit"
     w = _dict(raw.get("cockpit"))
     served_access = served_access_of(w.get("served"))
@@ -856,4 +865,4 @@ def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
                     chat_layout=w.get("chat_layout") if w.get("chat_layout") in CHAT_LAYOUTS else "classic",
                     chat_keep_hours=max(0, w["chat_keep_hours"]) if _is_number(w.get("chat_keep_hours")) else 24,
                     usage_clicks=_dict(w.get("usage")).get("clicks") is not False, served_access=served_access, served_ask=served_ask)
-    return replace(cfg, config_warnings=check_block(raw.get("cockpit"), cfg))
+    return replace(cfg, config_warnings=check_block(raw.get("cockpit"), cfg) + tuple(feature_warnings))

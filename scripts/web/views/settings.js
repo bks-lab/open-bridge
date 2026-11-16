@@ -6,8 +6,8 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  DESK_PARTS, LAUNCH_EFFORTS, LAUNCH_MODELS, MAX_STATIONS, bandsProblem, dropAmong, homeCatalog, homeChosen, homeView, homeViewSet,
-  jevModelValid, launchPatch, moveAmong, personOf,
+  DESK_PARTS, LAUNCH_EFFORTS, LAUNCH_MODELS, MAX_STATIONS, bandsProblem, dropAmong, featureDisabled, featureGroups, flowModeOf, flowModePatch,
+  homeCatalog, homeChosen, homeView, homeViewSet, jevModelValid, launchPatch, moveAmong, personOf, presetBoard, presetChanges, presetOn, restartNotice,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
@@ -20,7 +20,7 @@ import { MachineSettings } from './machine.js'
 import { BoardSettings } from './github.js'
 import { PageSection } from './pages.js'
 
-const SECTIONS = ['setup', 'start', 'look', 'workspaces', 'machine', 'launch', 'ticker', 'guide', 'boards']
+const SECTIONS = ['setup', 'features', 'start', 'look', 'workspaces', 'machine', 'launch', 'ticker', 'guide', 'boards']
 const STATION_KINDS = ['quota', 'count', 'page']
 
 // ---------------------------------------------------------------- the parts every area uses
@@ -31,9 +31,9 @@ export function Switch({ on, onChange, label, disabled }) {
     disabled=${disabled} onClick=${() => onChange(!on)}><span class="switch-thumb" aria-hidden="true"></span></button>`
 }
 
-/** A card of one subject: its title, a line on what it is for, an optional control in its head */
-export function Card({ title, intro, head, children, off }) {
-  return html`<section class=${`panel set-card${off ? ' is-off' : ''}`}>
+/** A card of one subject: its title, a line on what it is for, an optional control in its head; `cls` a class more */
+export function Card({ title, intro, head, children, off, cls = '' }) {
+  return html`<section class=${`panel set-card${off ? ' is-off' : ''}${cls ? ` ${cls}` : ''}`}>
     <header class="set-card-head">
       <div class="set-card-title"><h3 class="set-card-name">${title}</h3>${intro ? html`<p class="muted small">${intro}</p>` : null}</div>
       ${head ? html`<div class="set-card-tool">${head}</div>` : null}
@@ -42,12 +42,14 @@ export function Card({ title, intro, head, children, off }) {
   </section>`
 }
 
-/** One setting: its name and what it does on the left, its control on the right (below it when `wide`) */
-export function Row({ label, explain, mark, wide, children }) {
+/** One setting: its name and what it does on the left, its control on the right (below it when `wide`); `note` a
+ *  line under the explanation */
+export function Row({ label, explain, mark, wide, note, children }) {
   return html`<div class=${`set-row${wide ? ' is-wide' : ''}`}>
     <div class="set-text">
       <span class="set-label">${label}${mark ?? null}</span>
       ${explain ? html`<span class="muted small set-explain">${explain}</span>` : null}
+      ${note ?? null}
     </div>
     <div class="set-control">${children}</div>
   </div>`
@@ -279,6 +281,221 @@ function TourCard({ s, c }) {
   <//>`
 }
 
+// ---------------------------------------------------------------- the features beside the config
+
+/** A value of a feature in words, for its choice and the "changed" tooltip: on or off, a choice by its word */
+function featureWord(x, v) {
+  const w = T().features
+  if (typeof v === 'boolean') return v ? w.on : w.off
+  if (v == null) return w.none
+  return w.choice[x.id]?.[v] ?? String(v)
+}
+
+/** The title and the line of a preset: a built-in one from the text table, one from a file as it names itself */
+function presetText(p) {
+  const w = T().features
+  if (p.builtin) return { title: w.preset[p.id]?.title ?? p.id, description: w.preset[p.id]?.description ?? null }
+  return { title: p.title || p.id, description: p.description || null }
+}
+
+// The sketches of the Features area, drawn as the start page's views are (style.css .view-thumb-<name>): the
+// shapes each picture is made of, in order. A choice draws `<feature>-<value>`, a helper its own id; a name
+// without a sketch draws none
+const SKETCHES = {
+  'flow-off': 'em i i i i', 'flow-beside': 'i i i b', 'flow-only': 'u b i i i',
+  'describe-off': 'i i i', 'describe-missing': 'i i i em em', 'describe-stale': 'i i i em em em',
+  'chat_layout-classic': 'u i i i b', 'chat_layout-workspaces': 'em em em i i i',
+  'files_scope-active': 'em i i', 'files_scope-all': 'em i i i i i',
+  launch_model: 'i i i b em', ticker: 'em i i i u', session_guide: 'b i i i',
+}
+
+/** One sketch: `family` (a feature id, or flow for the Work through picker) and the value it shows */
+function Sketch({ family, value = null, small = false }) {
+  const name = value == null ? family : `${family}-${value}`
+  const spec = SKETCHES[name]
+  if (!spec) return null
+  return html`<span class=${`view-thumb view-thumb-${family}${value == null ? '' : ` view-thumb-${name}`}${small ? ' view-thumb-sm' : ''}`} aria-hidden="true">
+    ${spec.split(' ').map((tag, k) => html`<${tag} key=${k} />`)}</span>`
+}
+
+/** A choice as picker cards, as the view of the start page: per option its sketch, its name and one line; the
+ *  option in use marked, a click on another picks it at once */
+function PickCards({ label, family, options, current, busy, onPick }) {
+  const keys = useRoving()
+  return html`<div class=${`view-pick feat-pick is-${options.length}`} role="radiogroup" aria-label=${label} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
+    ${options.map(o => html`<button type="button" key=${o.value} role="radio" aria-checked=${String(current === o.value)} disabled=${busy}
+      class=${`view-opt${current === o.value ? ' is-on' : ''}`} onClick=${() => current !== o.value && onPick(o.value)}>
+      <${Sketch} family=${family} value=${o.value} />
+      <span class="view-name">${o.title}</span>
+      ${o.line ? html`<span class="muted small">${o.line}</span>` : null}
+    </button>`)}
+  </div>`
+}
+
+/** The marks beside a feature's name: "changed" where the page's value differs from bridge-config.yaml (the tooltip
+ *  says what the config says, in `word`), "AI" where it calls a model */
+function featureMarks(x, word = featureWord(x, x.config)) {
+  const w = T().features
+  return html`${x.overridden ? html`<${Chip} token="warning" title=${w.configWas(word)}>${w.changed}<//>` : null}${x.ai
+    ? html`<${Chip} cls="feat-ai" title=${w.aiTitle}>${w.ai}<//>` : null}`
+}
+
+/** The presets as picker cards: each with a sketch of what it sets (logic.js presetBoard), the one matching now
+ *  marked; a click on another asks in the card how many switches it sets, and Apply applies it (features_preset);
+ *  never a browser dialog */
+function PresetsCard({ f, busy, c }) {
+  const w = T().features
+  const [asking, setAsking] = useState(null)
+  const keys = useRoving()
+  const presets = f.presets ?? []
+  const on = presetOn(presets)
+  const ask = presets.find(p => p.id === asking) ?? null
+  return html`<${Card} title=${w.presetsTitle} intro=${w.presetsIntro}>
+    <div class="view-pick" role="radiogroup" aria-label=${w.presetsTitle} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
+      ${presets.map(p => {
+        const tx = presetText(p)
+        return html`<button type="button" key=${p.id} role="radio" aria-checked=${String(on === p.id)} disabled=${busy}
+          class=${`view-opt${on === p.id ? ' is-on' : ''}${asking === p.id ? ' is-asked' : ''}`} onClick=${() => setAsking(on === p.id ? null : p.id)}>
+          <span class="view-thumb view-thumb-board" aria-hidden="true">${presetBoard(p, f.items).map(d => html`<i key=${d.id} class=${`is-${d.state}`} />`)}</span>
+          <span class="view-name">${tx.title}</span>
+          ${tx.description ? html`<span class="muted small">${tx.description}</span>` : null}
+          ${!p.builtin && p.scope ? html`<span class="muted small">${w.scope[p.scope] ?? p.scope}</span>` : null}
+        </button>`
+      })}
+    </div>
+    ${ask ? html`<div class="feat-ask" role="status">
+      <span>${w.ask(presetText(ask).title, presetChanges(ask, f.items).length)}</span>
+      <span class="feat-ask-acts">
+        <${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => { setAsking(null); c.applyFeaturePreset(ask.id) }}>${w.apply}<//>
+        <${Btn} size="xs" variant="secondary" onClick=${() => setAsking(null)}>${w.cancel}<//>
+      </span>
+    </div>` : null}
+  <//>`
+}
+
+/** What Ask AI in Files keeps from the model (cockpit.files_search.block), or the warning that nothing is kept */
+function BlockLine({ words }) {
+  const w = T().features
+  return words?.length ? html`<span class="muted small feat-note">${w.blockWords(words.join(', '))}</span>`
+    : html`<span class="small feat-note"><${StateLine} token="warning" word=${w.blockNone} /></span>`
+}
+
+/** One switch as a row: its name, what it does, its marks, and its control, greyed while the feature it requires is
+ *  off, saved at once (features_save). A sub switch of Work through says nothing of its own then, its card says once
+ *  that they wait; a requirement elsewhere is named beside the control */
+function FeatureRow({ x, items, busy, block, c }) {
+  const w = T().features
+  const name = w.label[x.id] ?? x.id
+  const off = featureDisabled(x, items)
+  const parent = off && !x.sub ? items.find(y => y.id === x.requires) : null
+  return html`<div class=${`feat-row${x.sub ? ' feat-sub' : ''}${x.sub && off ? ' is-off' : ''}`} data-feature=${x.id}>
+    <${Row} label=${name} explain=${w.explain[x.id]} mark=${featureMarks(x)} note=${x.id === 'files_search' ? html`<${BlockLine} words=${block} />` : null}>
+      ${parent ? html`<span class="muted small set-aside">${w.needs(w.label[parent.id] ?? parent.id)}</span>` : null}
+      <${Switch} on=${x.value === true} label=${name} disabled=${busy || off} onChange=${v => c.saveFeatures({ [x.id]: v })} />
+    <//>
+  </div>`
+}
+
+/** One choice as a row with its picker cards below its name, never a dropdown */
+function ChoiceRow({ x, items, busy, c }) {
+  const w = T().features
+  const name = w.label[x.id] ?? x.id
+  return html`<div class="feat-row" data-feature=${x.id}>
+    <${Row} label=${name} explain=${w.explain[x.id]} mark=${featureMarks(x)} wide>
+      <${PickCards} label=${name} family=${x.id} current=${x.value} busy=${busy || featureDisabled(x, items)} onPick=${v => c.saveFeatures({ [x.id]: v })}
+        options=${(x.values ?? []).map(v => ({ value: v, title: featureWord(x, v), line: w.choiceLine[x.id]?.[v] }))} />
+    <//>
+  </div>`
+}
+
+/** A helper as a tile, as a station of the start page: its sketch, lit while on, its name and line, the way to its own
+ *  area and its switch. Helpers act at once, without a restart */
+function HelperTile({ x, items, busy, c }) {
+  const t = T()
+  const w = t.features
+  const name = w.label[x.id] ?? x.id
+  const on = x.value === true
+  const area = x.area && AREAS[x.area] ? x.area : null
+  return html`<div class=${`view-opt feat-tile${on ? ' is-on' : ''}`} data-feature=${x.id}>
+    <${Sketch} family=${x.id} small />
+    <span class="set-label">${name}${featureMarks(x)}</span>
+    <span class="muted small">${w.explain[x.id]}</span>
+    <span class="feat-tile-foot">
+      ${area ? html`<${Btn} size="xs" variant="ghost" title=${w.detailsTitle(t.settings.section[area]?.title ?? area)}
+        onClick=${() => c.setSettingsSection(area)}>${w.details}<//>` : null}
+      <${Switch} on=${on} label=${name} disabled=${busy || featureDisabled(x, items)} onChange=${v => c.saveFeatures({ [x.id]: v })} />
+    </span>
+  </div>`
+}
+
+/** Work through as the headline of the area: the modern way to work, as three picker cards (Lists, Work through,
+ *  Only Work through; logic.js flowModeOf), and what it can do as switches under it, waiting while Lists is picked */
+function FlowCard({ f, subs, busy, c }) {
+  const w = T().features
+  const flow = f.items.find(x => x.id === 'flow')
+  const only = f.items.find(x => x.id === 'flow_only')
+  const mode = flowModeOf(f.items)
+  const modes = only ? ['off', 'beside', 'only'] : ['off', 'beside']
+  const word = flowModeOf(f.items, 'config')
+  const mark = featureMarks({ ...flow, overridden: flow.overridden || !!only?.overridden }, w.flowMode[word]?.title ?? word)
+  return html`<${Card} cls="feat-hero" title=${w.flowTitle} intro=${w.flowIntro} head=${mark}>
+    <div class="feat-row" data-feature="flow">
+      <${PickCards} label=${w.flowModeLabel} family="flow" current=${mode} busy=${busy}
+        options=${modes.map(m => ({ value: m, title: w.flowMode[m].title, line: w.flowMode[m].line }))}
+        onPick=${m => { const patch = flowModePatch(m, f.items); if (Object.keys(patch).length) c.saveFeatures(patch) }} />
+    </div>
+    ${subs.length ? html`<h4 class="label-caps set-group feat-subs-title">${w.subsTitle}</h4>
+      ${mode === 'off' ? html`<p class="muted small feat-note">${w.subsWait}</p>` : null}
+      ${subs.map(x => html`<${FeatureRow} key=${x.id} x=${x} items=${f.items} busy=${busy} c=${c} />`)}` : null}
+  <//>`
+}
+
+// the line about a restart, by the phase logic.js restartNotice gives
+const RESTART_WORDS = { restarting: 'restarting', slow: 'restartSlow', needed: 'restartNeeded' }
+
+/** Features: the switches beside bridge-config.yaml (state.features, features.py), built as the start page's area is:
+ *  Work through first as the headline, the presets as picker cards, then one card per group, every choice as picker
+ *  cards and the helpers as tiles. A change of a config key acts after a restart, which the server makes itself where
+ *  it can (app.js featuresAnswer) */
+function FeaturesArea({ s, c }) {
+  const t = T()
+  const w = t.features
+  const f = s.features
+  if (!f?.items) return html`<${Card} title=${t.settings.section.features.title}><${Empty}>${w.noServer}<//><//>`
+  const notice = restartNotice(s.ui.featuresRestart, f.restart)
+  // a save in flight, or a server that restarts: every control waits
+  const busy = !!(s.ui.busy?.features_save || s.ui.busy?.features_preset || s.ui.busy?.features_reset) || notice === 'restarting' || notice === 'slow'
+  const groups = featureGroups(f.items)
+  // Work through and what requires it in its group make the headline card; Only Work through is one of its cards
+  const flow = f.items.find(x => x.id === 'flow')
+  const subs = flow ? (groups.find(g => g.id === flow.group)?.items ?? []).filter(x => x.sub && x.requires === 'flow' && x.id !== 'flow_only') : []
+  const inHero = new Set(flow ? ['flow', 'flow_only', ...subs.map(x => x.id)] : [])
+  const rest = groups.map(g => ({ ...g, items: g.items.filter(x => !inHero.has(x.id)) })).filter(g => g.items.length)
+  const body = g => {
+    const tiles = g.items.filter(x => x.group === 'helpers' && x.kind === 'switch')
+    const rows = g.items.filter(x => !tiles.includes(x))
+    return html`${tiles.length ? html`<div class=${`view-pick feat-tiles is-${Math.min(tiles.length, 4)}`}>
+        ${tiles.map(x => html`<${HelperTile} key=${x.id} x=${x} items=${f.items} busy=${busy} c=${c} />`)}</div>` : null}
+      ${rows.map(x => (x.kind === 'choice' ? html`<${ChoiceRow} key=${x.id} x=${x} items=${f.items} busy=${busy} c=${c} />`
+        : html`<${FeatureRow} key=${x.id} x=${x} items=${f.items} busy=${busy} block=${f.files_block} c=${c} />`))}`
+  }
+  return html`
+    ${f.overridden > 0 ? html`<div class="set-banner" role="status">
+      <span class="set-banner-text">${w.overridden(f.overridden)}</span>
+      <${Btn} size="xs" variant="secondary" busy=${busy} title=${w.resetTitle} onClick=${() => c.resetFeatures()}>${w.reset}<//>
+    </div>` : null}
+    ${notice ? html`<div class="banner feat-restart" role="status">
+      <${StateLine} token=${notice === 'restarting' ? 'info' : 'warning'} strong word=${w[RESTART_WORDS[notice]]} />
+    </div>` : null}
+    ${f.warnings?.length ? html`<div class="banner set-warnings" role="status">
+      <${StateLine} token="warning" strong word=${w.warnings} />
+      <ul class="set-warnings-list">${f.warnings.map((line, i) => html`<li key=${i} class="mono small">${line}</li>`)}</ul>
+    </div>` : null}
+    ${flow ? html`<${FlowCard} f=${f} subs=${subs} busy=${busy} c=${c} />` : null}
+    <${PresetsCard} f=${f} busy=${busy} c=${c} />
+    ${rest.map(g => html`<${Card} key=${g.id} title=${w.group[g.id]?.title ?? g.id} intro=${w.group[g.id]?.intro}>${body(g)}<//>`)}`
+}
+
 // ---------------------------------------------------------------- the model an agent tab starts with
 
 /** A mark where the page changed a value against bridge-config.yaml, the config's value in the tooltip */
@@ -486,8 +703,8 @@ function sectionsOf(s) {
 }
 
 // the news ticker on the start page: its own group from views/ticker.js
-const AREAS = { setup: SetupArea, start: StartArea, look: LookArea, workspaces: WorkspaceSettings, machine: MachineSettings, launch: LaunchArea, ticker: TickerSettings, guide: GuideSettings, boards: BoardSettings }
-const AREA_ICONS = { setup: 'bulb', start: 'home', look: 'sun', workspaces: 'sliders', machine: 'tabs', launch: 'spark', ticker: 'bell', guide: 'chat', boards: 'sliders' }
+const AREAS = { setup: SetupArea, features: FeaturesArea, start: StartArea, look: LookArea, workspaces: WorkspaceSettings, machine: MachineSettings, launch: LaunchArea, ticker: TickerSettings, guide: GuideSettings, boards: BoardSettings }
+const AREA_ICONS = { setup: 'bulb', features: 'sliders', start: 'home', look: 'sun', workspaces: 'sliders', machine: 'tabs', launch: 'spark', ticker: 'bell', guide: 'chat', boards: 'sliders' }
 
 /** The page: the areas as a list on the left (a row of buttons on a narrow screen), the one chosen beside it */
 /** What a person sets for themselves (access.py): the colours and the language, kept on the server for them, whatever

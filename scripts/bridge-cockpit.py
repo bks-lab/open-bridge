@@ -156,9 +156,9 @@ def start_line(port: int) -> str:
 ENABLE_HINT = "Set cockpit.enabled: true in bridge-config.yaml (docs/bridge-cockpit.md)."
 
 
-def check_config(root: Path, ignore_disabled: bool) -> tuple[object | None, int]:
+def check_config(root: Path, ignore_disabled: bool, state_dir: Path | None = None) -> tuple[object | None, int]:
     try:
-        cfg = load_web_config(root)
+        cfg = load_web_config(root, state_dir=state_dir)     # with the settings page's Features overrides
     except WebConfigError as error:
         print(f"bridge-cockpit: {error}", file=sys.stderr)
         return None, 2
@@ -174,7 +174,7 @@ def check_config(root: Path, ignore_disabled: bool) -> tuple[object | None, int]
 # ---------------------------------------------------------------- commands
 
 def cmd_serve(args, root: Path, state_dir: Path) -> int:
-    cfg, code = check_config(root, args.ignore_disabled)
+    cfg, code = check_config(root, args.ignore_disabled, state_dir)
     if cfg is None:
         return code
     from lib.bridge_cockpit.server import make_server, served_config, served_runner
@@ -196,11 +196,13 @@ def cmd_serve(args, root: Path, state_dir: Path) -> int:
         raise
     app = server.app
 
-    def stop(signum, frame):  # noqa: ARG001
+    def stop(signum=None, frame=None):  # noqa: ARG001
         threading.Thread(target=server.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
+    # a change of the Features area restarts the server: the same shutdown, then the exec below
+    app.on_restart = stop
     app.start()
     print(start_line(app.port), flush=True)
     try:
@@ -214,6 +216,12 @@ def cmd_serve(args, root: Path, state_dir: Path) -> int:
                 server_file(state_dir).unlink()
             except OSError:
                 pass
+    if getattr(app, "restart_requested", False):
+        # the same interpreter and arguments in the same process: its pid stays, so a login item (launchd) and
+        # anything that holds it see one server, which writes server.json again on its start
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]])
     return 0
 
 
@@ -221,7 +229,7 @@ def start(args, root: Path, state_dir: Path) -> tuple[int, dict | None]:
     info = running_info(root, state_dir)
     if info:
         return 0, {**info, "reused": True}
-    cfg, code = check_config(root, getattr(args, "ignore_disabled", False))
+    cfg, code = check_config(root, getattr(args, "ignore_disabled", False), state_dir)
     if cfg is None:
         return code, None
     try:
@@ -280,7 +288,7 @@ def cmd_open(args, root: Path, state_dir: Path) -> int:
     code, info = start(args, root, state_dir)
     if code:
         return code
-    cfg = load_web_config(root)
+    cfg = load_web_config(root, state_dir=state_dir)
     via = args.via or cfg.open_in
     if via == "auto":
         via = "cmux" if os.environ.get("CMUX_SURFACE_ID") else "system"
@@ -339,7 +347,7 @@ def cmd_status(args, root: Path, state_dir: Path) -> int:
            "clients": info.get("clients", 0) if info else 0, "relay_online": bool(info.get("relay_online")) if info else False}
     # what the check of the cockpit: block found, read from the file now (the running server may be older)
     try:
-        warnings = list(load_web_config(root).config_warnings)
+        warnings = list(load_web_config(root, state_dir=state_dir).config_warnings)
     except WebConfigError as error:
         warnings = [str(error)]
     out["config_warnings"] = warnings

@@ -322,6 +322,17 @@ families:
     route: "which AI model a service or worker uses (default Claude)"
     guide: ["docs/ai-services.md"]
 
+  - path: workflow/cockpit-presets/
+    object: "a preset of the cockpit's Features area: a named set of feature switches one click applies"
+    island: "core: template, schema; user or org: entries"
+    lives: [core, private, overlay]
+    references: []
+    writer: "a person, or an org overlay; the cockpit only reads it, its switches go to .bridge/cockpit/features.json"
+    read: named
+    route: "a preset of the cockpit's Features area (Settings, Features): which switches one click sets"
+    skill: cockpit
+    guide: ["docs/bridge-cockpit.md"]
+
   - path: workflow/cost-centers/
     object: "one project whose costs are gathered across accounts (the cost card's Project filter)"
     island: "core: template, schema; user: entries; org: a shared project via scope"
