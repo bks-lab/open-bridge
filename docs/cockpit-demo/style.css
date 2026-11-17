@@ -232,7 +232,7 @@ kbd {
 /* only the loading line and the as-of time give way; buttons and the relay word never overlap */
 .hdr-right > .btn, .hdr-right > .cmd, .hdr-right > .hdr-help { flex: 0 0 auto; }
 /* the server runs newer code than this page: one line and Load again (views/header.js NewCode) */
-.hdr-newcode { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; font-size: var(--text-sm); color: var(--on-surface-muted); }
+.hdr-newcode, .hdr-servercode { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; font-size: var(--text-sm); color: var(--on-surface-muted); }
 /* Help, last in the header: Explain, the look-up topics and the tour under it, aligned to its right edge */
 .help-menu { min-width: 220px; }
 .help-menu .settle-hint { padding-top: 8px; }
@@ -2847,6 +2847,9 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .feat-ask-acts { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .view-opt.is-asked { border-color: var(--accent); }
 .feat-restart { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+/* a restart under way or newer code waiting is news, a restart done is good news; only what needs a hand stays warning */
+.feat-restart.is-info { border-color: var(--info); }
+.feat-restart.is-success { border-color: var(--success); }
 /* Work through as the headline of the area: an accent edge, the title a step larger */
 .feat-hero { border-color: var(--accent-line); box-shadow: inset 3px 0 0 var(--accent); }
 .feat-hero .set-card-name { font-size: var(--text-h3); }
@@ -2880,6 +2883,8 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
   border: 1px solid var(--warning); border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--warning) 10%, var(--surface-raised)); color: var(--on-surface);
 }
+/* the Features area: switches set here are done, not a fault, so the info tone */
+.set-banner.is-info { border-color: var(--info); background: color-mix(in srgb, var(--info) 8%, var(--surface-raised)); }
 
 /* a switch: the track carries the state, the thumb slides */
 .switch {

@@ -76,6 +76,9 @@ class FakeApp:
     def write_server_json(self) -> None:
         pass
 
+    def code_check(self) -> bool:
+        return False
+
     def log_error(self, text: str) -> None:
         self.errors.append(text)
 

@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { nextTheme, personOf, agentLoad, aiWaiting, attentionTabs, canTab, checkInFlow, flowWaiting, tabsButtonCount, etaSeconds, jobCounts, pageWarnings, sessionCounts, sessionsInFlow, settingsBadgeOf, short, railOn, railShown, workPageOf } from '../logic.js'
+import { nextTheme, personOf, serverCodeNotice, agentLoad, aiWaiting, attentionTabs, canTab, checkInFlow, flowWaiting, tabsButtonCount, etaSeconds, jobCounts, pageWarnings, sessionCounts, sessionsInFlow, settingsBadgeOf, short, railOn, railShown, workPageOf } from '../logic.js'
 import { T } from '../text.js'
 import {
   AGENTS_PAGE, CHAT_PAGE, CHECK_PAGE, FILES_PAGE, JEV_PAGE, SESSIONS_PAGE, SETTINGS_PAGE, START_PAGE, WORKERS_PAGE, briefingTitle, chatAsWorkspaces,
@@ -194,6 +194,18 @@ export function NewCode({ s, c }) {
     <${Btn} size="xs" variant="primary" onClick=${() => c.reloadPage()}>${t.button}<//></span>`
 }
 
+/** The server runs older code than lies on disk, after an update of the Bridge (state.features.restart.code,
+ *  codestamp.py; logic.js serverCodeNotice): one line and Restart, the same restart the Features area makes
+ *  (features_restart); the page loads again once the server is back. The owner's page only */
+export function ServerCode({ s, c }) {
+  const t = T().serverCode
+  const notice = serverCodeNotice(s)
+  if (!notice) return null
+  if (notice === 'restarting') return html`<span class="hdr-servercode" role="status"><span>${t.restarting}</span></span>`
+  return html`<span class="hdr-servercode" role="status"><span class="hide-narrow">${t.line}</span>
+    <${Btn} size="xs" variant="primary" title=${t.title} onClick=${() => c.restartFeatures()}>${t.button}<//></span>`
+}
+
 export function Header({ s, c }) {
   const t = T()
   // the Tabs button counts the tabs that want you; a finished (idle) one waits on nobody
@@ -215,6 +227,7 @@ export function Header({ s, c }) {
     <span class="hdr-headline" aria-hidden="true"></span>
     <div class="hdr-right">
       <${NewCode} s=${s} c=${c} />
+      <${ServerCode} s=${s} c=${c} />
       <${LoadingIndicator} s=${s} />
       <${AsOf} s=${s} c=${c} brief=${s.layout === 'narrow'} />
       ${s.layout === 'narrow' ? null : s.ui.shortcuts ? html`<${CommandBox} c=${c} />` : null}

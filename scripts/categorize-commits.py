@@ -628,6 +628,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_bridge_cockpit_workspaces.py",    # a workspace's rules, what a child inherits, archive and delete
     "scripts/tests/test_bridge_cockpit_views.py",         # Settings, On this machine: the file, the verb, the collect flags
     "scripts/lib/bridge_cockpit/features.py",             # Settings, Features: switches beside the config, presets
+    "scripts/lib/bridge_cockpit/codestamp.py",            # the code the server runs against the code on disk
     "scripts/tests/test_bridge_cockpit_features.py",      # the catalogue, the overrides, presets, the verbs, the restart
     "scripts/lib/bridge_cockpit/usage.py",
     "scripts/tests/test_bridge_cockpit_usage.py",
@@ -713,6 +714,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/jev/motion.js",
     "scripts/web/jev/page.js",
     "scripts/web/theme.js",
+    "scripts/web/boot.js",                                # the boot guard: a failed app.js or style sheet loads the page again
     "scripts/web/app.js",
     "scripts/web/api.js",
     "scripts/web/components.js",
@@ -811,6 +813,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_areas.test.mjs",
     "scripts/tests/bridge_cockpit_machine.test.mjs",
     "scripts/tests/bridge_cockpit_features.test.mjs",     # Settings, Features: grouping, requires, presets, the area
+    "scripts/tests/bridge_cockpit_boot.test.mjs",         # the boot guard of the page (web/boot.js)
     "scripts/tests/bridge_cockpit_taskboard.test.mjs",
     "scripts/tests/bridge_cockpit_files.test.mjs",
     "scripts/tests/bridge_cockpit_person.test.mjs",

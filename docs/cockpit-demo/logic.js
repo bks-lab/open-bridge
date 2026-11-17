@@ -4390,15 +4390,38 @@ export function restartStep(phase, event) {
 }
 
 /** The line the Features area shows about a restart: this page's own restart first ('restarting', 'slow'), then
- *  what the server says (state.features.restart {pending, requested, can}): a restart asked for is under way
+ *  what the server says (state.features.restart {pending, requested, can, code}): a restart asked for is under way
  *  ('restarting'), a change that waits offers Restart now where the server can restart itself ('waiting') and the
- *  commands by hand where it cannot ('needed'); null while nothing waits */
+ *  commands by hand where it cannot ('needed'); newer code on disk after an update offers the restart too ('code');
+ *  null while nothing waits */
 export function restartNotice(phase, restart) {
   if (phase === 'restarting' || phase === 'slow') return phase
   if (restart?.requested) return 'restarting'
   if (phase === 'needed') return 'needed'
-  if (!restart?.pending) return null
-  return restart.can ? 'waiting' : 'needed'
+  if (restart?.pending) return restart.can ? 'waiting' : 'needed'
+  return restart?.code ? 'code' : null
+}
+
+/** How long after its own restart the Features area says the change is saved and acts now */
+export const RESTARTED_SHOW_MS = 120000
+
+/** Whether the server came back from a restart of its own (state.features.restart.done_ms, bridge-cockpit.py reexec)
+ *  within RESTARTED_SHOW_MS before `nowMs`; a time ahead of the page's clock by more than a few seconds says nothing */
+export function restartedLately(restart, nowMs) {
+  const at = restart?.done_ms
+  if (!Number.isFinite(at)) return false
+  const age = nowMs - at
+  return age > -5000 && age < RESTARTED_SHOW_MS
+}
+
+/** The header's line about newer cockpit code on disk (state.features.restart.code, codestamp.py): 'ready' while it
+ *  waits and this server can restart itself, 'restarting' while a restart runs; null otherwise, and always for a
+ *  person on a served cockpit, whose page restarts nothing */
+export function serverCodeNotice(s) {
+  const r = s?.features?.restart
+  if (!r?.code || personOf(s)) return null
+  if (s?.ui?.featuresRestart === 'restarting' || r.requested) return 'restarting'
+  return r.can ? 'ready' : null
 }
 
 /** Whether the Features area waits: only while a restart is under way, this page's own (its phase 'restarting') or
