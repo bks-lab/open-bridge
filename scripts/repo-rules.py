@@ -34,7 +34,6 @@ import argparse
 import base64
 import fnmatch
 import json
-import os
 import posixpath
 import re
 import subprocess
@@ -146,6 +145,11 @@ def collect(source, with_content: bool = False) -> dict:
         texts[entry] = source.read(entry)
         for target in extract_links(texts[entry], entry):
             if target in known:
+                continue
+            # A bare name in a folder table (`workflow.md` in the `docs/` row)
+            # means the found file of that name, not a file at the root.
+            if "/" not in target and any(
+                    posixpath.basename(k).lower() == target.lower() for k in known):
                 continue
             size = listing.get(target)
             if size is None:

@@ -169,6 +169,22 @@ def test_collect_names_a_link_that_does_not_resolve():
     assert result["dangling"] == ["docs/missing-workflow.md"]
 
 
+def test_collect_bare_name_matching_a_found_file_is_not_dangling():
+    # A folder table names `workflow.md` in the `docs/` row: that is docs/workflow.md.
+    src = FakeSource({
+        "CLAUDE.md": "| `docs/` | `workflow.md`, `release-process.md` |",
+        "docs/workflow.md": "x",
+    })
+    result = rr.collect(src)
+    assert [f["path"] for f in result["files"]] == ["CLAUDE.md", "docs/workflow.md"]
+    assert result["dangling"] == ["release-process.md"]
+
+
+def test_collect_path_with_a_folder_still_needs_that_folder():
+    src = FakeSource({"AGENTS.md": "see `references/workflow.md`", "docs/workflow.md": "x"})
+    assert rr.collect(src)["dangling"] == ["references/workflow.md"]
+
+
 def test_collect_reports_none_with_labels_kept():
     result = rr.collect(FakeSource({"README.md": "hi"}, labels=[{"name": "bug", "description": ""}]))
     assert result["status"] == "none"
