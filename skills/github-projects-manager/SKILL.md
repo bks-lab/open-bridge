@@ -49,6 +49,12 @@ User intent?
 3. If a bound context exists (e.g. `workflow/contexts/customer-a.yaml`),
    read `project_custom_fields` for field-specific overrides and
    readonly field lists
+4. **Before the first issue, PR, label or field write to a repository in this
+   session** (mandatory): `python3 scripts/repo-rules.py <owner/repo>` and read
+   every file it lists. The repo's own labels, assignment model and id scheme
+   win over the project yaml, which stays the fallback. Exit 4 means the repo
+   could not be read: do not write on a guess
+   (`rules/operations.md` § Context Switching).
 
 ## Issue Creation (3-step atomic)
 

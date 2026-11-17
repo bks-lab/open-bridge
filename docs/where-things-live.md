@@ -1,7 +1,7 @@
 ---
 summary: "A question-to-location map: the question in the words somebody asks it on the left, the file that answers it on the right. CORE ships the CORE rows; an instance appends its own in work/where-things-live.md"
 type: reference
-last_updated: 2026-11-05
+last_updated: 2026-11-17
 related:
   - ../rules/knowledge-growth.md
   - structure.md
@@ -52,6 +52,7 @@ searches again.
 |---|---|
 | What does a session check before it answers the first message? | [`rules/session-start.md`](../rules/session-start.md) |
 | Do I have to ask before I start changing things? | [`AGENTS.md`](../AGENTS.md#consult-before-write), [`rules/task-management-workflow.md`](../rules/task-management-workflow.md#intent-classification) |
+| Which working rules does a repository have before I write to it (issues, PRs, labels, commits)? | [`rules/operations.md`](../rules/operations.md#context-switching), then `python3 scripts/repo-rules.py <path or owner/repo>` |
 | What must I read before I create a new file? | [`rules/file-creation.md`](../rules/file-creation.md#pre-write-checklist) |
 | May I push this branch to that remote? | [`rules/push-guard.md`](../rules/push-guard.md#the-invariant) |
 | What is scanned before a file moves to open-bridge? | [`rules/promote-safety.md`](../rules/promote-safety.md#what-to-scan) |

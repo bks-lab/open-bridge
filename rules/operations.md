@@ -201,6 +201,13 @@ When switching to another repo:
 3. Commit changes THERE, not in the bridge
 4. Return and log the cross-repo work in work/log.md
 
+**Before the first write to a repo in a session** (issue, PR, label, board
+move, commit): run `python3 scripts/repo-rules.py <path|owner/repo>` and read
+what it lists. Its rules beat Bridge habits. Exit 3: none, defaults apply;
+exit 4: unreadable, do not write. With a `workflow/projects/<slug>.yaml`, read
+both: the repo wins, the yaml is the fallback, and a repo without its own file
+is a finding for its owner.
+
 ## Work Logging
 
 > When `work.enabled: true`, logging is **MANDATORY and CONTINUOUS — not
