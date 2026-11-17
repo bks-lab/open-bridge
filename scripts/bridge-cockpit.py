@@ -75,6 +75,8 @@ START_WAIT_S = 10.0
 STOP_WAIT_S = 5.0
 # a restart the page asked for waits this long for a write verb under way; past it, the restart is called off
 RESTART_LOCK_S = 30.0
+# the time of a restart of the Features area, from the process that restarts to the one it starts as (reexec)
+RESTARTED_ENV = "BRIDGE_COCKPIT_RESTARTED_MS"
 
 
 def pid_alive(pid: object) -> bool:
@@ -197,6 +199,9 @@ def cmd_serve(args, root: Path, state_dir: Path) -> int:
             return 3
         raise
     app = server.app
+    # the restart this process came from (reexec): its time, so the page can say the change acts now; taken out of
+    # the environment at once, so no agent tab this server starts inherits it
+    app.restarted_ms = restarted_ms(os.environ.pop(RESTARTED_ENV, None))
 
     def stop() -> None:
         threading.Thread(target=server.shutdown, daemon=True).start()
@@ -236,12 +241,22 @@ def cmd_serve(args, root: Path, state_dir: Path) -> int:
     return 0
 
 
+def restarted_ms(value: str | None) -> int | None:
+    """The time a restart handed over in RESTARTED_ENV, None for none or anything that is not one"""
+    try:
+        ms = int(value) if value else None
+    except ValueError:
+        return None
+    return ms if ms and ms > 0 else None
+
+
 def reexec() -> int:
     """Start this server again in this process, after a change of the Features area: its pid stays, so a login item
     (launchd) and anything that holds it see one server, which writes server.json again on its start. This
     interpreter with the same arguments, else one that has PyYAML, else python3 on the PATH; returns only when none
     of them could be run, with a non-zero code a login item restarts after"""
     script = str(Path(__file__).resolve())
+    os.environ[RESTARTED_ENV] = str(int(time.time() * 1000))
     sys.stdout.flush()
     sys.stderr.flush()
     tried: list[str] = []

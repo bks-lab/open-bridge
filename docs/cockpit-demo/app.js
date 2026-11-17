@@ -2425,6 +2425,7 @@ async function boot() {
   }
   api = createApi(transport)
   render(html`<${Root} />`, document.getElementById('app'))
+  window.cockpitBootDone?.()   // boot.js: app.js runs, a failed load no longer reloads the page
 
   const b = await api.bootstrap()
   if (b.status === 401) {

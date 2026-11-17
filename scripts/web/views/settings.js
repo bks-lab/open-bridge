@@ -8,7 +8,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DESK_PARTS, LAUNCH_EFFORTS, LAUNCH_MODELS, MAX_STATIONS, bandsProblem, dropAmong, featureDisabled, featureGroups, flowModeOf, flowModePatch,
   featuresLocked, homeCatalog, homeChosen, homeView, homeViewSet, jevModelValid, launchPatch, moveAmong, personOf, presetBoard, presetChanges, presetOn,
-  restartNotice,
+  restartNotice, restartedLately,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
@@ -333,11 +333,11 @@ function PickCards({ label, family, options, current, busy, onPick }) {
   </div>`
 }
 
-/** The marks beside a feature's name: "changed" where the page's value differs from bridge-config.yaml (the tooltip
+/** The marks beside a feature's name: "set here" where the page's value differs from bridge-config.yaml (the tooltip
  *  says what the config says, in `word`), "AI" where it calls a model */
 function featureMarks(x, word = featureWord(x, x.config)) {
   const w = T().features
-  return html`${x.overridden ? html`<${Chip} token="warning" title=${w.configWas(word)}>${w.changed}<//>` : null}${x.ai
+  return html`${x.overridden ? html`<${Chip} token="info" title=${w.configWas(word)}>${w.changed}<//>` : null}${x.ai
     ? html`<${Chip} cls="feat-ai" title=${w.aiTitle}>${w.ai}<//>` : null}`
 }
 
@@ -456,7 +456,22 @@ function FlowCard({ f, subs, busy, c }) {
 }
 
 // the line about a restart, by the phase logic.js restartNotice gives
-const RESTART_WORDS = { restarting: 'restarting', slow: 'restartSlow', needed: 'restartNeeded', waiting: 'restartWaiting' }
+const RESTART_WORDS = { restarting: 'restarting', slow: 'restartSlow', needed: 'restartNeeded', waiting: 'restartWaiting', code: 'restartCode' }
+
+/** What the switches set here amount to, as done and not as a fault: the count in the info tone, and Back to
+ *  bridge-config.yaml, which asks in the banner first (features_reset) */
+function OverrideBanner({ n, busy, c }) {
+  const w = T().features
+  const [asking, setAsking] = useState(false)
+  return html`<div class="set-banner is-info" role="status">
+    <span class="set-banner-text">${asking ? w.resetAsk(n) : w.overridden(n)}</span>
+    ${asking ? html`<span class="feat-ask-acts">
+        <${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => { setAsking(false); c.resetFeatures() }}>${w.resetApply}<//>
+        <${Btn} size="xs" variant="secondary" onClick=${() => setAsking(false)}>${w.cancel}<//>
+      </span>`
+      : html`<${Btn} size="xs" variant="ghost" busy=${busy} title=${w.resetTitle} onClick=${() => setAsking(true)}>${w.reset}<//>`}
+  </div>`
+}
 
 /** Features: the switches beside bridge-config.yaml (state.features, features.py), built as the start page's area is:
  *  Work through first as the headline, the presets as picker cards, then one card per group, every choice as picker
@@ -466,7 +481,8 @@ function FeaturesArea({ s, c }) {
   const t = T()
   const w = t.features
   const f = s.features
-  if (!f?.items) return html`<${Card} title=${t.settings.section.features.title}><${Empty}>${w.noServer}<//><//>`
+  // no state yet says it loads; a state without the block comes from a server older than this area
+  if (!f?.items) return html`<${Card} title=${t.settings.section.features.title}><${Empty}>${s.server ? w.noServer : w.loading}<//><//>`
   const notice = restartNotice(s.ui.featuresRestart, f.restart)
   // a features verb in flight, or a restart under way (logic.js featuresLocked): every control waits. A change that
   // only waits for a restart locks nothing
@@ -487,14 +503,13 @@ function FeaturesArea({ s, c }) {
         : html`<${FeatureRow} key=${x.id} x=${x} items=${f.items} busy=${busy} block=${f.files_block} c=${c} />`))}`
   }
   return html`
-    ${f.overridden > 0 ? html`<div class="set-banner" role="status">
-      <span class="set-banner-text">${w.overridden(f.overridden)}</span>
-      <${Btn} size="xs" variant="secondary" busy=${busy} title=${w.resetTitle} onClick=${() => c.resetFeatures()}>${w.reset}<//>
-    </div>` : null}
-    ${notice ? html`<div class="banner feat-restart" role="status">
-      <${StateLine} token=${notice === 'restarting' ? 'info' : 'warning'} strong word=${w[RESTART_WORDS[notice]]} />
-      ${notice === 'waiting' ? html`<${Btn} size="xs" variant="primary" busy=${busy} title=${w.restartNowTitle}
+    ${f.overridden > 0 ? html`<${OverrideBanner} n=${f.overridden} busy=${busy} c=${c} />` : null}
+    ${notice ? html`<div class=${`banner feat-restart${notice === 'restarting' || notice === 'code' ? ' is-info' : ''}`} role="status">
+      <${StateLine} token=${notice === 'restarting' || notice === 'code' ? 'info' : 'warning'} strong word=${w[RESTART_WORDS[notice]]} />
+      ${notice === 'waiting' || (notice === 'code' && f.restart?.can) ? html`<${Btn} size="xs" variant="primary" busy=${busy} title=${w.restartNowTitle}
         onClick=${() => c.restartFeatures()}>${w.restartNow}<//>` : null}
+    </div>` : restartedLately(f.restart, Date.now()) ? html`<div class="banner feat-restart feat-done is-success" role="status">
+      <${StateLine} token="success" strong word=${w.restarted} />
     </div>` : null}
     ${f.warnings?.length ? html`<div class="banner set-warnings" role="status">
       <${StateLine} token="warning" strong word=${w.warnings} />

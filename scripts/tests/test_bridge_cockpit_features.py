@@ -511,7 +511,7 @@ def test_the_state_has_the_contract_shape(tmp_path):
         assert set(basic) == {"id", "builtin", "title", "description", "scope", "features", "matches"}
         assert basic["builtin"] is True and basic["title"] is None and basic["description"] is None and basic["scope"] is None
         assert state["presets"][2]["builtin"] is False and state["presets"][2]["scope"] == "org"
-        assert state["overridden"] == 0 and state["restart"] == {"pending": False, "requested": False, "can": False}
+        assert state["overridden"] == 0 and state["restart"] == {"pending": False, "requested": False, "can": False, "code": False, "done_ms": None}
         assert state["files_block"] == ["secret", "private"]
         assert any("unknown feature nonsense" in x for x in state["warnings"])
         w.app.on_restart = lambda: None
@@ -530,7 +530,7 @@ def test_save_through_the_action_layer_without_a_restart_hook(world, monkeypatch
     assert [e for e, _ in events].count("features") == 1
     assert read_file(world.state / "features.json") == {"flow": True, "flow_seen": True}
     assert world.app.restart_requested is False                 # nothing can restart it: nothing is in flight
-    assert res["features"]["restart"] == {"pending": True, "requested": False, "can": False}
+    assert res["features"]["restart"] == {"pending": True, "requested": False, "can": False, "code": False, "done_ms": None}
 
 
 def test_a_store_change_needs_no_restart(world, monkeypatch):
@@ -551,7 +551,7 @@ def test_the_verb_itself_never_starts_the_restart(world):
     world.app.on_restart = lambda: fired.append(1)
     res = world.act("features_save", settings={"chat_layout": "workspaces"})
     assert res["restart"] == "now" and world.app.restart_requested is False
-    assert res["features"]["restart"] == {"pending": True, "requested": False, "can": True}
+    assert res["features"]["restart"] == {"pending": True, "requested": False, "can": True, "code": False, "done_ms": None}
     assert world.app._restart_timer is None and fired == []
 
 
@@ -581,7 +581,7 @@ def test_the_answer_is_written_before_the_restart_is_asked(world, monkeypatch):
     assert world.app.restart_requested is True
     # once in flight, the page hears it: requested true
     sent = [p for e, p in events if e == "features"]
-    assert sent[-1]["restart"] == {"pending": True, "requested": True, "can": True}
+    assert sent[-1]["restart"] == {"pending": True, "requested": True, "can": True, "code": False, "done_ms": None}
 
 
 def test_an_answer_without_a_restart_asks_none(world, monkeypatch):
@@ -597,9 +597,9 @@ def test_a_hand_edited_config_is_pending_but_not_requested(world):
     config = world.root / "bridge-config.yaml"
     config.write_text(config.read_text(encoding="utf-8").replace("  relay: true\n", "  relay: true\n  voice: true\n"),
                       encoding="utf-8")
-    assert world.app.features.state()["restart"] == {"pending": True, "requested": False, "can": False}
+    assert world.app.features.state()["restart"] == {"pending": True, "requested": False, "can": False, "code": False, "done_ms": None}
     world.app.on_restart = lambda: None
-    assert world.app.features.state()["restart"] == {"pending": True, "requested": False, "can": True}
+    assert world.app.features.state()["restart"] == {"pending": True, "requested": False, "can": True, "code": False, "done_ms": None}
 
 
 def test_restart_now_is_a_verb_of_its_own(world):
@@ -899,3 +899,138 @@ def test_the_doc_describes_the_features_area():
     assert "| `features.json` |" in doc
     for words in ("features.json", "workflow/cockpit-presets/", "never writes `bridge-config.yaml`", "org overlay"):
         assert words in flat, words
+
+
+# ---------------------------------------------------------------- the code it runs, and the restart it made
+
+def test_codestamp_takes_the_modules_loaded_from_its_own_folder(tmp_path):
+    from lib.bridge_cockpit import codestamp as cs
+    base = tmp_path / "scripts"
+    (base / "lib").mkdir(parents=True)
+    (base / "lib" / "a.py").write_text("A = 1\n", encoding="utf-8")
+    (base / "entry.py").write_text("", encoding="utf-8")
+    modules = {"a": types.SimpleNamespace(__file__=str(base / "lib" / "a.py")),
+               "elsewhere": types.SimpleNamespace(__file__=str(tmp_path / "other" / "b.py")),
+               "builtin": types.SimpleNamespace(__file__=None), "bare": object(),
+               "main": types.SimpleNamespace(__file__=str(base / "entry.py"))}
+    assert cs.loaded_files(base, modules) == sorted([(base / "entry.py").resolve(), (base / "lib" / "a.py").resolve()])
+
+
+def test_codestamp_sees_a_file_that_changed_or_went(tmp_path):
+    from lib.bridge_cockpit import codestamp as cs
+    one, two = tmp_path / "one.py", tmp_path / "two.py"
+    one.write_text("x = 1\n", encoding="utf-8")
+    two.write_text("y = 2\n", encoding="utf-8")
+    stamp = cs.CodeStamp(tmp_path, files=[one, two])
+    assert stamp.changed() is False
+    one.write_text("x = 1  # a longer line now\n", encoding="utf-8")
+    assert stamp.changed() is True
+    again = cs.CodeStamp(tmp_path, files=[one, two])
+    two.unlink()
+    assert again.changed() is True
+    # by default: what this process loaded from the folder, which never changes under a test
+    assert cs.CodeStamp(ROOT / "scripts").changed() is False
+
+
+def test_the_restart_block_says_when_newer_code_waits_and_announces_it_once(world, tmp_path):
+    from lib.bridge_cockpit import codestamp as cs
+    code = tmp_path / "code.py"
+    code.write_text("v = 1\n", encoding="utf-8")
+    world.app.code = cs.CodeStamp(tmp_path, files=[code])
+    sent = []
+    world.app.broadcast = lambda event, payload: sent.append((event, payload))
+    assert world.app.features.state()["restart"]["code"] is False
+    assert world.app.code_check() is False and sent == []
+    code.write_text("v = 2  # the update\n", encoding="utf-8")
+    assert world.app.code_check() is True
+    assert world.app.features.state()["restart"]["code"] is True
+    assert [e for e, _ in sent] == ["features"] and sent[0][1]["restart"]["code"] is True
+    world.app.code_check()
+    assert len(sent) == 1, "said once, not on every check"
+
+
+def test_the_watcher_checks_the_code_on_its_stats_turn(world):
+    seen = []
+    world.app.code_check = lambda: seen.append(1)
+    world.app.write_server_json = lambda: None
+    world.app.watcher.step(1000.0)
+    assert seen == [1]
+    world.app.watcher.step(1001.0)
+    assert seen == [1], "not again before the next stats turn"
+
+
+def test_restart_now_also_runs_for_newer_code_alone(world):
+    world.app.code_newer = True
+    assert world.app.features.pending() is False
+    world.app.on_restart = lambda: None
+    assert world.act("features_restart")["restart"] == "now"
+
+
+def test_the_restart_block_carries_when_this_server_came_back(world):
+    assert world.app.features.state()["restart"]["done_ms"] is None
+    world.app.restarted_ms = 1_700_000_000_000
+    assert world.app.features.state()["restart"]["done_ms"] == 1_700_000_000_000
+
+
+def test_a_persons_empty_features_block_has_the_same_restart_keys(world):
+    assert set(ac.STATE_NEUTRAL["features"]["restart"]) == set(world.app.features.state()["restart"])
+    assert ac.STATE_NEUTRAL["features"]["restart"]["code"] is False
+    assert ac.STATE_NEUTRAL["features"]["restart"]["done_ms"] is None
+
+
+def test_a_restart_hands_its_time_to_the_next_process(tmp_path, monkeypatch):
+    module, fake, seen, execs, run, root, state = serve(tmp_path, monkeypatch, "restart")
+    env_at_exec = []
+    real = module.os.execv
+
+    def recording(exe, argv):
+        env_at_exec.append(module.os.environ.get(module.RESTARTED_ENV))
+        return real(exe, argv)
+    monkeypatch.setattr(module.os, "execv", recording)
+    monkeypatch.delenv(module.RESTARTED_ENV, raising=False)
+    before = int(time.time() * 1000)
+    with pytest.raises(Execed):
+        run()
+    assert env_at_exec and before <= int(env_at_exec[0]) <= int(time.time() * 1000)
+    monkeypatch.delenv(module.RESTARTED_ENV, raising=False)
+
+
+def test_serve_takes_the_restart_time_and_drops_it_from_the_environment(tmp_path, monkeypatch):
+    module, fake, seen, execs, run, root, state = serve(tmp_path, monkeypatch, "plain")
+    monkeypatch.setenv(module.RESTARTED_ENV, "1700000000123")
+    assert run() == 0
+    assert fake.app.restarted_ms == 1700000000123
+    assert module.RESTARTED_ENV not in module.os.environ, "an agent the cockpit starts never inherits it"
+    module2, fake2, *_rest, run2, _r, _s = serve(tmp_path / "plain", monkeypatch, "plain")
+    monkeypatch.setenv(module2.RESTARTED_ENV, "not a time")
+    assert run2() == 0 and fake2.app.restarted_ms is None
+
+
+def test_the_doc_names_the_set_here_banner_and_the_newer_code_notice():
+    doc = (ROOT / "docs" / "bridge-cockpit.md").read_text(encoding="utf-8")
+    flat = " ".join(doc.split()).lower()
+    for words in ("set here", "newer cockpit version", "codestamp.py", "bridge_cockpit_restarted_ms"):
+        assert words in flat, words
+
+
+def test_the_listen_queue_takes_the_burst_of_a_reload_after_a_restart():
+    """After a restart the page loads anew at once: the page, a dozen style sheets and modules in parallel, while the
+    server is still busy starting. Python's default queue of 5 overflowed under load, the browser got connection
+    resets for app.js and the page stayed blank (seen live: one restart in two at a load of 300 and more)"""
+    from lib.bridge_cockpit import server as srv
+    assert srv.WebServer.request_queue_size >= 64
+
+
+def test_codestamp_skips_a_module_whose_file_is_no_path(tmp_path):
+    from lib.bridge_cockpit import codestamp as cs
+    odd = {"weird": types.SimpleNamespace(__file__=12345), "bytes": types.SimpleNamespace(__file__=b"\x00")}
+    assert cs.loaded_files(tmp_path, odd) == []
+
+
+def test_boot_guard_and_its_test_are_core():
+    import importlib.util as iu
+    spec = iu.spec_from_file_location("categorize_commits_boot", ROOT / "scripts" / "categorize-commits.py")
+    mod = iu.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    for f in ("scripts/web/boot.js", "scripts/tests/bridge_cockpit_boot.test.mjs", "scripts/lib/bridge_cockpit/codestamp.py"):
+        assert f in mod.SCRIPTS_CORE_ALLOWLIST, f

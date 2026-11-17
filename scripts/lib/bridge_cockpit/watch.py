@@ -149,6 +149,7 @@ class Watcher:
             self._safe("relay_cleanup", self.app.relay.cleanup, now)
         if self._due("stats", now, STATS_S):
             self._safe("server_json", self.app.write_server_json, now)
+            self._safe("code", self.app.code_check, now)      # newer code on disk after an update (codestamp.py)
 
     def loop(self) -> None:
         while not self.stop.wait(0.5):
