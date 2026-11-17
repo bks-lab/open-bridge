@@ -308,7 +308,7 @@ test('features area: in the settings right after Setup, before the start page, w
   assert.ok(el.$('.settings-nav-item.is-on').text().includes(en.settings.section.features.title))
 })
 
-test('features area: no banner while nothing differs; with a change the banner counts it and Reset resets', () => {
+test('features area: no banner while nothing differs; with a change the banner counts it and Reset resets', async () => {
   const plain = mount(html`<${SettingsPage} s=${featuresPage()} c=${recorder()} />`)
   assert.equal(plain.$('.set-banner'), null)
   const s0 = featuresPage()
@@ -319,6 +319,9 @@ test('features area: no banner while nothing differs; with a change the banner c
   assert.ok(banner)
   assert.match(banner.text(), new RegExp(en.features.overridden(2)))
   banner.button(en.features.reset).click()
+  await settle()
+  assert.equal(c.calls.length, 0, 'the first click only asks')
+  el.$('.set-banner').button(en.features.resetApply).click()
   assert.deepEqual(c.calls.at(-1), ['resetFeatures'])
 })
 
@@ -564,7 +567,7 @@ test('features area: a click on a preset asks in its card first; Cancel leaves i
   assert.deepEqual(c.calls.at(-1), ['applyFeaturePreset', 'team'])
 })
 
-test('features area: a change that waits offers Restart now, locks nothing, and Reset stays free', () => {
+test('features area: a change that waits offers Restart now, locks nothing, and Reset stays free', async () => {
   const s0 = featuresPage()
   const s = featuresPage({ overridden: 1, restart: { pending: true, requested: false, can: true },
     items: itemsWith(s0, { flow: { value: false, config: true, overridden: true } }) })
@@ -577,6 +580,8 @@ test('features area: a change that waits offers Restart now, locks nothing, and 
   assert.ok(!switchOf(el, 'voice').hasAttribute('disabled'), 'a waiting change locks no switch')
   assert.ok(el.$$('[role="radio"]').every(r => !r.hasAttribute('disabled')), 'nor a picker card')
   el.$('.set-banner').button(en.features.reset).click()
+  await settle()
+  el.$('.set-banner').button(en.features.resetApply).click()
   assert.deepEqual(c.calls.at(-1), ['resetFeatures'])
   // a server that cannot restart itself: the commands by hand instead of the button
   const cannot = mount(html`<${SettingsPage} s=${featuresPage({ restart: { pending: true, requested: false, can: false } })} c=${recorder()} />`)
@@ -621,4 +626,133 @@ test('features area: German words stay short and natural', () => {
   } finally {
     text.setLanguage('en')
   }
+})
+
+// ---------------------------------------------------------------- what a switch did, said plainly (Axel's cockpit)
+
+const DASHES = /[–—]/
+
+test('features area: a switch set here reads as done, not as a fault: an info banner, Back to the config asks first', async () => {
+  const s0 = featuresPage()
+  const s = featuresPage({ overridden: 1, items: itemsWith(s0, { chat_layout: { value: 'workspaces', config: 'classic', overridden: true } }) })
+  const c = recorder()
+  const el = mount(html`<${SettingsPage} s=${s} c=${c} />`)
+  const banner = el.$('.set-banner')
+  assert.ok(banner.getAttribute('class').includes('is-info'), 'the info tone, not the warning one')
+  assert.equal(en.features.overridden(1), '1 switch set here, bridge-config.yaml stays as it is')
+  assert.equal(en.features.overridden(3), '3 switches set here, bridge-config.yaml stays as it is')
+  assert.equal(de.features.overridden(1), '1 Schalter hier eingestellt, bridge-config.yaml bleibt, wie sie ist')
+  assert.equal(de.features.overridden(2), '2 Schalter hier eingestellt, bridge-config.yaml bleibt, wie sie ist')
+  banner.button(en.features.reset).click()
+  await settle()
+  const asking = el.$('.set-banner')
+  assert.ok(asking.text().includes(en.features.resetAsk(1)))
+  asking.button(en.features.cancel).click()
+  await settle()
+  assert.equal(c.calls.length, 0)
+  assert.ok(!el.$('.set-banner').text().includes(en.features.resetAsk(1)))
+  assert.equal(de.features.reset, 'Zurück auf bridge-config.yaml')
+})
+
+test('features area: the mark beside a switch set here says so in the info tone, with what the config says', () => {
+  const s0 = featuresPage()
+  const s = featuresPage({ overridden: 1, items: itemsWith(s0, { describe: { value: 'stale', config: 'off', overridden: true } }) })
+  const el = mount(html`<${SettingsPage} s=${s} c=${recorder()} />`)
+  const mark = rowOf(el, 'describe').$$('.chip').find(ch => ch.text() === en.features.changed)
+  assert.ok(mark.getAttribute('class').includes('tk-info') && !mark.getAttribute('class').includes('tk-warning'))
+  assert.deepEqual([en.features.changed, de.features.changed], ['set here', 'hier eingestellt'])
+})
+
+test('restartedLately: the server came back from its own restart within the last two minutes', () => {
+  const now = 1_800_000_000_000
+  assert.equal(logic.restartedLately({ done_ms: now - 5000 }, now), true)
+  assert.equal(logic.restartedLately({ done_ms: now - logic.RESTARTED_SHOW_MS - 1 }, now), false)
+  assert.equal(logic.restartedLately({ done_ms: null }, now), false)
+  assert.equal(logic.restartedLately(null, now), false)
+  assert.equal(logic.restartedLately({ done_ms: now + 60000 }, now), false, 'a time from the future says nothing')
+  assert.equal(logic.RESTARTED_SHOW_MS, 120000)
+})
+
+test('features area: after its own restart the area says the change is saved and acts now', () => {
+  const back = mount(html`<${SettingsPage} s=${featuresPage({ restart: { pending: false, requested: false, can: true, code: false, done_ms: Date.now() - 4000 } })} c=${recorder()} />`)
+  assert.ok(back.text().includes(en.features.restarted))
+  assert.ok(back.$('.feat-done').getAttribute('class').includes('is-success'), 'good news, never the warning frame')
+  const long = mount(html`<${SettingsPage} s=${featuresPage({ restart: { pending: false, requested: false, can: true, code: false, done_ms: Date.now() - 600000 } })} c=${recorder()} />`)
+  assert.ok(!long.text().includes(en.features.restarted))
+  const again = mount(html`<${SettingsPage} s=${featuresPage({ restart: { pending: true, requested: false, can: true, code: false, done_ms: Date.now() - 4000 } })} c=${recorder()} />`)
+  assert.ok(!again.text().includes(en.features.restarted), 'a change that waits again says that instead')
+})
+
+test('restartNotice: newer code on disk offers a restart too, a waiting change first', () => {
+  assert.equal(logic.restartNotice(null, { pending: false, requested: false, can: true, code: true }), 'code')
+  assert.equal(logic.restartNotice(null, { pending: true, requested: false, can: true, code: true }), 'waiting')
+  assert.equal(logic.restartNotice(null, { pending: false, requested: true, can: true, code: true }), 'restarting')
+  assert.equal(logic.restartNotice(null, { pending: false, requested: false, can: true, code: false }), null)
+})
+
+test('features area: newer code on disk: the area says so and Restart now restarts', () => {
+  const c = recorder()
+  const el = mount(html`<${SettingsPage} s=${featuresPage({ restart: { pending: false, requested: false, can: true, code: true, done_ms: null } })} c=${c} />`)
+  const notice = el.$('.feat-restart')
+  assert.ok(notice.text().includes(en.features.restartCode))
+  assert.ok(notice.getAttribute('class').includes('is-info'))
+  notice.button(en.features.restartNow).click()
+  assert.deepEqual(c.calls.at(-1), ['restartFeatures'])
+})
+
+test('serverCodeNotice: the header offers the restart to the owner while newer code waits', () => {
+  const base = cockpitState(NOW, { ui: { page: 'briefing' } })
+  const withRestart = (restart, ui = {}) => ({ ...base, ui: { ...base.ui, ...ui }, features: { ...base.features, restart } })
+  assert.equal(logic.serverCodeNotice(withRestart({ pending: false, requested: false, can: true, code: false })), null)
+  assert.equal(logic.serverCodeNotice(withRestart({ pending: false, requested: false, can: true, code: true })), 'ready')
+  assert.equal(logic.serverCodeNotice(withRestart({ pending: false, requested: false, can: false, code: true })), null, 'nothing to press without a hook')
+  assert.equal(logic.serverCodeNotice(withRestart({ pending: false, requested: true, can: true, code: true })), 'restarting')
+  assert.equal(logic.serverCodeNotice(withRestart({ pending: false, requested: false, can: true, code: true }, { featuresRestart: 'restarting' })), 'restarting')
+  assert.equal(logic.serverCodeNotice({ ...withRestart({ pending: false, requested: false, can: true, code: true }), boot: { ...base.boot, config: { ...base.boot?.config, person: { name: 'Sam' } } } }), null, 'never a served person')
+  assert.equal(logic.serverCodeNotice({ ...base, features: null }), null)
+})
+
+test('header: a newer cockpit version waits: one line and Restart, which restarts it', () => {
+  const base = cockpitState(NOW, { ui: { page: 'briefing' } })
+  const s = { ...base, features: { ...base.features, restart: { pending: false, requested: false, can: true, code: true, done_ms: null } } }
+  const c = recorder()
+  const el = mount(html`<${views.header.ServerCode} s=${s} c=${c} />`)
+  assert.ok(el.text().includes(en.serverCode.line))
+  el.button(en.serverCode.button).click()
+  assert.deepEqual(c.calls.at(-1), ['restartFeatures'])
+  const busy = mount(html`<${views.header.ServerCode} s=${{ ...s, ui: { ...s.ui, featuresRestart: 'restarting' } }} c=${recorder()} />`)
+  assert.ok(busy.text().includes(en.serverCode.restarting))
+  const none = mount(html`<${views.header.ServerCode} s=${base} c=${recorder()} />`)
+  assert.equal(none.text().trim(), '')
+  assert.deepEqual([de.serverCode.button, de.serverCode.line], ['Neu starten', 'Neuer Stand des Cockpits bereit'])
+})
+
+test('features area: an older server says it runs the code from before the update, and how to restart it', () => {
+  for (const t of [en, de]) assert.match(t.features.noServer, /bridge-cockpit\.py stop/)
+  assert.match(en.features.noServer, /before the update/)
+  assert.match(de.features.noServer, /vor dem Update/)
+})
+
+test('features area: the new words carry no dashes and the commands work without Claude', () => {
+  const words = t => [t.features.overridden(2), t.features.reset, t.features.resetTitle, t.features.resetAsk(2), t.features.resetApply,
+    t.features.changed, t.features.restarted, t.features.restartCode, t.features.noServer, t.features.restartSlow, t.features.restartNeeded,
+    t.serverCode.line, t.serverCode.button, t.serverCode.title, t.serverCode.restarting]
+  for (const t of [en, de]) {
+    for (const w of words(t)) assert.ok(typeof w === 'string' && w && !DASHES.test(w), w)
+    for (const w of [t.features.noServer, t.features.restartSlow, t.features.restartNeeded]) assert.match(w, /bridge-cockpit\.py open/)
+  }
+})
+
+test('features area: before the first state it says it loads, not that the server is old', () => {
+  const base = cockpitState(NOW, { ui: { page: '@settings', settingsSection: 'features' } })
+  const loading = mount(html`<${SettingsPage} s=${{ ...base, server: null, features: null }} c=${recorder()} />`)
+  assert.ok(!loading.text().includes(en.features.noServer))
+  assert.ok(loading.text().includes(en.features.loading))
+  const old = mount(html`<${SettingsPage} s=${{ ...base, features: null }} c=${recorder()} />`)
+  assert.ok(base.server, 'the mock state has arrived')
+  assert.ok(old.text().includes(en.features.noServer))
+})
+
+test('features area: the line after a restart fits a restart for newer code too, nothing claims a save', () => {
+  for (const t of [en, de]) assert.ok(!/Saved|Gespeichert/.test(t.features.restarted), t.features.restarted)
 })

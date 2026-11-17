@@ -418,8 +418,12 @@ class Features:
         return {"items": items,
                 "presets": [{**p, "features": dict(p["features"]), "matches": self.matches(p, now, off)} for p in presets],
                 "overridden": sum(1 for i in items if i["overridden"]),
-                # pending: a config value differs from the start; requested: this process restarts now; can: it is able to
+                # pending: a config value differs from the start; requested: this process restarts now; can: it is able to;
+                # code: newer code lies on disk than it runs (an update, codestamp.py); done_ms: when the restart it
+                # came from ran, None after a plain start
                 "restart": {"pending": self.pending(), "requested": bool(getattr(self.app, "restart_requested", False)),
-                            "can": getattr(self.app, "on_restart", None) is not None},
+                            "can": getattr(self.app, "on_restart", None) is not None,
+                            "code": bool(getattr(self.app, "code_newer", False)),
+                            "done_ms": getattr(self.app, "restarted_ms", None)},
                 "files_block": list(block),
                 "warnings": check_overrides(read_json(self.path))[1] + warnings}

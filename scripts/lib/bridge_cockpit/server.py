@@ -77,6 +77,7 @@ from .review import Review
 from .sessions import Sessions
 from .tab_history import QUERY_MAX as HISTORY_QUERY_MAX, TabHistory, paging as history_paging
 from .guide import Guide
+from .codestamp import CodeStamp
 from .features import Features
 from . import prio
 from .usage import Usage
@@ -317,6 +318,12 @@ class App:
         self.restart_requested = False
         self._restart_timer: threading.Timer | None = None
         self.features = Features(self)
+        # the code it runs against the code on disk (codestamp.py): an update of the Bridge changes the files, and
+        # the page offers Restart once it did (code_check, the watcher's stats turn); restarted_ms is when the restart
+        # this process came from ran (bridge-cockpit.py cmd_serve), so the page can say the change acts now
+        self.code = CodeStamp(self.code_root / "scripts")
+        self.code_newer = False
+        self.restarted_ms: int | None = None
         self.watcher = Watcher(self)
         self.last_tabs_json: str | None = None
         self.last_model_tabs_json: str | None = None   # the tabs without their last line: what the model reads
@@ -355,6 +362,13 @@ class App:
         hook = self.on_restart
         if hook is not None and self.restart_requested:
             hook()
+
+    def code_check(self) -> bool:
+        """Is newer code on disk than this server runs? Said to every page once, the first time it is"""
+        if not self.code_newer and self.code.changed():
+            self.code_newer = True
+            self.broadcast("features", self.features.state())
+        return self.code_newer
 
     def cancel_restart(self, why: str) -> None:
         """A restart that cannot go ahead (bridge-cockpit.py cmd_serve): nothing is in flight any more, the page offers
@@ -1978,6 +1992,10 @@ class Handler(BaseHTTPRequestHandler):
 class WebServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+    # a page loads a dozen files at once, and right after a restart of the Features area every open page does so while
+    # the server is still starting: Python's default queue of 5 overflowed under load, the browser got connection
+    # resets for app.js and the page stayed blank
+    request_queue_size = 64
     app: App
 
     def handle_error(self, request: Any, client_address: Any) -> None:

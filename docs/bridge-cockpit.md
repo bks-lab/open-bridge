@@ -3525,22 +3525,40 @@ block that is no feature (`enabled`, `port`, `served`, `relay`) or a value a fea
 is ignored and named among the warnings of `status` and the settings page; a file that is missing
 or no JSON changes nothing. The three helpers keep their switch in their own files, as before
 (`launch.json`, `ticker.json`, `guide.json`), never in `features.json`. A feature that differs from
-the config shows a changed mark whose tooltip says what the config has, and a banner counts them,
-with **Reset**: it empties `features.json` and gives the three helpers back the config's own
-switch, their other settings kept.
+the config shows a **set here** mark whose tooltip says what the config has, and a banner in the
+info tone counts them ("2 switches set here, bridge-config.yaml stays as it is"): a switch set here
+is the point of the area, not a fault. Its quiet button **Back to bridge-config.yaml** asks in the
+banner first; **Put back** then empties `features.json` and gives the three helpers back the
+config's own switch, their other settings kept.
 
 The helpers act at once. A config feature acts after a restart of the server: once a change differs
 from what it runs, the server writes its answer first, then waits half a second, lets a write that
 is under way end (at most 30 seconds, else the restart is called off and the page offers it again)
 and starts itself again, in the same process, so its pid, `server.json` and a login item stay
-valid, and the page reloads when it is back. The state says three things about it: `pending` (a
+valid, and the page reloads when it is back. The server queues up to 64 waiting connections, so the
+burst of that reload (the page, its style sheets and modules, from every open tab) never meets a full
+queue while it is still starting; should a file of the reload fail all the same, the page's boot guard
+(`scripts/web/boot.js`) loads it again, at most three times in a row. The restart hands its time to the process it starts
+as (`BRIDGE_COCKPIT_RESTARTED_MS`, taken out of the environment at once), and for two minutes after
+it the area says the cockpit restarted and everything is live. The state says five things about it: `pending` (a
 value differs from what the server started with, also after a hand edit of `bridge-config.yaml`),
-`requested` (this server restarts now) and `can` (it is able to). Pending and not requested, the
-page offers **Restart now**. A stop from outside (`stop`, SIGTERM) during a pending restart stops
+`requested` (this server restarts now), `can` (it is able to), `code` (newer code lies on disk than
+it runs) and `done_ms` (when the restart it came from ran, `null` after a plain start). Pending and
+not requested, the page offers **Restart now**.
+
+An update of the Bridge (a merge of the upstream, the daily auto update) changes the files under
+`scripts/`, but a running server keeps the code it started with, while the page loads the new page
+code at once. The server keeps the size and mtime of every module it loaded from its code folder
+(`scripts/lib/bridge_cockpit/codestamp.py`) and looks again every ten seconds; once one differs,
+`code` turns true, every page hears it, and the header of the owner's page says **Newer cockpit
+version ready** with **Restart**, the same restart as Restart now (the Features area says it too).
+A server older than the Features area sends no `features` block at all; the area then says that the
+cockpit still runs the code from before the update, and how to restart it. A stop from outside (`stop`, SIGTERM) during a pending restart stops
 for good. When the process cannot run Python again, it tries one that has PyYAML, then `python3` on
 the PATH, and otherwise exits with an error (a login item then starts it again). A server that
 cannot restart itself (one made without `serve`) keeps the change for its next start, and the page
-says to restart it (`python3 scripts/bridge-cockpit.py stop`, then `/cockpit`).
+says to restart it (`python3 scripts/bridge-cockpit.py stop`, then `python3 scripts/bridge-cockpit.py
+open`, which starts it again or finds the one a login item started).
 
 A **preset** is a named set of feature values; a click applies it after a line that says how many
 switches it sets. Applying one sets exactly the features it names, the others keep their value, and

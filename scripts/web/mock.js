@@ -473,7 +473,7 @@ function featuresState(config, values, served = false) {
   const presets = [...Object.entries(FEATURE_BUILTINS).map(([id, features]) => ({ id, builtin: true, title: null, description: null, scope: null, features })), FEATURE_TEAM]
     .map(p => ({ ...p, matches: Object.entries(p.features).every(([k, v]) => same(values[k], v)) }))
   const pending = items.some(x => !x.store && x.overridden)
-  return { items, presets, overridden: items.filter(x => x.overridden).length, restart: { pending, requested: false, can: false }, files_block: ['Health'], warnings: [] }
+  return { items, presets, overridden: items.filter(x => x.overridden).length, restart: { pending, requested: false, can: false, code: false, done_ms: null }, files_block: ['Health'], warnings: [] }
 }
 
 /** Raised on every change of the ticker block, like the server's Ticker.rev: the page keeps the newer state */
