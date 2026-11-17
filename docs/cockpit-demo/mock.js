@@ -176,6 +176,12 @@ const WORDS = {
     'Mock: ticker setting saved': 'Demo: Einstellung des Bands gespeichert',
     'Mock: Haiku reads the session, nothing is asked for real': 'Demo: Haiku liest die Sitzung, nichts wird wirklich gefragt',
     'Mock: ticker settings from the config again': 'Demo: Band wieder nach Config',
+    // Settings, Features: the preset from a file and what a change says
+    'Work through with themes and read marks, the chat by workspaces': 'Abarbeiten mit Themen und Gelesen-Marken, der Chat nach Workspaces',
+    'Mock: switch saved, it acts after a restart': 'Demo: Schalter gespeichert, er wirkt nach einem Neustart',
+    'Mock: switch saved': 'Demo: Schalter gespeichert',
+    'Mock: preset applied': 'Demo: Voreinstellung übernommen',
+    'Mock: switches from the config again': 'Demo: Schalter wieder nach Config',
     'Mock: reading the feeds': 'Demo: Feeds werden gelesen',
     'Mock: the editor is at work, nothing is asked for real': 'Demo: die Redaktion arbeitet, nichts wird wirklich gefragt',
     // chats handed on, one per status (handedConvs)
@@ -421,6 +427,53 @@ function guideState(tabs, now, extra = {}) {
   const byRef = Object.fromEntries(tabs.map(t => [t.ref, t]))
   const entries = Object.fromEntries(['surface:7', 'surface:12'].filter(r => byRef[r]).map(r => [r, guideEntry(r, byRef[r], now)]))
   return { enabled: true, auto: true, per_hour: 30, available: true, overridden: [], rev: ++guideRev, entries, ...extra }
+}
+
+// Settings, Features (features.py): the catalogue as the server sends it. Per row: id, group, kind, the values of a
+// choice (the first the default), the feature it requires, whether it calls a model, its store and its area
+const FEATURE_CATALOG = [
+  ['flow', 'work', 'switch'], ['flow_only', 'work', 'switch', null, 'flow'], ['flow_themes', 'work', 'switch', null, 'flow', true],
+  ['flow_summary', 'work', 'switch', null, 'flow', true], ['flow_instruct', 'work', 'switch', null, 'flow', true],
+  ['flow_checkin', 'work', 'switch', null, 'flow', true], ['flow_prio_haiku', 'work', 'switch', null, 'flow', true],
+  ['flow_seen', 'work', 'switch', null, 'flow'], ['flow_attach', 'work', 'switch', null, 'flow'],
+  ['describe', 'work', 'choice', ['off', 'missing', 'stale'], null, true], ['triage_daily', 'work', 'switch', null, null, true],
+  ['chat_layout', 'chat', 'choice', ['classic', 'workspaces']], ['files_scope', 'files', 'choice', ['active', 'all']],
+  ['files_search', 'files', 'switch', null, null, true],
+  ['launch_model', 'helpers', 'switch', null, null, true, 'launch', 'launch'], ['ticker', 'helpers', 'switch', null, null, false, 'ticker', 'ticker'],
+  ['session_guide', 'helpers', 'switch', null, null, true, 'guide', 'guide'], ['voice', 'page', 'switch'],
+].map(([id, group, kind, values = null, requires = null, ai = false, store = null, area = null]) => ({ id, group, kind, ...(values ? { values } : {}), requires, ai, store, area }))
+
+/** The built-in presets as the server makes them: basic every feature at its default, full every switch on and each
+ *  choice at its last value, but Ask AI in Files and Only Work through left as they are */
+const FEATURE_BUILTINS = {
+  basic: Object.fromEntries(FEATURE_CATALOG.map(x => [x.id, x.kind === 'choice' ? x.values[0] : false])),
+  full: Object.fromEntries(FEATURE_CATALOG.filter(x => !['files_search', 'flow_only'].includes(x.id)).map(x => [x.id, x.kind === 'choice' ? x.values.at(-1) : true])),
+}
+// one preset from a file of workflow/cockpit-presets/, as an org overlay would ship it
+const FEATURE_TEAM = { id: 'team', builtin: false, title: 'Team', description: 'Work through with themes and read marks, the chat by workspaces', scope: 'org',
+  features: { flow: true, flow_themes: true, flow_seen: true, chat_layout: 'workspaces' } }
+
+/** What the demo's bridge-config.yaml says per feature, matching the rest of the invented state */
+function featureConfig(opts, seenOn) {
+  const flow = opts.flow !== false
+  return { flow, flow_only: false, flow_themes: flow, flow_summary: flow, flow_instruct: flow, flow_checkin: false, flow_prio_haiku: true,
+    flow_seen: !!seenOn, flow_attach: flow, describe: 'missing', triage_daily: false, chat_layout: opts.chat === 'workspaces' ? 'workspaces' : 'classic',
+    files_scope: opts.filesScope === 'all' ? 'all' : 'active', files_search: true, launch_model: !!LAUNCH_CONFIG.enabled, ticker: !!TICKER_CONFIG.enabled,
+    session_guide: true, voice: false }
+}
+
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+
+/** The features block of the state: each feature's value over what the config says, the presets and whether each
+ *  matches now. A changed config feature waits for a restart the demo cannot make */
+function featuresState(config, values, served = false) {
+  // a served cockpit never sorts by itself (features.py SERVED_OFF): the daily sort is no switch there
+  const items = FEATURE_CATALOG.map(x => ({ ...x, value: values[x.id], config: config[x.id], overridden: !same(values[x.id], config[x.id]),
+    available: !(served && x.id === 'triage_daily') }))
+  const presets = [...Object.entries(FEATURE_BUILTINS).map(([id, features]) => ({ id, builtin: true, title: null, description: null, scope: null, features })), FEATURE_TEAM]
+    .map(p => ({ ...p, matches: Object.entries(p.features).every(([k, v]) => same(values[k], v)) }))
+  const pending = items.some(x => !x.store && x.overridden)
+  return { items, presets, overridden: items.filter(x => x.overridden).length, restart: { pending, requested: false, can: false }, files_block: ['Health'], warnings: [] }
 }
 
 /** Raised on every change of the ticker block, like the server's Ticker.rev: the page keeps the newer state */
@@ -1208,6 +1261,9 @@ export function buildState(now = Date.now(), opts = {}) {
     launch: launchState(LAUNCH_CONFIG, !!createMockJev),
     ticker: tickerState(TICKER_CONFIG, now),
     guide: guideState(tabs, now),
+    // Settings, Features: nothing changed beside the config in the demo
+    // ?served=1: a served cockpit, where the daily sort is not available
+    features: featuresState(featureConfig(opts, seenOn), featureConfig(opts, seenOn), opts.served === true),
     workspaces: { rev: 0, enabled: true, off: [], inactive: [], gone: [], items: [
       { key: 'Acme', area: 'Acme', id: 'acme', title: 'Acme', parent: null, children: ['acme-billing'], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null, active: true, active_held_by: null, fixed: false },
       { key: 'Billing', area: 'Billing', id: 'acme-billing', title: 'Billing', parent: 'acme', children: [], archived: false, level: 'room', style: 'acme-style', mail: 'acme', persona: 'work', on: true, held_by: null, active: true, active_held_by: null, fixed: false },
@@ -2983,6 +3039,25 @@ export function createMockTransport(opts = {}) {
           state.ticker = tickerState(next, now())
           result.note = verb === 'ticker_settings' ? 'Mock: ticker setting saved' : 'Mock: ticker settings from the config again'
           wait(() => emit('state', state), 80)
+        }
+        if (verb === 'features_save' || verb === 'features_preset' || verb === 'features_reset') {
+          // the values over the config; a config feature changed acts after a restart the demo cannot make, the
+          // helpers act at once (only their switch moves here)
+          const items = state.features.items
+          const config = Object.fromEntries(items.map(x => [x.id, x.config]))
+          const before = Object.fromEntries(items.map(x => [x.id, x.value]))
+          const patch = verb === 'features_save' ? args.settings ?? {} : verb === 'features_preset'
+            ? state.features.presets.find(p => p.id === args.preset)?.features ?? {} : config
+          // a feature this cockpit does not offer is a no-op, as on the server
+          const offered = new Set(items.filter(x => x.available !== false).map(x => x.id))
+          const next = { ...before, ...Object.fromEntries(Object.entries(patch).filter(([k]) => offered.has(k))) }
+          const restart = items.some(x => !x.store && !same(next[x.id], before[x.id])) ? 'needed' : 'none'
+          state.features = featuresState(config, next, items.some(x => x.available === false))
+          result.features = state.features
+          result.restart = restart
+          result.note = verb === 'features_reset' ? 'Mock: switches from the config again' : verb === 'features_preset' ? 'Mock: preset applied'
+            : restart === 'needed' ? 'Mock: switch saved, it acts after a restart' : 'Mock: switch saved'
+          wait(() => emit('features', state.features), 80)
         }
         if (verb === 'github_board' || verb === 'github_board_default') {
           // the switch and the default for new boards: kept on the boards of every section, nothing asked for real

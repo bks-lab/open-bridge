@@ -2832,6 +2832,36 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .mc-sections { padding-left: 20px; }
 .mc-sections .set-row { padding: 8px 0; border-top-style: dashed; }
 .mc-sections .set-label { font-weight: 400; }
+/* Settings, Features (views/settings.js FeaturesArea): a row in a wrapper that names its feature, the sub switches of
+   Work through a step in and lighter, as the sections under a page; the confirm line of a preset under its picker */
+.feat-row:first-child > .set-row { border-top: 0; padding-top: 4px; }
+.feat-sub { padding-left: 20px; }
+.feat-sub > .set-row { padding: 10px 0; border-top-style: dashed; }
+.feat-sub .set-label { font-weight: 400; }
+.feat-sub.is-off .set-text, .feat-row.is-off:not(.feat-sub) .set-text { opacity: 0.6; }
+.feat-note { display: block; max-width: 60ch; margin-top: 2px; }
+.feat-ask {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 12px; padding: 10px 14px;
+  border: 1px solid var(--accent); border-radius: var(--radius-lg); background: var(--accent-subtle); color: var(--on-surface);
+}
+.feat-ask-acts { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.view-opt.is-asked { border-color: var(--accent); }
+.feat-restart { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+/* Work through as the headline of the area: an accent edge, the title a step larger */
+.feat-hero { border-color: var(--accent-line); box-shadow: inset 3px 0 0 var(--accent); }
+.feat-hero .set-card-name { font-size: var(--text-h3); }
+.feat-subs-title { margin: 18px 0 2px; }
+/* a choice as picker cards under its name, two or three in a row; the helpers as tiles with their switch */
+.set-row.is-wide .set-control > .view-pick { width: 100%; }
+.view-pick.is-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.view-pick.is-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.feat-tiles { margin-bottom: 6px; }
+.feat-tile { cursor: default; gap: 8px; }
+.feat-tile:not(.is-on):hover { border-color: var(--border); }
+.feat-tile-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; width: 100%; margin-top: auto; }
+@media (max-width: 640px) {
+  .view-pick.is-3 { grid-template-columns: minmax(0, 1fr); }
+}
 .set-text { display: grid; gap: 2px; min-width: 0; }
 .set-label { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 600; color: var(--on-surface); }
 .set-explain { max-width: 60ch; }
@@ -2920,6 +2950,86 @@ a.ticker-item:hover .ticker-title { text-decoration: underline; text-decoration-
 .view-thumb-areas i:nth-of-type(1) { top: 26px; background: var(--accent); opacity: 0.8; }
 .view-thumb-areas i:nth-of-type(2) { top: 40px; }
 .view-thumb-areas i:nth-of-type(3) { top: 54px; }
+
+/* the sketches of Settings, Features (views/settings.js SKETCHES), in the shapes of the views above */
+.view-thumb-sm { height: 64px; }
+.view-thumb-flow-off em { left: 10px; top: 10px; width: 40%; height: 7px; border-radius: 4px; background: var(--border-strong); }
+.view-thumb-flow-off i { left: 10px; width: calc(100% - 20px); height: 9px; border-radius: 3px; background: var(--border-strong); opacity: 0.7; }
+.view-thumb-flow-off i:nth-of-type(1) { top: 26px; }
+.view-thumb-flow-off i:nth-of-type(2) { top: 40px; }
+.view-thumb-flow-off i:nth-of-type(3) { top: 54px; }
+.view-thumb-flow-off i:nth-of-type(4) { top: 68px; }
+.view-thumb-flow-beside i { left: 10px; width: 34%; height: 9px; border-radius: 3px; background: var(--border-strong); opacity: 0.7; }
+.view-thumb-flow-beside i:nth-of-type(1) { top: 14px; }
+.view-thumb-flow-beside i:nth-of-type(2) { top: 28px; }
+.view-thumb-flow-beside i:nth-of-type(3) { top: 42px; }
+.view-thumb-flow-beside b, .view-thumb-flow-only b { right: 10px; top: 12px; border: 2px solid var(--accent); border-radius: 6px; background: var(--accent-subtle); }
+.view-thumb-flow-beside b { left: calc(34% + 20px); height: 58px; }
+.view-thumb-flow-only u { left: 10px; top: 12px; width: 22%; height: 60px; border-radius: 4px; background: var(--border-strong); opacity: 0.45; }
+.view-thumb-flow-only b { left: calc(22% + 18px); height: 38px; }
+.view-thumb-flow-only i { top: 58px; width: calc((78% - 40px) / 3); height: 10px; border-radius: 3px; background: var(--border-strong); opacity: 0.7; }
+.view-thumb-flow-only i:nth-of-type(1) { left: calc(22% + 18px); }
+.view-thumb-flow-only i:nth-of-type(2) { left: calc(22% + 24px + (78% - 40px) / 3); }
+.view-thumb-flow-only i:nth-of-type(3) { left: calc(22% + 30px + 2 * (78% - 40px) / 3); }
+/* the briefs: three items, a brief under more of them the further the choice goes */
+.view-thumb-describe i { left: 10px; width: calc(100% - 20px); height: 10px; border-radius: 3px; background: var(--border-strong); opacity: 0.7; }
+.view-thumb-describe i:nth-of-type(1) { top: 10px; }
+.view-thumb-describe i:nth-of-type(2) { top: 36px; }
+.view-thumb-describe i:nth-of-type(3) { top: 62px; }
+.view-thumb-describe em { left: 16px; width: 55%; height: 6px; border-radius: 3px; background: var(--accent); opacity: 0.8; }
+.view-thumb-describe em:nth-of-type(1) { top: 23px; }
+.view-thumb-describe em:nth-of-type(2) { top: 49px; }
+.view-thumb-describe em:nth-of-type(3) { top: 75px; }
+/* the chat: one list beside the terminal, or a column per workspace */
+.view-thumb-chat_layout-classic u { left: 10px; top: 10px; width: 30%; height: 64px; border-radius: 4px; background: var(--border-strong); opacity: 0.35; }
+.view-thumb-chat_layout-classic i { left: 14px; width: calc(30% - 8px); height: 9px; border-radius: 3px; background: var(--border-strong); opacity: 0.8; }
+.view-thumb-chat_layout-classic i:nth-of-type(1) { top: 16px; background: var(--accent); }
+.view-thumb-chat_layout-classic i:nth-of-type(2) { top: 30px; }
+.view-thumb-chat_layout-classic i:nth-of-type(3) { top: 44px; }
+.view-thumb-chat_layout-classic b { left: calc(30% + 18px); right: 10px; top: 10px; height: 64px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-raised); }
+.view-thumb-chat_layout-workspaces em, .view-thumb-chat_layout-workspaces i, .view-thumb-launch_model i, .view-thumb-session_guide i {
+  width: calc((100% - 32px) / 3); border-radius: 4px;
+}
+.view-thumb-chat_layout-workspaces em { top: 10px; height: 7px; background: var(--accent); opacity: 0.8; }
+.view-thumb-chat_layout-workspaces i { top: 22px; height: 52px; background: var(--border-strong); opacity: 0.45; }
+.view-thumb-chat_layout-workspaces em:nth-of-type(1), .view-thumb-chat_layout-workspaces i:nth-of-type(1),
+.view-thumb-launch_model i:nth-of-type(1), .view-thumb-session_guide i:nth-of-type(1) { left: 10px; }
+.view-thumb-chat_layout-workspaces em:nth-of-type(2), .view-thumb-chat_layout-workspaces i:nth-of-type(2),
+.view-thumb-launch_model i:nth-of-type(2), .view-thumb-session_guide i:nth-of-type(2) { left: calc(16px + (100% - 32px) / 3); }
+.view-thumb-chat_layout-workspaces em:nth-of-type(3), .view-thumb-chat_layout-workspaces i:nth-of-type(3),
+.view-thumb-launch_model i:nth-of-type(3), .view-thumb-session_guide i:nth-of-type(3) { left: calc(22px + 2 * (100% - 32px) / 3); }
+/* the files: a search on top, the tasks in progress lit, every task under them */
+.view-thumb-files_scope em { left: 10px; top: 10px; width: 60%; height: 8px; border-radius: 4px; background: var(--border-strong); }
+.view-thumb-files_scope i { left: 10px; width: calc(100% - 20px); border-radius: 3px; background: var(--border-strong); opacity: 0.6; }
+.view-thumb-files_scope i:nth-of-type(-n+2) { background: var(--accent); opacity: 0.8; }
+.view-thumb-files_scope-active i { height: 10px; }
+.view-thumb-files_scope-active i:nth-of-type(1) { top: 26px; }
+.view-thumb-files_scope-active i:nth-of-type(2) { top: 42px; }
+.view-thumb-files_scope-all i { height: 8px; }
+.view-thumb-files_scope-all i:nth-of-type(1) { top: 24px; }
+.view-thumb-files_scope-all i:nth-of-type(2) { top: 35px; }
+.view-thumb-files_scope-all i:nth-of-type(3) { top: 46px; }
+.view-thumb-files_scope-all i:nth-of-type(4) { top: 57px; }
+.view-thumb-files_scope-all i:nth-of-type(5) { top: 68px; }
+/* the helpers: the model picker beside the start button, the news band, a reading with its next steps */
+.view-thumb-launch_model i { top: 12px; height: 12px; background: var(--border-strong); opacity: 0.6; }
+.view-thumb-launch_model i:nth-of-type(2) { background: var(--accent); opacity: 0.85; }
+.view-thumb-launch_model b { left: 10px; top: 34px; width: 42%; height: 14px; border-radius: 7px; background: var(--accent); opacity: 0.85; }
+.view-thumb-launch_model em { left: 10px; top: 54px; width: 60%; height: 5px; border-radius: 3px; background: var(--border-strong); opacity: 0.5; }
+.view-thumb-ticker em { left: 10px; right: 10px; top: 10px; height: 16px; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-subtle); }
+.view-thumb-ticker i { top: 15px; width: 22%; height: 6px; border-radius: 3px; background: var(--border-strong); opacity: 0.8; }
+.view-thumb-ticker i:nth-of-type(1) { left: 16px; }
+.view-thumb-ticker i:nth-of-type(2) { left: calc(16px + 30%); }
+.view-thumb-ticker i:nth-of-type(3) { left: calc(16px + 60%); }
+.view-thumb-ticker u { left: 10px; right: 10px; top: 34px; height: 22px; border-radius: 4px; background: var(--border-strong); opacity: 0.3; }
+.view-thumb-session_guide b { left: 10px; right: 10px; top: 8px; height: 26px; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent-subtle); }
+.view-thumb-session_guide i { top: 42px; height: 12px; background: var(--border-strong); opacity: 0.6; }
+.view-thumb-session_guide i:nth-of-type(1) { background: var(--accent); opacity: 0.85; }
+/* a preset: one mark per feature in the order of the cards, lit where it switches one on, dashed where it leaves one */
+.view-thumb-board { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-content: center; gap: 6px; padding: 10px 12px; }
+.view-thumb-board i { position: static; height: 12px; border-radius: 3px; background: var(--border-strong); opacity: 0.45; }
+.view-thumb-board i.is-on { background: var(--accent); opacity: 0.85; }
+.view-thumb-board i.is-free { background: transparent; border: 1px dashed var(--border-strong); opacity: 0.7; }
 
 /* the stations: one list in their order, a grip to drag, two arrows, a switch */
 .st-group { margin: 14px 0 8px; }

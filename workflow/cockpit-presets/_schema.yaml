@@ -1,0 +1,51 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+# Schema for `workflow/cockpit-presets/<id>.yaml`: one preset of the cockpit's Features area, a named set of feature
+# values the settings page applies on a click (docs/bridge-cockpit.md, Features and presets).
+#
+# The feature ids and their values are the catalogue of scripts/lib/bridge_cockpit/features.py, which reads these
+# files leniently: an unknown id or a bad value is left out and named on the page, the rest applies.
+# scripts/tests/test_bridge_cockpit_features.py holds this schema to that catalogue.
+#
+# `_`-prefixed files are CORE and excluded from discovery. Every `<id>.yaml` beside them is instance data: `user`,
+# or `org` when an org overlay ships it for its team.
+title: Cockpit preset
+type: object
+additionalProperties: false
+required: [schema_version, scope, id, title, features]
+properties:
+  schema_version: {const: 1}
+  scope: {enum: [user, org, personal]}
+  id:
+    type: string
+    pattern: '^[a-z0-9][a-z0-9-]{0,63}$'
+    not: {enum: [basic, full]}
+    description: Must equal the file name stem. basic and full are the built-in presets.
+  title: {type: string, minLength: 1, maxLength: 80}
+  description: {type: string, maxLength: 300}
+  features:
+    type: object
+    additionalProperties: false
+    minProperties: 1
+    description: The features this preset sets; the others keep their value.
+    # flow_only true acts only with Work through on, so a preset that sets it sets flow true too
+    if: {properties: {flow_only: {const: true}}, required: [flow_only]}
+    then: {properties: {flow: {const: true}}, required: [flow]}
+    properties:
+      flow: {type: boolean}
+      flow_only: {type: boolean}
+      flow_themes: {type: boolean}
+      flow_summary: {type: boolean}
+      flow_instruct: {type: boolean}
+      flow_checkin: {type: boolean}
+      flow_prio_haiku: {type: boolean}
+      flow_seen: {type: boolean}
+      flow_attach: {type: boolean}
+      describe: {enum: ['off', missing, stale]}
+      triage_daily: {type: boolean}
+      chat_layout: {enum: [classic, workspaces]}
+      files_scope: {enum: [active, all]}
+      files_search: {type: boolean}
+      launch_model: {type: boolean}
+      ticker: {type: boolean}
+      session_guide: {type: boolean}
+      voice: {type: boolean}

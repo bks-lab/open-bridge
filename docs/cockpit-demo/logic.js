@@ -4276,6 +4276,161 @@ export function bandsProblem(bands) {
   return null
 }
 
+// ---------------------------------------------------------------- the Features area of the settings
+
+/** The groups of the Features area (state.features, features.py CATALOG), in the order the cards stand */
+export const FEATURE_GROUPS = ['work', 'chat', 'files', 'helpers', 'page']
+
+/** The rows of the Features area as cards: the groups in FEATURE_GROUPS order (one a newer server adds after them),
+ *  none left empty. Inside a group a feature others require comes first, each followed by the ones that require it,
+ *  marked `sub`, so Work through heads its group with its sub switches under it; otherwise the server's order */
+export function featureGroups(items) {
+  const list = Array.isArray(items) ? items : []
+  const order = [...FEATURE_GROUPS, ...new Set(list.map(x => x.group).filter(g => !FEATURE_GROUPS.includes(g)))]
+  return order.map(id => {
+    const mine = list.filter(x => x.group === id)
+    const ids = new Set(mine.map(x => x.id))
+    const isSub = x => !!x.requires && ids.has(x.requires) && x.requires !== x.id
+    const heads = mine.filter(x => !isSub(x))
+    const leads = heads.filter(h => mine.some(x => isSub(x) && x.requires === h.id))
+    const rows = [...leads, ...heads.filter(h => !leads.includes(h))]
+      .flatMap(h => [{ ...h, sub: false }, ...mine.filter(x => isSub(x) && x.requires === h.id).map(x => ({ ...x, sub: true }))])
+    return { id, items: rows }
+  }).filter(g => g.items.length)
+}
+
+/** Whether a feature's control is greyed: the feature it requires is off now. A requirement the list does not hold
+ *  greys nothing, the server decides then */
+export function featureDisabled(item, items) {
+  if (!item?.requires) return false
+  const parent = (items ?? []).find(x => x.id === item.requires)
+  return !!parent && parent.value !== true
+}
+
+/** The features a preset would change now: the ids it names, in its order, whose value differs from the effective
+ *  one; an id the catalogue does not hold is left out. Its length is the count of the confirm line */
+export function presetChanges(preset, items) {
+  // a feature this cockpit does not offer (available false) is a no-op on the server, so it changes nothing here
+  const now = new Map((items ?? []).filter(x => x.available !== false).map(x => [x.id, x.value]))
+  return Object.entries(preset?.features ?? {}).filter(([id, v]) => now.has(id) && JSON.stringify(now.get(id)) !== JSON.stringify(v)).map(([id]) => id)
+}
+
+/** The preset the picker marks: of those that match, the one naming most features (it says the most about the
+ *  switches as they are), the first on a tie; null when none matches. With the catalogue's `items` a preset also
+ *  matches when nothing this cockpit offers would change (a feature with available false neither breaks a match nor
+ *  counts toward one, so a preset naming only such features matches nothing); without them the server's flag alone */
+export function presetOn(presets, items) {
+  const offered = items ? new Set(items.filter(x => x.available !== false).map(x => x.id)) : null
+  const named = p => Object.keys(p?.features ?? {}).filter(id => !offered || offered.has(id)).length
+  let best = null
+  for (const p of presets ?? []) {
+    const match = !!p?.matches || (!!offered && named(p) > 0 && presetChanges(p, items).length === 0)
+    if (match && (!best || named(p) > named(best))) best = p
+  }
+  return best?.id ?? null
+}
+
+/** What a save sends: never a feature this cockpit does not offer (available false), which the server would only
+ *  drop; an id the page does not know goes as it is, the server answers for it */
+export function savableSettings(settings, items) {
+  const off = new Set((items ?? []).filter(x => x.available === false).map(x => x.id))
+  return Object.fromEntries(Object.entries(settings ?? {}).filter(([id]) => !off.has(id)))
+}
+
+/** Work through and Only Work through as the one choice the area's headline card offers: 'off' (the lists of the
+ *  work tab as before), 'beside' (Work through as one of its views) or 'only' (the work tab is Work through), from the
+ *  values now or, with `key` 'config', from what bridge-config.yaml says; null without Work through in the catalogue */
+export function flowModeOf(items, key = 'value') {
+  const by = new Map((items ?? []).map(x => [x.id, x]))
+  if (!by.has('flow')) return null
+  if (by.get('flow')[key] !== true) return 'off'
+  return by.get('flow_only')?.[key] === true ? 'only' : 'beside'
+}
+
+/** What a pick of that choice saves: only the switches that change. Lists switches Only Work through off too, so
+ *  the work tab never keeps a view that is gone; a catalogue without Only Work through is never sent it */
+export function flowModePatch(mode, items) {
+  const by = new Map((items ?? []).filter(x => x.available !== false).map(x => [x.id, x.value]))
+  const want = { flow: mode !== 'off', flow_only: mode === 'only' }
+  return Object.fromEntries(Object.entries(want).filter(([id, v]) => by.has(id) && by.get(id) !== v))
+}
+
+/** The sketch of a preset on its picker card: one mark per feature, in the order the cards show them; 'on' where the
+ *  preset switches it on (a choice: any value but its first), 'off' where it sets the default, 'free' where it leaves
+ *  the feature as it is */
+export function presetBoard(preset, items) {
+  const named = preset?.features ?? {}
+  return featureGroups(items).flatMap(g => g.items).map(x => {
+    if (!Object.hasOwn(named, x.id)) return { id: x.id, state: 'free' }
+    const base = x.kind === 'choice' ? x.values?.[0] : false
+    return { id: x.id, state: JSON.stringify(named[x.id]) === JSON.stringify(base) ? 'off' : 'on' }
+  })
+}
+
+/** How long the page waits for the server to come back after a restart before it says how to restart it by hand */
+export const RESTART_SLOW_MS = 30000
+
+/** The page's side of a restart after a save of the Features area. `phase` is null, 'restarting' (the server
+ *  restarts itself), 'slow' (it has not come back after RESTART_SLOW_MS) or 'needed' (it cannot, a person restarts
+ *  it). Events: { kind: 'answer', restart: 'now' | 'needed' | 'none' } of a save, { kind: 'hello' } of the server's
+ *  stream, { kind: 'timeout' }. The next phase, and `reload` once the server it restarted says hello. A hello while
+ *  a restart is needed ends the phase without a reload: the server's own pending flag (restartNotice) says from then
+ *  on whether one still waits, after a restart by hand or a stream that only reconnected */
+export function restartStep(phase, event) {
+  const now = phase ?? null
+  if (event?.kind === 'answer') {
+    if (event.restart === 'now') return { phase: 'restarting', reload: false }
+    if (event.restart === 'needed') return { phase: 'needed', reload: false }
+    return { phase: now, reload: false }
+  }
+  if (event?.kind === 'hello' && (now === 'restarting' || now === 'slow')) return { phase: null, reload: true }
+  if (event?.kind === 'hello' && now === 'needed') return { phase: null, reload: false }
+  if (event?.kind === 'timeout' && now === 'restarting') return { phase: 'slow', reload: false }
+  return { phase: now, reload: false }
+}
+
+/** The line the Features area shows about a restart: this page's own restart first ('restarting', 'slow'), then
+ *  what the server says (state.features.restart {pending, requested, can}): a restart asked for is under way
+ *  ('restarting'), a change that waits offers Restart now where the server can restart itself ('waiting') and the
+ *  commands by hand where it cannot ('needed'); null while nothing waits */
+export function restartNotice(phase, restart) {
+  if (phase === 'restarting' || phase === 'slow') return phase
+  if (restart?.requested) return 'restarting'
+  if (phase === 'needed') return 'needed'
+  if (!restart?.pending) return null
+  return restart.can ? 'waiting' : 'needed'
+}
+
+/** Whether the Features area waits: only while a restart is under way, this page's own (its phase 'restarting') or
+ *  one the server was asked for. A change that only waits for a restart locks nothing, Reset and Restart now stay free */
+export function featuresLocked(phase, restart) {
+  return phase === 'restarting' || !!restart?.requested
+}
+
+/** The restart a features verb asked for when its answer never came (a network error: the server may have gone
+ *  down before it answered): 'now' when it changed a config feature (or was the restart itself) and the server
+ *  restarts itself, 'needed' when it cannot, 'none' when it changed only what acts at once. `f` is state.features
+ *  as it stood before the verb */
+export function lostRestart(verb, args, f) {
+  if (!f?.items) return 'none'
+  const by = new Map(f.items.map(x => [x.id, x]))
+  const differs = (id, v) => { const x = by.get(id); return !!x && !x.store && x.available !== false && JSON.stringify(x.value) !== JSON.stringify(v) }
+  const config = verb === 'features_restart'
+    || (verb === 'features_save' && Object.entries(args?.settings ?? {}).some(([id, v]) => differs(id, v)))
+    || (verb === 'features_preset' && Object.entries((f.presets ?? []).find(p => p.id === args?.preset)?.features ?? {}).some(([id, v]) => differs(id, v)))
+    || (verb === 'features_reset' && f.items.some(x => !x.store && x.overridden))
+  if (!config) return 'none'
+  return f.restart?.can === false ? 'needed' : 'now'
+}
+
+/** Whether a hello says the server started again (its started_ms differs from the one this page saw) while the
+ *  page knew of a restart that waited or was asked for: then this tab too loads anew, since a config feature such as
+ *  the chat layout shapes the page. The first hello of a page, and a stream that only reconnected, reload nothing */
+export function helloReload(seen, started, restart) {
+  if (seen == null || started == null || seen === started) return false
+  return !!(restart?.pending || restart?.requested)
+}
+
 /** The model the daily check implies for a row the AI may do, as the server reckons it (model_route.py
  *  from_check): Jev's score through the bands where triage_jev is on and Jev gave one, else Haiku's level
  *  through the Haiku levels, then at most max_model. Null for a row you do, without a number, or while

@@ -1,7 +1,7 @@
 ---
 summary: "The Bridge cockpit, a local web page that watches and steers the whole Bridge: switch it on in bridge-config.yaml (cockpit:), open it with /cockpit or scripts/bridge-cockpit.py, decide rows, steer agent tabs and ask Claude or Codex from the browser. Covers the three columns, the Files tab, the news ticker, the status pages and their folders, the task check, the GitHub filters, a page's search over every day before with Ask AI, the keyboard, the safety model, the Setup page, the relay mod cockpit-relay, the files under .bridge/cockpit/, how to build the briefing profile it shows, and what to do when something is off."
 type: guide
-last_updated: 2026-11-10
+last_updated: 2026-11-16
 related:
   - bridge-cockpit-dev.md
   - briefings.md
@@ -144,6 +144,9 @@ their defaults:
 | `usage.host` | the infra/remotes entry whose hostname or Bonjour name matches | this machine's name on the token card and in the history file |
 | `usage.remote_file` | `~/.bridge/resources/usage.json` | the file `scripts/usage-export.py` writes on those machines |
 | `usage.clicks` | `true` | the click origin log: which control was used from which page, view and area, by name and count, never its words or what it was about (`usage.jsonl`, section 6); `scripts/cockpit-usage.py` reads it. `false` writes nothing; any other value warns and keeps `true` |
+
+Most of the switches above can also be set on the page, Settings, Features, without editing this
+file: [Features and presets](#features-and-presets).
 
 Migration note: `language`, `full_minutes`, `voice`, `launch.target` and
 `snapshot_minutes` used to be set under `briefing.claude_code_ui`, the block
@@ -2429,8 +2432,9 @@ sends counts as Auto's recommendation and stays under `max_model`. The effort
 and priority go to the
 judge, never its detail or a path.
 
-The page **Settings** (behind More) opens on Setup ([The Setup page](#the-setup-page)) and has
-the areas Start page, Appearance and Model choice. Model choice shows every key above in three cards (the
+The page **Settings** (behind More) opens on Setup ([The Setup page](#the-setup-page)), followed by
+Features ([Features and presets](#features-and-presets)), and has the areas Start page, Appearance
+and Model choice. Model choice shows every key above in three cards (the
 main switch, the choice by hand, Auto) and changes it on top of the config;
 Auto's details show only while Auto is on, and the Jev and Haiku tables carry
 a scale from 0 to 3 that shows which model each rating gets. A change is kept
@@ -3484,6 +3488,75 @@ The first visit's welcome offers **Set up first** beside Start the tour and Skip
 have a row: it opens Settings at Setup and closes the welcome without ending the tour, so the next
 visit offers the tour again.
 
+### Features and presets
+
+Most keys of the `cockpit:` block switch on a part of the page that a fresh cockpit leaves off: Work
+through and its sub switches, each item's brief, the daily sort, the chat as cmux, which tasks the
+Files tab holds and its Ask AI, the voice. The area **Features** (de: Funktionen) of **Settings**,
+right after Setup, switches them without editing a file, together with the switches of Model choice,
+News ticker and the decision guide. One catalogue names every feature once
+(`scripts/lib/bridge_cockpit/features.py`): its card on the page (work, chat, files, helpers, page),
+whether it is a switch or a choice, the feature it needs (the sub switches of Work through act only
+while Work through is on, and the page greys them out until then), and whether it makes model calls.
+Those carry an AI mark: small calls of about a cent each, within the daily budget of their block.
+
+| Feature | Card | What it switches |
+|---|---|---|
+| `flow` | work | `flow.enabled`, Work through ([Work through](#work-through-flow)) |
+| `flow_only` | work | on: `work_view: flow` and `work_views: [files, flow]`, Work through alone in the work tab, only while `flow` is on (otherwise it is refused, or ignored with a warning in a file); off is the config's own value, and where the config itself has it on, off gives every view back and keeps the config's `work_view` |
+| `flow_themes`, `flow_summary`, `flow_instruct`, `flow_checkin`, `flow_seen`, `flow_attach` | work | `flow.<name>.enabled` of the block of that name |
+| `flow_prio_haiku` | work | `flow.prio.haiku.enabled` |
+| `describe` | work | `describe.auto`: `off`, `missing` or `stale` |
+| `triage_daily` | work | `triage_daily`; a served cockpit (`serve --served`) never sorts by itself, so there the row is not available and a save of it changes nothing |
+| `chat_layout` | chat | `chat_layout`: `classic` or `workspaces` |
+| `files_scope` | files | `files_scope`: `active` or `all` |
+| `files_search` | files | `files_search.enabled`; the row shows the words of `files_search.block`, or says that there are none and every record may then reach the model |
+| `launch_model`, `ticker`, `session_guide` | helpers | the switch `enabled` of Model choice, News ticker and the decision guide, each with a link to its own area |
+| `voice` | page | `voice` |
+
+The page never writes `bridge-config.yaml`. A change of a config feature is kept in
+`.bridge/cockpit/features.json` (section 6) as `{feature: value}`, only where it differs from what
+the config says, and the server merges it into the `cockpit:` block when it reads the config, so
+everything the cockpit runs, `status` and the check of the block see the same values as if the key
+stood in the file, the keys beside it untouched (`flow.themes.max_themes` stays what the config says
+when the page switches `flow_themes`). A value that the config itself says by now, because the file
+was edited since, counts as no override and changes nothing. Only the ids of the catalogue are read from it: a key of the
+block that is no feature (`enabled`, `port`, `served`, `relay`) or a value a feature does not take
+is ignored and named among the warnings of `status` and the settings page; a file that is missing
+or no JSON changes nothing. The three helpers keep their switch in their own files, as before
+(`launch.json`, `ticker.json`, `guide.json`), never in `features.json`. A feature that differs from
+the config shows a changed mark whose tooltip says what the config has, and a banner counts them,
+with **Reset**: it empties `features.json` and gives the three helpers back the config's own
+switch, their other settings kept.
+
+The helpers act at once. A config feature acts after a restart of the server: once a change differs
+from what it runs, the server writes its answer first, then waits half a second, lets a write that
+is under way end (at most 30 seconds, else the restart is called off and the page offers it again)
+and starts itself again, in the same process, so its pid, `server.json` and a login item stay
+valid, and the page reloads when it is back. The state says three things about it: `pending` (a
+value differs from what the server started with, also after a hand edit of `bridge-config.yaml`),
+`requested` (this server restarts now) and `can` (it is able to). Pending and not requested, the
+page offers **Restart now**. A stop from outside (`stop`, SIGTERM) during a pending restart stops
+for good. When the process cannot run Python again, it tries one that has PyYAML, then `python3` on
+the PATH, and otherwise exits with an error (a login item then starts it again). A server that
+cannot restart itself (one made without `serve`) keeps the change for its next start, and the page
+says to restart it (`python3 scripts/bridge-cockpit.py stop`, then `/cockpit`).
+
+A **preset** is a named set of feature values; a click applies it after a line that says how many
+switches it sets. Applying one sets exactly the features it names, the others keep their value, and
+the preset whose every feature has its value now is marked. Two are built in: **Basic** puts every
+feature back at its default (switches off, the first value of each choice, the helpers off), and
+**Full** switches everything on (`describe: stale`, `chat_layout: workspaces`, `files_scope: all`),
+except Ask AI in Files, which should first get its block words, and `flow_only`, which hides views;
+those two it leaves as they are. More presets are files in `workflow/cockpit-presets/`, one
+`<id>.yaml` each (`_template.yaml` and `_schema.yaml` there say what a file holds): `schema_version:
+1`, `scope` (`user`, `org` or `personal`), `id` (the file name), `title`, `description` (optional)
+and `features: {feature: value}`. An org overlay can ship them, so a team starts with the same set.
+A file whose id is `basic` or `full`, or not its file name, is skipped; a feature it does not know,
+or a value the feature does not take, is left out and named on the page, the rest applies; so is
+`flow_only: true` without `flow: true` in the same preset. A file that starts with `_` is never a
+preset.
+
 ### On this machine
 
 The area **On this machine** (de: Auf diesem Rechner) of **Settings** lists every page of the
@@ -4161,6 +4234,7 @@ share or clean up.
 | `workspaces.json` | the two switches of the settings page (`{"enabled": bool, "off": [names], "inactive": [names]}`) | no |
 | `views.json` | the pages and sections switched off on this machine (Settings, On this machine): `{"pages_off": [ids], "sections_off": [ids]}`; an id the profile no longer has is kept and changes nothing | no |
 | `guide.json` | the settings page's switches of `cockpit.session_guide` (only those that differ from the config) | no |
+| `features.json` | the Features area's switches on top of the `cockpit:` block, `{feature: value}`, only those that differ from the config ([Features and presets](#features-and-presets)) | no |
 | `ticker-cache.json` | the news ticker's last feed items, each feed's state and the last editor result, shown at once on the next start | no: news items only |
 | `quick.json` | the chats, the last 30, with every question and answer (readable by you only) | yes: the chats |
 | `people/<name>/chats.json` | a person's chats, day count and session ids, with their reading folder `room` and their Codex login `codex` beside it; `documents/` and `pdf-words/` beside `people/` hold the mirror of `sources.documents` | yes: a person's chats |

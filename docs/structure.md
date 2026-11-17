@@ -133,6 +133,9 @@ Every config type lives in **`<wrapper>/<types>/`** — a plural folder with tem
 | `workflow/mail-profiles/_schema.yaml` | CORE | Mail profile schema |
 | `workflow/mail-profiles/_template.yaml` | CORE | Mail profile template |
 | `workflow/mail-profiles/<id>.yaml` | USER | One occasion for mail: footer, theme, greeting, attachments, who it applies to (org when an overlay ships it) |
+| `workflow/cockpit-presets/_schema.yaml` | CORE | Cockpit preset schema |
+| `workflow/cockpit-presets/_template.yaml` | CORE | Cockpit preset template |
+| `workflow/cockpit-presets/<id>.yaml` | USER | One named set of cockpit feature switches for Settings, Features (org when an overlay ships it) |
 | `workflow/calendars/_template.yaml` | CORE | Calendar template |
 | `workflow/calendars/_schema.yaml` | CORE | Calendar schema |
 | `workflow/calendars/entries.yaml` | USER | Master calendar (all scheduled outbound) |

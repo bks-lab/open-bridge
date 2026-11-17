@@ -73,6 +73,8 @@ from lib.bridge_cockpit.store import read_json  # noqa: E402
 DEFAULT_ROOT = Path(__file__).resolve().parents[1]
 START_WAIT_S = 10.0
 STOP_WAIT_S = 5.0
+# a restart the page asked for waits this long for a write verb under way; past it, the restart is called off
+RESTART_LOCK_S = 30.0
 
 
 def pid_alive(pid: object) -> bool:
@@ -156,9 +158,9 @@ def start_line(port: int) -> str:
 ENABLE_HINT = "Set cockpit.enabled: true in bridge-config.yaml (docs/bridge-cockpit.md)."
 
 
-def check_config(root: Path, ignore_disabled: bool) -> tuple[object | None, int]:
+def check_config(root: Path, ignore_disabled: bool, state_dir: Path | None = None) -> tuple[object | None, int]:
     try:
-        cfg = load_web_config(root)
+        cfg = load_web_config(root, state_dir=state_dir)     # with the settings page's Features overrides
     except WebConfigError as error:
         print(f"bridge-cockpit: {error}", file=sys.stderr)
         return None, 2
@@ -174,7 +176,7 @@ def check_config(root: Path, ignore_disabled: bool) -> tuple[object | None, int]
 # ---------------------------------------------------------------- commands
 
 def cmd_serve(args, root: Path, state_dir: Path) -> int:
-    cfg, code = check_config(root, args.ignore_disabled)
+    cfg, code = check_config(root, args.ignore_disabled, state_dir)
     if cfg is None:
         return code
     from lib.bridge_cockpit.server import make_server, served_config, served_runner
@@ -196,11 +198,26 @@ def cmd_serve(args, root: Path, state_dir: Path) -> int:
         raise
     app = server.app
 
-    def stop(signum, frame):  # noqa: ARG001
+    def stop() -> None:
         threading.Thread(target=server.shutdown, daemon=True).start()
 
-    signal.signal(signal.SIGTERM, stop)
-    signal.signal(signal.SIGINT, stop)
+    def on_signal(signum, frame):  # noqa: ARG001
+        # a stop from outside (SIGTERM, Ctrl-C, `stop`) wins over a restart the page asked for: no exec after it
+        app.on_restart = None
+        app.restart_requested = False
+        stop()
+
+    def restart() -> None:
+        # a change of the Features area: a write verb under way ends first, and the write lock stays held until the
+        # exec below, so no write starts and none is cut off; one that outlasts RESTART_LOCK_S calls the restart off
+        if not app.actions.write_lock.acquire(timeout=RESTART_LOCK_S):
+            app.cancel_restart(f"a write still ran after {RESTART_LOCK_S:g} s, not restarted")
+            return
+        stop()
+
+    signal.signal(signal.SIGTERM, on_signal)
+    signal.signal(signal.SIGINT, on_signal)
+    app.on_restart = restart
     app.start()
     print(start_line(app.port), flush=True)
     try:
@@ -214,14 +231,40 @@ def cmd_serve(args, root: Path, state_dir: Path) -> int:
                 server_file(state_dir).unlink()
             except OSError:
                 pass
+    if getattr(app, "restart_requested", False):
+        return reexec()
     return 0
+
+
+def reexec() -> int:
+    """Start this server again in this process, after a change of the Features area: its pid stays, so a login item
+    (launchd) and anything that holds it see one server, which writes server.json again on its start. This
+    interpreter with the same arguments, else one that has PyYAML, else python3 on the PATH; returns only when none
+    of them could be run, with a non-zero code a login item restarts after"""
+    script = str(Path(__file__).resolve())
+    sys.stdout.flush()
+    sys.stderr.flush()
+    tried: list[str] = []
+    for find in (lambda: sys.executable, _python_with_yaml, lambda: shutil.which("python3")):
+        exe = find()
+        if not exe or exe in tried:
+            continue
+        tried.append(exe)
+        try:
+            os.execv(exe, [exe, script, *sys.argv[1:]])
+        except OSError as error:
+            print(f"bridge-cockpit: {exe}: {error.strerror or error}", file=sys.stderr)
+    print("bridge-cockpit: could not start again after a change on the settings page "
+          f"(tried {', '.join(tried) or 'no python'}); start it with: python3 scripts/bridge-cockpit.py start",
+          file=sys.stderr)
+    return 6
 
 
 def start(args, root: Path, state_dir: Path) -> tuple[int, dict | None]:
     info = running_info(root, state_dir)
     if info:
         return 0, {**info, "reused": True}
-    cfg, code = check_config(root, getattr(args, "ignore_disabled", False))
+    cfg, code = check_config(root, getattr(args, "ignore_disabled", False), state_dir)
     if cfg is None:
         return code, None
     try:
@@ -280,7 +323,7 @@ def cmd_open(args, root: Path, state_dir: Path) -> int:
     code, info = start(args, root, state_dir)
     if code:
         return code
-    cfg = load_web_config(root)
+    cfg = load_web_config(root, state_dir=state_dir)
     via = args.via or cfg.open_in
     if via == "auto":
         via = "cmux" if os.environ.get("CMUX_SURFACE_ID") else "system"
@@ -339,7 +382,7 @@ def cmd_status(args, root: Path, state_dir: Path) -> int:
            "clients": info.get("clients", 0) if info else 0, "relay_online": bool(info.get("relay_online")) if info else False}
     # what the check of the cockpit: block found, read from the file now (the running server may be older)
     try:
-        warnings = list(load_web_config(root).config_warnings)
+        warnings = list(load_web_config(root, state_dir=state_dir).config_warnings)
     except WebConfigError as error:
         warnings = [str(error)]
     out["config_warnings"] = warnings

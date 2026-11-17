@@ -25,6 +25,7 @@ from .. import work_find as wf
 from . import model as m
 from . import activity as act
 from . import describe as dsc
+from . import features as ft
 from . import instruct as ins
 from . import organize as og
 from . import themes as thm
@@ -83,6 +84,7 @@ PATTERN_KINDS: dict[str, tuple[re.Pattern, str]] = {
     "theme_id": (thm.THEME_ID_RE, "not a theme id"),
     "click_page": (CLICK_PAGE_RE, "not a page id"),
     "click_name": (CLICK_NAME_RE, "not an area or view name"),
+    "preset_id": (ft.PRESET_ID_RE, "not a preset id"),
 }
 _LAUNCH_MODELS = ("auto", *mr.MODELS)
 _LAUNCH_EFFORTS = ("auto", "standard", *mr.EFFORTS)
@@ -136,7 +138,7 @@ def _record_paths(actions: "Actions", value: Any, name: str, today: dt.date) -> 
 
 
 def _settings(actions: "Actions", value: Any, name: str, today: dt.date) -> dict:
-    # the deep check is the store's own (LaunchModel.save, Ticker.save); MAX_BODY already caps the size
+    # the deep check is the store's own (LaunchModel.save, Ticker.save, Features.save); MAX_BODY already caps the size
     if not isinstance(value, dict) or not value:
         raise bad_arg(name, "must be an object of settings")
     return value
@@ -271,6 +273,7 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "key": lambda actions, value, name, today: check_key(value, name),
     "launch_settings": _settings,
     "ticker_settings": _settings,
+    "features_settings": _settings,
     "tile_ids": _tile_ids,
     "date": lambda actions, value, name, today: check_date(value, name, today),
     "day": lambda actions, value, name, today: check_day(value, name),

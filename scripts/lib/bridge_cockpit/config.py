@@ -767,9 +767,28 @@ def served_access_of(block: Any):
     return si.Settings(**block["access"])
 
 
-def load_web_config(root: Path | str, data: dict | None = None) -> WebConfig:
+def load_web_config(root: Path | str, data: dict | None = None, state_dir: Path | str | None = None,
+                    overrides: dict | None = None) -> WebConfig:
+    """The cockpit: block as the cockpit runs it. Read from bridge-config.yaml (data None), the settings page's
+    Features overrides (<state_dir>/features.json, features.py) are deep merged into the block first, so every
+    consumer and check_block see one effective block; with `data` given only what `overrides` names is merged.
+    An override equal to what the config alone gives is none (features.merged)."""
     root = Path(root).resolve()
     raw = read_config_file(root) if data is None else data
+    if overrides is None and data is not None:
+        return _web_config(root, raw)
+    from . import features as ft     # it reads this module, not the other way round
+    found = overrides if overrides is not None else ft.read_json(ft.state_path(root, state_dir))
+    base = _web_config(root, raw)
+    if found is None:
+        return base
+    effective, warnings = ft.merged(raw, found, base)
+    cfg = base if effective is raw else _web_config(root, effective)
+    return replace(cfg, config_warnings=cfg.config_warnings + tuple(warnings))
+
+
+def _web_config(root: Path, raw: dict) -> WebConfig:
+    """The WebConfig of one bridge-config mapping, its cockpit: block checked (check_block)"""
     where = "cockpit"
     w = _dict(raw.get("cockpit"))
     served_access = served_access_of(w.get("served"))

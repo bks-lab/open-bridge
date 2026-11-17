@@ -209,6 +209,13 @@ SURFACES = [
         "exclude_prefixes": ["_"],
     },
     {
+        # A preset of the cockpit's Features area (scripts/lib/bridge_cockpit/features.py reads it leniently).
+        "name": "cockpit-preset",
+        "schema": "workflow/cockpit-presets/_schema.yaml",
+        "instances": "workflow/cockpit-presets/*.yaml",
+        "exclude_prefixes": ["_"],
+    },
+    {
         # Generated root-config lockfile (scope: user) recording applied org
         # overlays, pinned to immutable hashes. Absent on a fresh clone → the
         # glob finds no instances and the surface is a no-op; validated when

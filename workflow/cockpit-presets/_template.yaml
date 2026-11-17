@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=./_schema.yaml
+# A preset of the cockpit's Features area (Settings, Features): a named set of feature values that one click
+# applies. Copy to <id>.yaml, keep what you want to set, delete the rest. An org overlay can ship presets for its
+# team (scope: org). Applying a preset sets exactly the features it names, the others keep their value, and
+# bridge-config.yaml is never written (docs/bridge-cockpit.md, Features and presets).
+# The feature ids are the catalogue of scripts/lib/bridge_cockpit/features.py; an unknown id or a bad value is
+# left out and named on the page. `basic` and `full` are built in and cannot be used as an id.
+schema_version: 1
+scope: user                    # user | org | personal
+id: example-preset             # must equal the file name stem
+title: Example preset
+description: Work through with its themes, each item's brief and the daily sort.
+features:
+  flow: true                   # Work through (cockpit.flow.enabled)
+  flow_themes: true            # its themes, small model calls within a daily budget
+  describe: stale              # 'off' | missing | stale: each item's brief kept by a small model ('off' quoted)
+  triage_daily: true           # the daily sort, one model call a day
+  # flow_only: false           # Work through alone in the work tab, beside Files; true needs flow: true
+  # flow_summary: false
+  # flow_instruct: false
+  # flow_checkin: false
+  # flow_prio_haiku: false
+  # flow_seen: false
+  # flow_attach: false
+  # chat_layout: classic       # classic | workspaces
+  # files_scope: active        # active | all
+  # files_search: false        # Ask AI in Files: set cockpit.files_search.block first
+  # launch_model: false        # these three act at once, kept in their own stores
+  # ticker: false
+  # session_guide: false
+  # voice: false

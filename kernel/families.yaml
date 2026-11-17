@@ -67,6 +67,10 @@ families:
   read_when: 'a scheduled outbound action: what, to whom, when; on when calendar.enabled'
   skill: calendar
   guide: [docs/calendar.md]
+- path: workflow/cockpit-presets/
+  read_when: 'a preset of the cockpit''s Features area (Settings, Features): which switches one click sets'
+  skill: cockpit
+  guide: [docs/bridge-cockpit.md]
 - path: workflow/contexts/
   read_when: where a piece of work gets documented
 - path: workflow/cost-centers/
