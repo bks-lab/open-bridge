@@ -460,6 +460,11 @@ holds the overlay. The run's summary line names what it accepted
 reads as `none`. Only `--unattended` reads the setting; `--yes` and an
 interactive `sync` behave as before.
 
+To see what the next scheduled run would do, add `--dry-run`:
+`sync --unattended --dry-run` plans every due overlay the same way and prints
+`would apply` or `would hold` with what it would accept and leave pending. It
+writes no file, keeps the lock pin and records no outcome for `status`.
+
 A conflict holds the whole overlay because `sync --yes` keeps the local side
 **and** advances the pin. From the next run on the 3-way base is the new
 upstream, the file reads as an ordinary local edit, and the upstream change is
