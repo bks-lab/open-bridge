@@ -1882,6 +1882,46 @@ assert_file "31e: the old reference is not deleted" "$CON/$SK/references/a.md"
 assert_absent "31e: the new reference is not written" "$CON/$SK/references/b.md"
 assert_grep "31e: SKILL.md still routes to a file that exists" "$CON/$SK/SKILL.md" "references/a.md"
 
+echo
+echo "── 32. unattended --dry-run plans the scheduled run and writes nothing ──"
+# `sync --dry-run` is the documented way to preview a sync. Combined with
+# `--unattended` the flag was dropped on the floor: the run applied, advanced
+# the lock pin and recorded its outcome, the same as the scheduled job
+# (2026-11-18, while testing unattended_accept on a live instance). A preview
+# that writes is worse than none, because the person reads its output as
+# "nothing happened yet".
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+mk_two_units "$OV"
+set_accept "$CON" known
+sed 's/id: example-docs/id: example-new/' "$OV/tree/workflow/contexts/example-docs.yaml" > "$OV/tree/$NEWCTX"
+commit_ov "$OV" dry-run-new-ctx
+PIN_BEFORE="$(lock_pin "$CON")"
+LOCK_BEFORE="$(shasum "$CON/overlays.lock.yaml" | cut -d' ' -f1)"
+OUT="$(python3 "$OVERLAY" --repo-root "$CON" sync --unattended --dry-run </dev/null 2>&1)"; RC=$?
+assert_rc "32a: the dry run succeeds" 0
+case "$(summary_line)" in
+  *"would apply"*) pass "32a: the summary says what the run would do" ;;
+  *) fail "32a: the summary does not read as a plan" "$OUT" ;;
+esac
+case "$(summary_line)" in
+  *"accepted: $SK/"*) pass "32a: it names the folder the run would accept" ;;
+  *) fail "32a: the accepted folder is not named" "$OUT" ;;
+esac
+assert_absent "32a: the new file is not written" "$CON/$NEWCTX"
+assert_absent "32a: the accepted reference is not written" "$CON/$REF"
+assert_eq "32a: the lock pin does not move" "$(lock_pin "$CON")" "$PIN_BEFORE"
+assert_eq "32a: the lock file is unchanged" "$(shasum "$CON/overlays.lock.yaml" | cut -d' ' -f1)" "$LOCK_BEFORE"
+assert_absent "32a: no unattended outcome is recorded" "$CON/.bridge/overlay-unattended.yaml"
+run_overlay "$CON" status example-org
+assert_out "32a: status still says never" "last unattended: never"
+
+# 32b. the real run afterwards still does the work the preview announced.
+unattended "$CON"
+assert_out "32b: the real run applies" "unattended example-org: applied"
+assert_file "32b: the new file is written" "$CON/$NEWCTX"
+assert_file "32b: the accepted reference is written" "$CON/$REF"
+
 # ───────────────────────────────────────────────────────────────────
 echo
 echo "════════════════════════════════════════════════════════════════"

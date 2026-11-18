@@ -2245,7 +2245,7 @@ def cmd_sync(consumer: Consumer, args) -> int:
             sys.stderr.write("sync: --accept is a person's answer and is not "
                              "valid with --unattended\n")
             return 2
-        return cmd_sync_unattended(consumer, names)
+        return cmd_sync_unattended(consumer, names, args.dry_run)
     rc = 0
     for name in names:
         try:
@@ -2357,8 +2357,11 @@ def unattended_blockers(consumer: Consumer, cache: str, items: list[PlanItem],
 
 
 def _unattended_one(consumer: Consumer, name: str, prev: dict | None,
-                    now: datetime) -> tuple[str, str]:
-    """(outcome, detail) for one overlay. Outcomes: applied · held · not-due."""
+                    now: datetime, dry: bool = False) -> tuple[str, str]:
+    """(outcome, detail) for one overlay. Outcomes: applied · held · not-due.
+
+    `dry` plans the same run and writes nothing: no file, no lock pin, no
+    recorded outcome. The outcome then reads `would apply` / `would hold`."""
     sub = find_subscription(consumer, name)
     interval = pull_interval_days(sub)
     if not unattended_due(prev, interval, now):
@@ -2389,7 +2392,7 @@ def _unattended_one(consumer: Consumer, name: str, prev: dict | None,
     blockers = unattended_blockers(consumer, cache, items, prune, old_sha,
                                    lock_files, set(units))
     if blockers:
-        return "held", "; ".join(blockers)
+        return ("would hold" if dry else "held"), "; ".join(blockers)
 
     # What the engine will leave for a person without holding anything back:
     # every changed file of a behavioural unit with a first-time file in it (the
@@ -2405,6 +2408,15 @@ def _unattended_one(consumer: Consumer, name: str, prev: dict | None,
            and (it.on_conflict or defaults["on_conflict"]) == "prompt"})
     refused = sorted(it.dest for it in items
                      if it.state in ("core-refused", "leak-refused"))
+    if dry:
+        detail = [f"plan at {resolved[:10]}", "nothing written"]
+        if auto:
+            detail.append("accepted: " + ", ".join(sorted(auto)))
+        if pending:
+            detail.append("pending: " + ", ".join(pending))
+        if refused:
+            detail.append("refused: " + ", ".join(refused))
+        return "would apply", "; ".join(detail)
     counts = materialize(consumer, cache, manifest, defaults, items, prune,
                          name, params["url"], params["ref"], resolved,
                          manifest_sha, params["precedence"], lock, old_sha,
@@ -2424,27 +2436,33 @@ def _unattended_one(consumer: Consumer, name: str, prev: dict | None,
     return "applied", "; ".join(detail)
 
 
-def cmd_sync_unattended(consumer: Consumer, names: list[str]) -> int:
+def cmd_sync_unattended(consumer: Consumer, names: list[str],
+                        dry: bool = False) -> int:
     """The scheduled run: apply an overlay only when its plan needs nobody.
 
     One line per overlay, `unattended <name>: <outcome> (<detail>)`, stable and
     parsed by scripts/overlay-autosync.sh. Exit 1 only when an overlay FAILED; a
-    held overlay did its job."""
+    held overlay did its job. With `dry` (sync --unattended --dry-run) every
+    overlay is planned as the scheduled run would, and nothing is written or
+    recorded."""
     state = consumer.load_unattended()
     now = datetime.now(timezone.utc)
     rc = 0
     for name in names:
         prev = state.get(name) if isinstance(state.get(name), dict) else None
         try:
-            outcome, detail = _unattended_one(consumer, name, prev, now)
+            outcome, detail = _unattended_one(consumer, name, prev, now, dry)
         except (OverlayError, OSError, subprocess.SubprocessError) as exc:
             outcome, detail = "failed", str(exc).splitlines()[0][:300] if str(exc) else type(exc).__name__
             rc = 1
         print(f"unattended {name}: {outcome}" + (f" ({detail})" if detail else ""))
-        if outcome != "not-due":
+        if outcome != "not-due" and not dry:
             state[name] = {"at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
                            "outcome": outcome, "detail": detail}
-    consumer.write_unattended(state)
+    if dry:
+        print("[dry-run] no files written, nothing recorded.")
+    else:
+        consumer.write_unattended(state)
     return rc
 
 
