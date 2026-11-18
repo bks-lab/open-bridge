@@ -1784,6 +1784,106 @@ assert_file "30g: several names in one option" "$CON/$NEWSK/SKILL.md"
 
 # ───────────────────────────────────────────────────────────────────
 echo
+echo "── 31. unattended_accept: the subscription lets the scheduled run say [y] ──"
+# The scheduled run withholds every skill folder that has one new file in it,
+# and nobody is there to say [y]. On the instance this comes from that left
+# seven skill folders (59 files) behind although the job ran every morning
+# (2026-11-18). materialize.unattended_accept is the consumer's standing
+# answer, per overlay, off by default: `known` covers a skill folder the
+# consumer already holds, `all` covers a skill never seen before too. Neither
+# overwrites a file of the consumer's own or deletes one.
+set_accept() { python3 - "$1/bridge-config.yaml" "$2" <<'PY'
+import sys, yaml
+p, mode = sys.argv[1], sys.argv[2]
+d = yaml.safe_load(open(p))
+for u in d.get("upstreams") or []:
+    if u.get("role") == "org-overlay":
+        u["pull_interval_days"] = 0
+        u.setdefault("materialize", {})["unattended_accept"] = mode
+yaml.safe_dump(d, open(p, "w"), sort_keys=False, allow_unicode=True)
+PY
+}
+summary_line() { printf '%s\n' "$OUT" | grep '^unattended example-org:'; }
+
+# 31a. known: the folder the consumer already holds is written whole, the
+# brand-new one still waits.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+mk_two_units "$OV"
+set_accept "$CON" known
+unattended "$CON"
+assert_out "31a: known: the run applies" "unattended example-org: applied"
+assert_file "31a: known: the new reference of a held skill is written" "$CON/$REF"
+assert_grep "31a: known: and the SKILL.md routing to it" "$CON/$SK/SKILL.md" "UPSTREAM-ROUTE"
+case "$(summary_line)" in
+  *"accepted: $SK/"*) pass "31a: known: the summary names what it accepted" ;;
+  *) fail "31a: known: the summary does not name the accepted folder" "$OUT" ;;
+esac
+case "$(summary_line)" in
+  *"pending: $NEWSK/SKILL.md"*) pass "31a: known: the new skill is still pending" ;;
+  *) fail "31a: known: the new skill is not listed as pending" "$OUT" ;;
+esac
+assert_absent "31a: known: the new skill is not installed" "$CON/$NEWSK/SKILL.md"
+run_overlay "$CON" status example-org
+assert_out "31a: status names the setting" "unattended accepts: known"
+assert_out "31a: status still lists the new skill as withheld" "$NEWSK/"
+
+# 31b. all: the new skill arrives too, nothing waits.
+set_accept "$CON" all
+unattended "$CON"
+assert_out "31b: all: the run applies" "unattended example-org: applied"
+assert_file "31b: all: the new skill is installed" "$CON/$NEWSK/SKILL.md"
+case "$(summary_line)" in
+  *"pending: "*) fail "31b: all: something is still pending" "$OUT" ;;
+  *) pass "31b: all: nothing is pending" ;;
+esac
+run_overlay "$CON" status example-org
+assert_out "31b: status: nothing waits" "pending-confirm=0"
+
+# 31c. the default is unchanged, and a value nobody defined reads as none.
+for mode in none everything; do
+  CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+  run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+  mk_two_units "$OV"
+  set_accept "$CON" "$mode"
+  unattended "$CON"
+  assert_absent "31c: $mode: the held skill keeps waiting" "$CON/$REF"
+  assert_absent "31c: $mode: so does the new one" "$CON/$NEWSK/SKILL.md"
+done
+
+# 31d. all never overwrites a file of the consumer's own: that folder waits.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+mk_two_units "$OV"
+mkdir -p "$CON/$NEWSK"; printf '# MINE\n' > "$CON/$NEWSK/SKILL.md"
+set_accept "$CON" all
+unattended "$CON"
+assert_grep "31d: the consumer's own file is untouched" "$CON/$NEWSK/SKILL.md" "MINE"
+case "$(summary_line)" in
+  *"pending: $NEWSK/SKILL.md"*) pass "31d: and the folder is listed as pending" ;;
+  *) fail "31d: the consumer-owned folder is not listed as pending" "$OUT" ;;
+esac
+assert_file "31d: the other folder is still accepted" "$CON/$REF"
+
+# 31e. all never deletes: a folder with a removed file waits, whole.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+mkdir -p "$OV/tree/$SK/references"
+printf '# A\n' > "$OV/tree/$SK/references/a.md"
+printf '\nDetail: see references/a.md.\n' >> "$OV/tree/$SK/SKILL.md"
+commit_ov "$OV" with-a
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+mv "$OV/tree/$SK/references/a.md" "$OV/tree/$SK/references/b.md"
+edit_line "$OV/tree/$SK/SKILL.md" "references/a.md" "references/b.md"
+commit_ov "$OV" rename-a-to-b
+set_accept "$CON" all
+unattended "$CON"
+assert_out "31e: the run applies the rest" "unattended example-org: applied"
+assert_file "31e: the old reference is not deleted" "$CON/$SK/references/a.md"
+assert_absent "31e: the new reference is not written" "$CON/$SK/references/b.md"
+assert_grep "31e: SKILL.md still routes to a file that exists" "$CON/$SK/SKILL.md" "references/a.md"
+
+# ───────────────────────────────────────────────────────────────────
+echo
 echo "════════════════════════════════════════════════════════════════"
 echo "RESULT: $PASS passed, $FAIL failed"
 echo "════════════════════════════════════════════════════════════════"

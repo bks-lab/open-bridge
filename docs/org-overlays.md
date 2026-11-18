@@ -427,10 +427,38 @@ calls. It applies an overlay only when its whole plan needs nobody:
 | The plan contains | Unattended run |
 |---|---|
 | updates, new config files, clean 3-way merges | applied |
-| a behavioural file arriving for the first time | applied without its unit (the whole skill folder, updates included); listed as pending until a `[y]` in `/overlay sync` |
+| a behavioural file arriving for the first time | applied without its unit (the whole skill folder, updates included); listed as pending until a `[y]` in `/overlay sync`. The subscription can let the run accept it: `materialize.unattended_accept`, below |
 | a conflict with a local edit | the overlay is **held**: nothing written, the lock pin stays |
 | a file it would delete | **held**, unless it sits in a withheld skill folder: then it waits with the folder |
 | nothing new, inside `pull_interval_days` | `not-due`, nothing fetched |
+
+**Letting the scheduled run say `[y]`.** By default every skill folder with one
+new file in it waits for a person, and a daily job cannot ask. An overlay that
+ships a new reference or test with most skill changes then falls behind although
+the job runs every morning. `materialize.unattended_accept` in the subscription
+is the consumer's standing answer, per overlay:
+
+| Value | The scheduled run accepts |
+|---|---|
+| `none` (default) | no behavioural unit; each waits for `[y]` or `--accept` |
+| `known` | a skill folder the consumer already holds a file of: a skill accepted once gets its new files. A skill, sub-agent or standing order never seen before still waits |
+| `all` | every behavioural unit, a new skill or sub-agent included. Choose it for a publisher you trust the way you trust CORE |
+
+```yaml
+upstreams:
+  - name: my-org-bridge
+    role: org-overlay
+    materialize:
+      unattended_accept: known
+```
+
+In no mode does it overwrite a file of your own or delete one: a folder that
+would do either waits whole, as before. The CORE-refusal and the leak gate run
+on every accepted file. A conflict or a deletion outside a waiting folder still
+holds the overlay. The run's summary line names what it accepted
+(`accepted: skills/<name>/`), `status` shows the setting, and an unknown value
+reads as `none`. Only `--unattended` reads the setting; `--yes` and an
+interactive `sync` behave as before.
 
 A conflict holds the whole overlay because `sync --yes` keeps the local side
 **and** advances the pin. From the next run on the 3-way base is the new

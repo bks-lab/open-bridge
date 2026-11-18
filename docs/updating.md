@@ -350,7 +350,8 @@ scripts/install-upstream-autoupdate.sh --overlays   # daily at 07:15
 It applies an overlay only when the whole plan needs nobody. A conflict with a
 local edit, or a file it would delete, holds that overlay untouched until you
 resolve it interactively. A behavioural file (a skill, an agent, a standing
-order) arriving for the first time waits for one explicit yes. The full table
+order) arriving for the first time waits for one explicit yes, unless the
+subscription lets the job accept it (`materialize.unattended_accept`). The full table
 and the reasoning: [org-overlays.md](org-overlays.md).
 
 ## Fixing CORE without lasting divergence

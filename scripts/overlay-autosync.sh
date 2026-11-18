@@ -20,6 +20,12 @@
 # decision per genuinely new tool, and nothing in between needs a human.
 # A new skill is therefore REPORTED, not applied — that is the point, not a gap.
 #
+# A skill folder is held WHOLE when one file in it is new, so an overlay that
+# ships a new reference or test with most skill changes leaves accepted skills
+# behind every morning. The consumer can give a standing answer per overlay:
+# materialize.unattended_accept: known (skill folders already held) or all (new
+# skills and agents too). Default none. See docs/org-overlays.md.
+#
 # THE DECISION LIVES IN THE ENGINE: `overlay.py sync --unattended` plans each
 # overlay and applies it only when the plan needs nobody. This script schedules
 # it, writes the report and sends the notification.
@@ -122,7 +128,7 @@ status=$(LC_ALL=C "$PY" scripts/overlay.py status 2>/dev/null)
 next=""
 [ "$held" -gt 0 ] && next="- held: review with \`/overlay diff\`, then run \`/overlay sync\` interactively"
 [ "$pending" -gt 0 ] && next="${next:+$next
-}- pending: new behavioural files wait for an explicit \`[y]\` in \`/overlay sync\`"
+}- pending: new behavioural files wait for an explicit \`[y]\` in \`/overlay sync\` (or set \`materialize.unattended_accept\`, docs/org-overlays.md)"
 report "$bullets" ${next:+"" "$next"} "" '```' "$status" '```'
 
 summary=$(printf '%s\n' "$lines" | grep -v ': not-due' | sed 's/^unattended //')

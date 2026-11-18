@@ -35,6 +35,8 @@ upstreams:
     role: org-overlay              # what makes list/sync treat it as an overlay
     contribute: false              # an overlay is pull-only by default
     pull_interval_days: 7          # status warns past this; the unattended sync waits this long
+    # materialize.unattended_accept: none | known | all  (hand-set, default none):
+    # which behavioural units the unattended sync may accept without a person
     materialize:                   # presence of THIS block = a subscription
       url: https://github.com/example-org/bridge-overlay.git
       ref: main                    # branch or tag requested (resolves to resolved_sha)
@@ -191,6 +193,12 @@ never auto-applied. Its lock entries stay as they were, so the next run and
 (`sync` / `apply` / `add`), for a run that cannot answer a prompt: it writes the
 named units whole, leaves every other gated unit withheld, fails on a name no
 gate asked about, and is refused under `--unattended`.
+
+The scheduled run has its own, standing answer: `materialize.unattended_accept`
+in the subscription (`none` default · `known` = skill folders the consumer
+already holds · `all` = every behavioural unit). A unit that would delete a
+file or overwrite one of the consumer's own is never covered and waits whole.
+The summary line lists what was accepted (`accepted: skills/<name>/`).
 
 The one answer covers the whole unit. A file upstream removed from a withheld
 folder is not pruned (Step 14 keeps it and its lock entry), since the unchanged

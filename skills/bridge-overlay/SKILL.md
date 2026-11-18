@@ -114,7 +114,12 @@ conflict/precedence model, and 3-way base recovery live in `references/workflow.
    whole, and `status` counts it as `pending-confirm`. Where no prompt can
    be answered (an agent session, no tty), the person names the unit instead:
    `sync --accept skills/<name>/`. **Run it only for units the person named**;
-   never derive the list from `status` yourself. Interactively, `a`
+   never derive the list from `status` yourself. The scheduled run
+   (`--unattended`) accepts a unit only when the subscription says so:
+   `materialize.unattended_accept: known` (skill folders already held) or
+   `all` (new skills and agents too), default `none`. **Set it only when the
+   person asks for it**; it never covers a deletion or an overwrite of the
+   consumer's own file. Interactively, `a`
    answers yes to every remaining gate of the run; an unknown answer repeats
    the question. Deleting a file or overwriting the consumer's own file is
    asked one by one, `a` never covers it.

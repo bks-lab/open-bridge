@@ -1345,6 +1345,52 @@ def accept_units(raw: list[str] | None) -> set[str]:
     return out
 
 
+UNATTENDED_ACCEPT_MODES = ("none", "known", "all")
+
+
+def unattended_accept_mode(mat: dict | None) -> str:
+    """`materialize.unattended_accept` of a subscription: which behavioural
+    units the scheduled run may accept without a person. Anything it does not
+    recognise reads as `none`, so a typo can only make the run more careful."""
+    raw = (mat or {}).get("unattended_accept", "none")
+    if raw is True:
+        return "all"
+    raw = str(raw).strip().lower() if raw not in (None, False) else "none"
+    return raw if raw in UNATTENDED_ACCEPT_MODES else "none"
+
+
+def unattended_accepted(units: dict[str, list["PlanItem"]],
+                        unit_prune: dict[str, list[dict]], known: set[str],
+                        defaults: dict, mode: str) -> set[str]:
+    """Gated units the scheduled run accepts itself, by the subscription's
+    `materialize.unattended_accept`.
+
+    `none` (the default): no unit, every one waits for a person's [y].
+    `known`: a skill folder the consumer already holds a file of. Somebody said
+    [y] to that skill once; a new reference or test in it is an update, and
+    holding the folder for it is what left accepted skills weeks behind.
+    `all`: every unit, a skill or sub-agent never seen before included. The
+    consumer then trusts the publisher as it trusts CORE.
+
+    In no mode does it cover a unit that would overwrite a file of the
+    consumer's own or delete one: the scheduled run adds and updates, and those
+    two stay a person's call."""
+    if mode not in ("known", "all"):
+        return set()
+    out: set[str] = set()
+    for unit, members in units.items():
+        if unit_prune.get(unit):
+            continue
+        if any(m.state == "user-owned"
+               and (m.on_conflict or defaults["on_conflict"]) == "prompt"
+               for m in members):
+            continue
+        if mode == "known" and not any(gate_unit(d) == unit for d in known):
+            continue
+        out.add(unit)
+    return out
+
+
 def held_prune(prune: list[dict], units: dict[str, list["PlanItem"]]) -> dict[str, list[dict]]:
     """Prune entries that belong to a gated unit, by unit: they wait with it."""
     out: dict[str, list[dict]] = {}
@@ -1691,7 +1737,8 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
                 dry: bool, assume_yes: bool, interactive: bool,
                 track_managed_dests: bool = False,
                 accept: set[str] | None = None,
-                accept_seen: set[str] | None = None) -> dict:
+                accept_seen: set[str] | None = None,
+                accept_why: str = "named with --accept") -> dict:
     counts = {k: 0 for k in ("clean", "locally-modified", "upstream-ahead",
                              "conflict", "orphan", "orphan-blocked",
                              "core-refused", "leak-refused", "skipped",
@@ -1719,6 +1766,8 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
     # that name IS the [y], given in a place where no prompt can be answered (an
     # agent session, a shell without a tty). It is never implied by --yes, which
     # names nothing, and it covers exactly what the interactive [y] covers.
+    # The scheduled run passes the units its subscription lets it accept
+    # (materialize.unattended_accept, see unattended_accepted).
     accept = accept or set()
     units = gated_units(items, set(prev_files))
     unit_prune = held_prune(prune, units)
@@ -1735,8 +1784,8 @@ def materialize(consumer: Consumer, cache: str, manifest: dict, defaults: dict,
         if unit in accept:
             if accept_seen is not None:
                 accept_seen.add(unit)
-            print(f"\n  ACCEPTED {unit}: behavioural ({label}), named with "
-                  f"--accept, {len(members) + len(gone)} file(s)")
+            print(f"\n  ACCEPTED {unit}: behavioural ({label}), {accept_why}, "
+                  f"{len(members) + len(gone)} file(s)")
             for m in members:
                 note = "  (overwrites your file)" if m in owned else ""
                 print(f"    {m.state:14} {m.dest}{note}")
@@ -2106,6 +2155,7 @@ def _resolve_overlay_params(consumer: Consumer, name: str) -> dict:
         "precedence": mat.get("precedence", 0),
         "select": mat.get("select") or ["**"],
         "track_managed_dests": bool(mat.get("track_managed_dests", False)),
+        "unattended_accept": unattended_accept_mode(mat),
     }
 
 
@@ -2331,6 +2381,11 @@ def _unattended_one(consumer: Consumer, name: str, prev: dict | None,
     lock_files = {f["dest"]: f for f in prev_entry.get("files", [])
                   if isinstance(f, dict) and f.get("dest")}
     units = gated_units(items, set(lock_files))
+    # Units the subscription lets this run accept itself. They leave the gate;
+    # everything else below treats only the rest as held.
+    auto = unattended_accepted(units, held_prune(prune, units), set(lock_files),
+                               defaults, params["unattended_accept"])
+    units = {u: m for u, m in units.items() if u not in auto}
     blockers = unattended_blockers(consumer, cache, items, prune, old_sha,
                                    lock_files, set(units))
     if blockers:
@@ -2338,7 +2393,8 @@ def _unattended_one(consumer: Consumer, name: str, prev: dict | None,
 
     # What the engine will leave for a person without holding anything back:
     # every changed file of a behavioural unit with a first-time file in it (the
-    # [y] gate is never answered unattended, and a skill folder is held whole,
+    # [y] gate is answered unattended only for the units the subscription named
+    # with materialize.unattended_accept, and a skill folder is held whole,
     # deletions inside it included) and a file the consumer already has that the
     # overlay would claim. Neither is applied to the lock, so both come up again.
     pending = sorted(
@@ -2353,9 +2409,14 @@ def _unattended_one(consumer: Consumer, name: str, prev: dict | None,
                          name, params["url"], params["ref"], resolved,
                          manifest_sha, params["precedence"], lock, old_sha,
                          False, True, False,
-                         track_managed_dests=params["track_managed_dests"])
+                         track_managed_dests=params["track_managed_dests"],
+                         accept=auto,
+                         accept_why="materialize.unattended_accept: "
+                                    + params["unattended_accept"])
     written = sum(counts[k] for k in ("clean", "upstream-ahead", "locally-modified"))
     detail = [f"{written} written", f"at {resolved[:10]}"]
+    if auto:
+        detail.append("accepted: " + ", ".join(sorted(auto)))
     if pending:
         detail.append("pending: " + ", ".join(pending))
     if refused:
@@ -2453,6 +2514,7 @@ def status_data(consumer: Consumer, name: str, lock: dict) -> dict:
             pass
     run = consumer.load_unattended().get(name)
     out["last_unattended"] = run if isinstance(run, dict) else None
+    out["unattended_accept"] = unattended_accept_mode((sub or {}).get("materialize"))
     # pending-confirm: files the next sync holds at the behavioural gate until a
     # person says [y] (a subset of the counts beside it, never hidden by them).
     counts = {"clean": 0, "locally-modified": 0, "upstream-ahead": 0, "conflict": 0,
@@ -2531,6 +2593,9 @@ def cmd_status(consumer: Consumer, args) -> int:
         if d.get("plan_error"):
             print(f"  (plan error: {d['plan_error']})")
         print("  files        : " + "  ".join(f"{k}={v}" for k, v in d["files"].items()))
+        if d.get("unattended_accept", "none") != "none":
+            print(f"  unattended accepts: {d['unattended_accept']} "
+                  f"(materialize.unattended_accept)")
         if d.get("withheld"):
             print("  withheld     : " + ", ".join(d["withheld"])
                   + "  (needs [y]: run 'sync' interactively, or name it: sync --accept <unit>)")
@@ -2770,8 +2835,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "repeatable; never implied by --yes")
     s.add_argument("--unattended", action="store_true",
                    help="the scheduled run: honour pull_interval_days, hold an "
-                        "overlay whose plan has a conflict or a deletion, never "
-                        "approve a new behavioural file, record the outcome for "
+                        "overlay whose plan has a conflict or a deletion, "
+                        "approve a new behavioural file only as "
+                        "materialize.unattended_accept allows, record the outcome for "
                         "`status` (scripts/overlay-autosync.sh)")
     s.set_defaults(func=cmd_sync)
 
