@@ -1710,6 +1710,180 @@ assert_eq "29c: a sync heals an already mirrored script" "$(mode_of "$CON/skills
 
 # ───────────────────────────────────────────────────────────────────
 echo
+echo "── 30. --accept is the [y] by name, where no prompt can be answered ──"
+# An agent session and a shell without a tty cannot answer the behavioural
+# gate: end of input is "no", so the folder stayed withheld however often sync
+# ran (2026-11-16: seven skill folders, 59 files, two weeks). --yes must not
+# cover it, because --yes names nothing. --accept names the unit, so the yes
+# stays explicit and per unit; an unknown name fails instead of reading as done.
+SK=skills/example-org-coordinator
+REF="$SK/references/costs.md"
+NEWSK=skills/example-new-skill
+run_overlay_notty() {  # no stdin at all: every prompt meets end of input
+  local con="$1"; shift
+  OUT="$(python3 "$OVERLAY" --repo-root "$con" "$@" </dev/null 2>&1)"
+  RC=$?
+}
+mk_two_units() {  # <overlay>: a changed skill folder and a brand-new one
+  mk_ref_change "$1"
+  mkdir -p "$1/tree/$NEWSK"
+  sed 's/example-org-coordinator/example-new-skill/' "$1/tree/$SK/SKILL.md" > "$1/tree/$NEWSK/SKILL.md"
+  commit_ov "$1" new-skill
+}
+
+# 30a. the named folder is written whole, the other one stays withheld.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+mk_two_units "$OV"
+run_overlay_notty "$CON" sync example-org --yes --accept "$SK"
+assert_rc "30a: sync --yes --accept succeeds" 0
+assert_out "30a: the named folder is reported as accepted" "ACCEPTED $SK/"
+assert_file "30a: its new reference is written" "$CON/$REF"
+assert_grep "30a: and the SKILL.md routing to it" "$CON/$SK/SKILL.md" "UPSTREAM-ROUTE"
+assert_out "30a: the folder nobody named is withheld" "WITHHELD $NEWSK/"
+assert_absent "30a: and not written" "$CON/$NEWSK/SKILL.md"
+
+# 30b. it needs neither --yes nor a tty, and a file inside names its folder.
+run_overlay_notty "$CON" sync example-org --accept "$NEWSK/SKILL.md"
+assert_rc "30b: sync --accept without a tty succeeds" 0
+assert_file "30b: the second folder is written" "$CON/$NEWSK/SKILL.md"
+run_overlay "$CON" status example-org
+assert_out "30b: nothing waits any more" "pending-confirm=0"
+
+# 30c. a name no gate asked about is an error, and nothing is accepted for it.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+mk_two_units "$OV"
+run_overlay_notty "$CON" sync example-org --yes --accept skills/example-typo
+assert_rc "30c: an unknown unit fails the run" 1
+assert_out "30c: and is named" "no behavioural unit waiting under this name: skills/example-typo/"
+assert_absent "30c: the real folder stays withheld" "$CON/$REF"
+assert_absent "30c: so does the new one" "$CON/$NEWSK/SKILL.md"
+
+# 30d. --yes alone still accepts nothing, and says how to.
+run_overlay_notty "$CON" sync example-org --yes
+assert_out "30d: --yes alone withholds the folder" "WITHHELD $SK/"
+assert_out "30d: the message names the way without a prompt" "--accept $SK/"
+assert_absent "30d: nothing of it is written" "$CON/$REF"
+
+# 30e. the scheduled run never takes a person's answer.
+run_overlay_notty "$CON" sync --unattended --accept "$SK"
+assert_rc "30e: --accept with --unattended is refused" 2
+assert_absent "30e: and writes nothing" "$CON/$REF"
+
+# 30f. a dry run plans, accepts nothing and does not complain about the name.
+run_overlay_notty "$CON" sync example-org --dry-run --accept "$SK"
+assert_rc "30f: dry-run with --accept succeeds" 0
+assert_absent "30f: dry-run writes nothing" "$CON/$REF"
+
+# 30g. apply takes the same answer, offline.
+run_overlay_notty "$CON" apply example-org --yes --accept "$SK" "$NEWSK"
+assert_rc "30g: apply --accept succeeds" 0
+assert_file "30g: apply writes the accepted folder" "$CON/$REF"
+assert_file "30g: several names in one option" "$CON/$NEWSK/SKILL.md"
+
+# ───────────────────────────────────────────────────────────────────
+echo
+echo "── 31. unattended_accept: the subscription lets the scheduled run say [y] ──"
+# The scheduled run withholds every skill folder that has one new file in it,
+# and nobody is there to say [y]. On the instance this comes from that left
+# seven skill folders (59 files) behind although the job ran every morning
+# (2026-11-18). materialize.unattended_accept is the consumer's standing
+# answer, per overlay, off by default: `known` covers a skill folder the
+# consumer already holds, `all` covers a skill never seen before too. Neither
+# overwrites a file of the consumer's own or deletes one.
+set_accept() { python3 - "$1/bridge-config.yaml" "$2" <<'PY'
+import sys, yaml
+p, mode = sys.argv[1], sys.argv[2]
+d = yaml.safe_load(open(p))
+for u in d.get("upstreams") or []:
+    if u.get("role") == "org-overlay":
+        u["pull_interval_days"] = 0
+        u.setdefault("materialize", {})["unattended_accept"] = mode
+yaml.safe_dump(d, open(p, "w"), sort_keys=False, allow_unicode=True)
+PY
+}
+summary_line() { printf '%s\n' "$OUT" | grep '^unattended example-org:'; }
+
+# 31a. known: the folder the consumer already holds is written whole, the
+# brand-new one still waits.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+mk_two_units "$OV"
+set_accept "$CON" known
+unattended "$CON"
+assert_out "31a: known: the run applies" "unattended example-org: applied"
+assert_file "31a: known: the new reference of a held skill is written" "$CON/$REF"
+assert_grep "31a: known: and the SKILL.md routing to it" "$CON/$SK/SKILL.md" "UPSTREAM-ROUTE"
+case "$(summary_line)" in
+  *"accepted: $SK/"*) pass "31a: known: the summary names what it accepted" ;;
+  *) fail "31a: known: the summary does not name the accepted folder" "$OUT" ;;
+esac
+case "$(summary_line)" in
+  *"pending: $NEWSK/SKILL.md"*) pass "31a: known: the new skill is still pending" ;;
+  *) fail "31a: known: the new skill is not listed as pending" "$OUT" ;;
+esac
+assert_absent "31a: known: the new skill is not installed" "$CON/$NEWSK/SKILL.md"
+run_overlay "$CON" status example-org
+assert_out "31a: status names the setting" "unattended accepts: known"
+assert_out "31a: status still lists the new skill as withheld" "$NEWSK/"
+
+# 31b. all: the new skill arrives too, nothing waits.
+set_accept "$CON" all
+unattended "$CON"
+assert_out "31b: all: the run applies" "unattended example-org: applied"
+assert_file "31b: all: the new skill is installed" "$CON/$NEWSK/SKILL.md"
+case "$(summary_line)" in
+  *"pending: "*) fail "31b: all: something is still pending" "$OUT" ;;
+  *) pass "31b: all: nothing is pending" ;;
+esac
+run_overlay "$CON" status example-org
+assert_out "31b: status: nothing waits" "pending-confirm=0"
+
+# 31c. the default is unchanged, and a value nobody defined reads as none.
+for mode in none everything; do
+  CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+  run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+  mk_two_units "$OV"
+  set_accept "$CON" "$mode"
+  unattended "$CON"
+  assert_absent "31c: $mode: the held skill keeps waiting" "$CON/$REF"
+  assert_absent "31c: $mode: so does the new one" "$CON/$NEWSK/SKILL.md"
+done
+
+# 31d. all never overwrites a file of the consumer's own: that folder waits.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+mk_two_units "$OV"
+mkdir -p "$CON/$NEWSK"; printf '# MINE\n' > "$CON/$NEWSK/SKILL.md"
+set_accept "$CON" all
+unattended "$CON"
+assert_grep "31d: the consumer's own file is untouched" "$CON/$NEWSK/SKILL.md" "MINE"
+case "$(summary_line)" in
+  *"pending: $NEWSK/SKILL.md"*) pass "31d: and the folder is listed as pending" ;;
+  *) fail "31d: the consumer-owned folder is not listed as pending" "$OUT" ;;
+esac
+assert_file "31d: the other folder is still accepted" "$CON/$REF"
+
+# 31e. all never deletes: a folder with a removed file waits, whole.
+CON="$(mkcon)"; OV="$(mk_clean_overlay)"
+mkdir -p "$OV/tree/$SK/references"
+printf '# A\n' > "$OV/tree/$SK/references/a.md"
+printf '\nDetail: see references/a.md.\n' >> "$OV/tree/$SK/SKILL.md"
+commit_ov "$OV" with-a
+run_overlay "$CON" add "file://$OV" --name example-org >/dev/null 2>&1
+mv "$OV/tree/$SK/references/a.md" "$OV/tree/$SK/references/b.md"
+edit_line "$OV/tree/$SK/SKILL.md" "references/a.md" "references/b.md"
+commit_ov "$OV" rename-a-to-b
+set_accept "$CON" all
+unattended "$CON"
+assert_out "31e: the run applies the rest" "unattended example-org: applied"
+assert_file "31e: the old reference is not deleted" "$CON/$SK/references/a.md"
+assert_absent "31e: the new reference is not written" "$CON/$SK/references/b.md"
+assert_grep "31e: SKILL.md still routes to a file that exists" "$CON/$SK/SKILL.md" "references/a.md"
+
+# ───────────────────────────────────────────────────────────────────
+echo
 echo "════════════════════════════════════════════════════════════════"
 echo "RESULT: $PASS passed, $FAIL failed"
 echo "════════════════════════════════════════════════════════════════"

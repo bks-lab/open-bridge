@@ -130,7 +130,7 @@ Notes:
   already filled it on a prior sync isn't re-asked.
 - `kind: skill|agent|standing-order` = **behavioural** → the consumer sees an
   explicit `[y]` (one per skill folder, all or none); `--yes` can't
-  auto-accept it. `kind: config|rule` = batch-confirmable.
+  auto-accept it (only `--accept <unit>`, which names it, can). `kind: config|rule` = batch-confirmable.
 - **Prompt-fields are for per-CONSUMER values only** (a subscription GUID, the
   consumer's own board). NEVER mark a **shared org fact** — a GitHub board number,
   an org recipient email — as a `prompt_field`: it is identical for every consumer,

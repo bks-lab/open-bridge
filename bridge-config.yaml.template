@@ -398,6 +398,8 @@ upstreams:
 #      precedence: 10                         # higher wins a dest collision
 #      select: ["**"]                         # glob of overlay paths to pull
 #      track_managed_dests: false             # true = git-track dests instead of excluding (default false)
+#      unattended_accept: none                # what the daily job may accept without you: none (default) |
+#                                             # known (new files in skills you already hold) | all (new skills too)
 
 # ─── Promote Safety ───────────────────────────────────────────────────
 # Content scanned before cherry-pick onto CORE branches.

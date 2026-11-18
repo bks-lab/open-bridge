@@ -80,7 +80,7 @@ exclude it at authoring time (the publish guard + a `user-owned` count in
 | Command | What it does |
 |---|---|
 | `add <git-url> [--ref main] [--name N] [--select GLOB…] [--precedence N] [--dry-run]` | Subscribe: write a `role: org-overlay` `upstreams[]` entry + `materialize:` sub-block in `bridge-config.yaml`, sparse-clone into `.bridge/overlays/<name>/`, validate the manifest, **preview the plan** with per-kind risk flags + an explicit `[y]` per skill folder or behavioural file, first materialize, write `overlays.lock.yaml`. |
-| `sync [name] [--dry-run] [--yes] [--unattended]` | Pull the cache, recompute the sparse set + hashes, 3-way vs the lock, re-materialize clean / upstream-ahead files, **prompt** on conflict + on PII prompt-fields, prune upstream-deleted files, bump `resolved_sha`. No `name` ⇒ all overlays. `--unattended` is the daily job (`install-upstream-autoupdate.sh --overlays`): a conflict or a deletion **holds** the overlay, a skill folder with a new file stays pending as a whole, `pull_interval_days` is honoured. |
+| `sync [name] [--dry-run] [--yes] [--accept UNIT…] [--unattended]` | Pull the cache, recompute the sparse set + hashes, 3-way vs the lock, re-materialize clean / upstream-ahead files, **prompt** on conflict + on PII prompt-fields, prune upstream-deleted files, bump `resolved_sha`. No `name` ⇒ all overlays. `--unattended` is the daily job (`install-upstream-autoupdate.sh --overlays`): a conflict or a deletion **holds** the overlay, a skill folder with a new file stays pending as a whole, `pull_interval_days` is honoured. `--accept skills/<name>/` is the behavioural `[y]` by name, for a session that cannot answer a prompt; `--yes` never implies it. |
 | `apply [name]` | **OFFLINE** re-materialize from cache + lock (no network). Idempotent — a clean tree reports all-clean and writes nothing. |
 | `status [name]` | `resolved_sha` vs cache HEAD; days-since-sync vs `pull_interval_days`; last unattended run + outcome; `git -C <cache>` log/blame provenance; counts `{clean·locally-modified·upstream-ahead·conflict·orphan·pending-confirm·CORE-refused}` plus the `withheld` units. |
 | `diff [name]` | Preview the next `sync`/`apply` (plan + per-file before/after). **No writes.** |
@@ -111,7 +111,15 @@ conflict/precedence model, and 3-way base recovery live in `references/workflow.
    SKILL.md never lands without the reference it routes to. config / rule
    files batch-confirm. `--yes` is valid non-interactively for
    **non-behavioural** files only; a behavioural unit is then **withheld**
-   whole, and `status` counts it as `pending-confirm`. Interactively, `a`
+   whole, and `status` counts it as `pending-confirm`. Where no prompt can
+   be answered (an agent session, no tty), the person names the unit instead:
+   `sync --accept skills/<name>/`. **Run it only for units the person named**;
+   never derive the list from `status` yourself. The scheduled run
+   (`--unattended`) accepts a unit only when the subscription says so:
+   `materialize.unattended_accept: known` (skill folders already held) or
+   `all` (new skills and agents too), default `none`. **Set it only when the
+   person asks for it**; it never covers a deletion or an overwrite of the
+   consumer's own file. Interactively, `a`
    answers yes to every remaining gate of the run; an unknown answer repeats
    the question. Deleting a file or overwriting the consumer's own file is
    asked one by one, `a` never covers it.
