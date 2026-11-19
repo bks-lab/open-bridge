@@ -165,7 +165,7 @@ class Renderer:
         content = self.inline(raw)
         if t.get("plain_headings"):
             size = {1: "20px", 2: "17px", 3: "15px"}[level]
-            return (f'<h{level} style="margin:22px 0 10px 0;font-family:{t["font_body"]};font-size:{size};'
+            return (f'<h{level} class="e-h" style="margin:22px 0 10px 0;font-family:{t["font_body"]};font-size:{size};'
                     f'font-weight:700;color:{t["text"]};">{content}</h{level}>')
         if level == 1:
             fam = t["font_display"] if t.get("display_headings") else t["font_body"]
@@ -209,7 +209,7 @@ class Renderer:
                     f'border-left:3px solid {color};padding:12px 16px;{self.p_style()}">{head}{html_body}'
                     f'</td></tr></table>')
         if not t.get("accent_subtle"):
-            return (f'<p style="margin:16px 0;padding-left:12px;border-left:3px solid {t["border"]};'
+            return (f'<p class="e-p e-rule" style="margin:16px 0;padding-left:12px;border-left:3px solid {t["border"]};'
                     f'{self.p_style()}">{html_body}</p>')
         return (f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
                 f'style="margin:18px 0;"><tr><td class="e-callout" style="background-color:{t["accent_subtle"]};'

@@ -212,3 +212,34 @@ class Designs(BridgeCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DarkModeCoverage(unittest.TestCase):
+    """Every element that pins a colour inline must carry a class the dark rules restyle.
+
+    Otherwise dark mode darkens the background and keeps the pinned light-mode colour:
+    the plain theme's headings stayed #222222 on a #111418 background, unreadable."""
+
+    SAMPLE = ("Hello,\n\n# One\n\n## Two\n\n### Three\n\nText with a [link](https://example.com).\n\n"
+              "- item\n- item\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n> quote\n\n---\n\nEnd")
+
+    def test_every_coloured_element_has_a_dark_class(self):
+        import re
+        from engine.markdown import Renderer, document
+        from engine.theme import BUILTIN, Theme, NEUTRAL_DARK
+        for name, values in BUILTIN.items():
+            with self.subTest(theme=name):
+                t = Theme(dict(values), dict(NEUTRAL_DARK), [], name)
+                html = document(Renderer(t).render(self.SAMPLE), t)
+                dark = html.split("prefers-color-scheme: dark", 1)[1].split("[data-ogsc]", 1)[0]
+                styled = set(re.findall(r"\.(e-[\w-]+)", dark))
+                body = html.split("<body", 1)[1]
+                for m in re.finditer(r'<(\w+)\b([^>]*)>', body):
+                    tag, attrs = m.groups()
+                    style = re.search(r'style="([^"]*)"', attrs)
+                    if not style or not re.search(r'(?<![-\w])color:', style.group(1)):
+                        continue
+                    if "display:none" in style.group(1):
+                        continue
+                    classes = set(re.search(r'class="([^"]*)"', attrs).group(1).split()) if 'class="' in attrs else set()
+                    self.assertTrue(classes & styled, f"<{tag}> pins a colour without a dark class: {style.group(1)[:80]}")
