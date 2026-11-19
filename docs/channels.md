@@ -66,6 +66,11 @@ cron/launchd/systemd job on a machine is a workload, owned by `/workload`
 ([`skills/workload/SKILL.md`](../skills/workload/SKILL.md),
 [`docs/workloads.md`](workloads.md)).
 
+A channel that rings for the inbox (an urgent item as a Signal poll, the vote runs the
+item's verb) is declared like any other channel file and driven by the `inbox-notify`
+skill ([`skills/inbox-notify/SKILL.md`](../skills/inbox-notify/SKILL.md)); the file it
+reads is `skills/inbox-notify/assets/channel.yaml`.
+
 ## Setup
 
 1. Enable channels: set `channels.enabled: true` in bridge-config.yaml

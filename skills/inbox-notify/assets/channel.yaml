@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=../../../infra/channels/_schema.yaml
+# Copy to infra/channels/signal.yaml (or another slug) and fill the two handles.
+# A channel file is USER tier: handles may stand here in plain text, or as
+# file://<path> and env://<NAME> references when the number must stay out of git.
+# Validate: check-jsonschema --schemafile infra/channels/_schema.yaml infra/channels/signal.yaml
+schema_version: 1
+scope: user
+name: signal
+display_name: "Signal (own phone)"
+description: >-
+  Open inbox items that need a person now reach this phone as one text and one poll;
+  the vote runs the item's verb. The only reader of this signal-cli account.
+type: bot
+
+implementation:
+  skill: inbox-notify
+
+runtime:
+  remote: local
+  mode: launchd                  # the workload declaration provides the unit
+  service_label: org.example.inbox-notify   # <label_prefix>.inbox-notify after `workload provision`
+
+transport:
+  kind: signal-cli               # the only transport implemented
+  # binary: signal-cli           # when it is not on PATH under that name
+  account: "+10000000000"        # the number this signal-cli is registered or linked with
+  recipient: "u:yourname.12"     # the ONE person who may vote: a username (u:…) or a number
+  receive_timeout_sec: 20        # how long one tick listens for votes
+
+notify:
+  urgencies: [now]               # which open items ring: inbox urgency values
+  # sources: [agent-approval/]   # optional: only items whose `from` starts with one of these
+  defer_days: 1                  # a Defer vote defers until today + this
+  # cockpit_url: http://127.0.0.1:8797/   # shown under every announcement when set
+  # labels: {approve: Approve, reject: Reject, defer: Defer, drop: Drop, close: Close, later: Later}
+  # texts:                       # any of these, with {summary}, {id}, {when}, {url}, {label}, {host}
+  #   heading: "Waiting for you: {summary}"
+  #   valid_until: "Valid until {when}"
+  #   poll: "{summary}"
+  #   decided: "{label}: {summary}"
+
+access:
+  policy: allowlist
+  self: "u:yourname.12"
+
+behavior:
+  auto_response: false
+  signature: false
+  business_hours_only: false
+
+verify:
+  service_check: ""              # derived: launchctl list | grep <service_label>
+
+status: pending                  # active once `inbox_notify.py test` reached the phone and the workload runs

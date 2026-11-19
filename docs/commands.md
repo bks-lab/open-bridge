@@ -66,6 +66,7 @@ which ones is per-instance, so the live list is the skill listing itself.
 | `/workload` | | `workload` | Declared runs: `declare`, `validate`, `render`, `provision`, `list`, `show`, `reconcile`, `view`, `publish`, `adopt`, `retire` |
 | `/schedule` | | `schedule` | Scheduled tasks: list, create, deploy, disable |
 | `/channel` | | `channel` | Channel management: list, health, deploy, start/stop |
+| `/inbox-notify` | | `inbox-notify` | Inbox items that need a person now reach the phone as a Signal poll with the item's actions; the vote runs the verb: `tick`, `test`, `show` |
 | `/board-pilot` | | `board-pilot` | Board-driven pipeline: arms an item a person drags into the trigger column, advances it one stage per tick, stops at a draft PR for review |
 
 ## Upstream and quality
