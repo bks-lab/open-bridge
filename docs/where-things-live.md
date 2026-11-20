@@ -106,6 +106,7 @@ searches again.
 | What goes into the memory base, and where is it on disk? | [`docs/memory.md`](memory.md) |
 | Where does a task live, and what does its status mean? | [`docs/work-system.md`](work-system.md#status-semantics) |
 | What still needs me, and how does an open item get closed? | [`docs/inbox.md`](inbox.md) |
+| How does a held answer or another urgent inbox item reach my phone, and how do I approve it there? | [`skills/inbox-notify/SKILL.md`](../skills/inbox-notify/SKILL.md) |
 | What does my briefing show, from which trackers, and how do I change it? | [`docs/briefings.md`](briefings.md) |
 | How do I choose the cockpit's tabs, columns, marks and language? | [`docs/bridge-cockpit.md`](bridge-cockpit.md) § 8 |
 | How do I see and steer the whole Bridge in a browser (inbox, tasks, agent tabs, machines)? | [`docs/bridge-cockpit.md`](bridge-cockpit.md) (early version) |

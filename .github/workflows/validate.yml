@@ -176,6 +176,11 @@ jobs:
           bash skills/mail-draft/run-tests.sh --mutate
           MAIL_DRAFT_ROOT=skills/mail-draft/tests/fixtures/bridge skills/mail-draft/mail-draft.sh validate
 
+      # The inbox notifier (skills/inbox-notify). Hermetic: signal-cli is a fake on
+      # PATH that records calls and replays scripted votes; no message leaves the runner.
+      - name: Run inbox-notify skill suite
+        run: bash skills/inbox-notify/run-tests.sh
+
       - name: Validate briefing profiles
         run: python3 scripts/briefing.py validate && python3 scripts/briefing.py --root examples/portfolio validate
 

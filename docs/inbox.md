@@ -262,6 +262,10 @@ with the same key adds a `seen` event, not a second item.
 - Phone and e-ink digests, as short views: `python3 scripts/inbox.py list --short`
   prints one line per item.
 - A control tab, which can show `work/inbox.md` or the JSON of `list --json`.
+- A notifier on a phone: the `inbox-notify` skill announces every open item with
+  urgency `now` and a non-empty `actions` list once, as one text and one Signal poll whose
+  options are those actions, and runs the vote through this script
+  ([`skills/inbox-notify/SKILL.md`](../skills/inbox-notify/SKILL.md)).
 
 ## CLI
 

@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=../../../workflow/workloads/_schema.yaml
+# Copy to workflow/workloads/inbox-notify.yaml, replace /usr/bin/python3 and /path/to/bridge
+# with absolute paths (a launchd unit expands nothing), then:
+#   bash skills/workload/workload.sh validate inbox-notify --strict
+#   bash skills/workload/workload.sh provision inbox-notify --yes --enable
+schema_version: 1
+scope: user
+
+id: inbox-notify
+title: Inbox notifier
+purpose: "Announces every open inbox item that needs a person now on the configured channel, once, as a poll with the item's own actions, and executes the vote through the inbox."
+
+persona_ref: _infrastructure
+system: inbox
+reports_to: none
+
+placement:
+  host: local
+  kind: interval
+  runtime: launchd
+  owner: bridge
+  provisioned_at: null
+
+schedule:
+  every_sec: 120
+  timezone: Etc/UTC             # your IANA zone
+
+execution:
+  command: ["/usr/bin/python3", "/path/to/bridge/skills/inbox-notify/scripts/inbox_notify.py", "--channel", "signal", "tick"]
+  working_dir: /path/to/bridge
+  timeout_sec: 300
+  isolation: process-group
+  single_flight: true           # the account has ONE reader; a second tick would swallow votes
+  on_timeout: report
+
+response:
+  evidence: log-trace
+  notify_on: [failure, timeout]
+
+learned_from: "A held answer of a Bridge-Agent waited unseen in the inbox until it expired; three instances built three notifiers before this one became CORE (open-bridge#449)."
