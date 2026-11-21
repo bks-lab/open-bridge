@@ -325,13 +325,14 @@ one runs: [control.md](../skills/briefing/references/control.md).
 
 **The numbers.** Every row the printed briefing shows has a number, one rule for every
 style that numbers (`briefing_view.numbered`): `triage` every row of every bucket, also with
-`answer_keys: false`, `report` the first rows and then those listed per bucket, `calm` the
-rows of each bucket it shows. The numbers run in the order of the buckets as the profile
+`answer_keys: false`, `report` the first rows and then those listed per bucket, `calm` every
+row of every bucket as `triage` does, printing a few of each bucket by their own numbers. The numbers run in the order of the buckets as the profile
 lists them, the order the cockpit shows them in (`brevity` and `plan` number nothing). A row's
 number is its place in the whole list, also when `max_items` leaves it out of this print: a short
 print shows its rows with gaps between the buckets (1 to 3, then 48 to 50), a long one
 (`--max-items 300`) every number once, and both name a row by the same number. The
-built view carries it on each row as `nr`, and "3 do" answers that row. The cockpit asks for every
+built view carries it on each row as `nr`, and "3 do" answers that row; a number the print
+leaves out (a cockpit card names it) is read from `collect --max-items 500 --json`. The cockpit asks for every
 row (`collect --max-items 500`) and still gets the printed number: both read the same rows, and
 such a pass numbers by the profile's own style and leaves out what was settled in the cockpit, so a card
 of Work through says the number the chat shows ([Buckets](bridge-cockpit.md#buckets)). A stream

@@ -132,6 +132,9 @@ Two things are yours besides:
   later onto the watch list; streichen, drop are obsolete. Read a reply with
   `scripts/lib/answers.py` (`answers.parse(text, today)`): it gives each
   number its answer and, for later, the day (`9999-12-31` is the watch list).
+  A number this print left out (a cockpit card names every row's number) is
+  read from `briefing.py collect <id> --max-items 500 --json`, where every row
+  carries its `nr`.
   What the answer does to the row is `answers.effect(answer, row, until)`, the
   table below in code; the cockpit runs the same table, so the same word does
   the same thing on the same row in the chat and on the page.

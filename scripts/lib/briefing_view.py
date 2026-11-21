@@ -1806,7 +1806,11 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
     # a long print, the cockpit's cards and the chat then name a row by one number (round 2 of the four answers: the
     # long print named the waiting rows 92 to 96, their cards said 10 to 12). A short print shows its rows with gaps
     whole = _capped(shown, visible, max(1, len(visible)))[0]
-    for n, r in enumerate(numbered({**out, "style": style, "buckets": whole}), 1):
+    # calm numbers every row of every bucket as triage does (round 3: it numbered the 5 Plan and 3 I'll do rows it
+    # shows, so 41 of 96 cards had no number and one row had two numbers by style); it prints a few of them
+    order = ([r for b in whole for r in b["items"]] if style == "calm" else
+             numbered({**out, "style": style, "buckets": whole}))
+    for n, r in enumerate(order, 1):
         r["nr"] = n
     return out
 
@@ -1831,7 +1835,7 @@ def _printed_numbers(result: dict, profile: dict) -> dict:
     view["max_items"] = 10 ** 6
     plain = {k: v for k, v in profile.items() if k not in ("_whole", "_print_max")}
     built = build(printed, {**plain, "view": view})
-    return {_row_ident(r): (r["nr"], r.get("bucket")) for r in numbered(built) if r.get("nr")}
+    return {_row_ident(r): (r["nr"], r.get("bucket")) for b in built.get("buckets") or [] for r in b["items"] if r.get("nr")}
 
 
 def _capped(shown: list, visible: list, cap: int) -> tuple:
@@ -2401,7 +2405,7 @@ def draw_calm(view: dict) -> str:
         out += ["", f"**{heads[bid]}**"]
         for r in rows:
             n += 1
-            first = first or n
+            first = first or r.get("nr") or n
             if bid == "waiting":
                 # each row numbered like the others (21.11.2026), so "4 do" names it as the cockpit's card does; on a
                 # line of its own each row names its topic too: "Ada until 31.12" twice said nothing apart
@@ -2410,12 +2414,12 @@ def draw_calm(view: dict) -> str:
                 name = f"{who} ({_topic(topic, 40)})" if who else _topic(topic, 50)
                 if r.get("until"):
                     name += " " + labels["calm_until_short"].format(date=_fmt_when(r["until"], now, labels))
-                out.append(f"{n}. {name}")
+                out.append(f"{r.get('nr') or n}. {name}")
                 continue
             when = ""
             if bid == "plan" and r.get("due"):
                 when = labels["calm_until"].format(date=_fmt_when(r["due"], now, labels))
-            out.append(f"{n}. {when}{_calm_title(r, labels)}")
+            out.append(f"{r.get('nr') or n}. {when}{_calm_title(r, labels)}")
     shown = sum(len(rows) for _bid, rows in parts)
     rest = max(0, total - shown) + (view.get("off_day") or 0) + (view.get("collapsed_n") or 0)
     tail = []

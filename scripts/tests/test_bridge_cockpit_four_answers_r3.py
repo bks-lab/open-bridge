@@ -52,3 +52,41 @@ def test_with_you_on_a_step_with_a_check_in_takes_the_check_in_back_and_its_undo
     assert writes(w)[0] == K(w, "next", "demo-task", "--who", "me", "--clear-check", "--json")
     undo = [it["undo"] for e in w.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
     assert undo["args"]["who"] == "Kim" and undo["args"]["check"] == "2026-11-29"
+
+
+# ---------------------------------------------------------------- calm: one number per row, printed as it is
+
+def _sec(sid, kind, items):
+    return {"id": sid, "kind": kind, "title": sid, "status": "ok", "items": items, "all": items, "total": len(items)}
+
+
+def _calm(n_do=12, n_plan=9, n_wait=3, max_items=10):
+    items = [{"id": f"20261001-09{n:02d}-ask-{n}", "title": f"Ask {n}", "state": "open", "kind": "decision",
+              "gate": "your-yes", "urgency": "now"} for n in range(n_do)]
+    items += [{"id": f"20261001-10{n:02d}-plan-{n}", "title": f"Plan {n}", "state": "open", "kind": "decision",
+               "gate": "your-yes", "urgency": "later"} for n in range(n_plan)]
+    items += [{"id": f"20261001-11{n:02d}-wait-{n}", "title": f"Wait {n}", "state": "open", "kind": "decision",
+               "waits_for": True} for n in range(n_wait)]
+    result = {"profile": "m", "title": "M", "collected_at": "2026-11-21T08:00", "sections": [_sec("inbox", "inbox", items)]}
+    prof = lambda cap: {"id": "m", "sections": [{"kind": "inbox"}], "view": {"style": "calm", "max_items": cap}}  # noqa: E731
+    return bv.build(result, prof(max_items)), bv.build(result, prof(10 ** 6))
+
+
+def test_calm_prints_each_row_by_its_number_in_the_whole_list():
+    # round 3: calm printed its own consecutive numbers (Plan 33 to 35), the view carried 43 to 45, the cards said 43
+    short, whole = _calm()
+    text = bv.draw_calm(short)
+    import re as _re
+    printed = {int(m.group(1)) for m in _re.finditer(r"(?m)^(\d+)\. ", text)}
+    carried = {r["nr"] for r in bv.numbered(short)}
+    assert printed == carried
+    nr_whole = {r["title"]: r["nr"] for b in whole["buckets"] for r in b["items"]}
+    assert all(nr_whole[r["title"]] == r["nr"] for r in bv.numbered(short))
+
+
+def test_calm_numbers_every_row_of_every_bucket():
+    # round 3: 41 of 96 cards had no number, calm numbered 5 Plan and 3 I'll do rows and nothing past them
+    _short, whole = _calm()
+    rows = [r for b in whole["buckets"] for r in b["items"]]
+    assert all(r.get("nr") for r in rows)
+    assert sorted(r["nr"] for r in rows) == list(range(1, len(rows) + 1))
