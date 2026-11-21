@@ -326,6 +326,19 @@ class WebStore:
         with self.lock:
             return self._merged()[0]
 
+    def aside_record(self) -> dict:
+        """What was settled here as the briefing reads its record (briefing.py settled_record's shape), for the
+        out-of-sight counts of each pass (model.aside_now): the hides beyond today, the streams done for this time,
+        the rows filed to an item, the day of each mark done or not doing"""
+        today = self.today()
+        with self.lock:
+            hidden, dismissed = self._merged()
+        done = self.settled.hidden_done(today) if self.settled is not None else {}
+        filed = self.settled.hidden_filed(today) if self.settled is not None else set()
+        return {"hidden": {k: v for k, v in hidden.items() if str(v) > today}, "hidden_done": done,
+                "hidden_filed": sorted(filed),
+                "dismissed_on": {k: str((v or {}).get("at") or "") for k, v in dismissed.items() if isinstance(v, dict)}}
+
     def hide(self, key: str, until: str, title: str = "", done: bool = False, filed: str | None = None) -> None:
         """Hidden until a day; `done` marks a stream done for this time (counted as done today, settled.hidden_done),
         `filed` a row filed to that inbox item (counted as no Later, settled.hidden_filed)"""

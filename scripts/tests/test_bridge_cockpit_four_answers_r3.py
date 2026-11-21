@@ -194,3 +194,21 @@ def test_do_it_on_an_issue_records_its_hide_as_filed(w):
     act.inbox_add = lambda ctx, row_key, summary, detail, **kw: "20261121-0900-review-a1b2"
     act.file_foreign(type("C", (), {"history": [], "settled": [], "note": lambda *a, **k: None})(), row)
     assert seen == [("ref:acme/web#15", "20261121-0900-review-a1b2")]
+
+
+# ---------------------------------------------------------------- the out-of-sight counts move at once
+
+def test_later_and_its_undo_on_a_task_move_the_out_of_sight_count_at_once(w):
+    # round 3: Later > Monday on a task left Later at 0 until the next full pass; after an undo it read one too many
+    w.app.collector.view["aside_base"] = {"later": 0, "list": 0, "done_today": 0}
+    w.app.collector.view["aside"] = {"later": 0, "list": 0, "done_today": 0}
+    w.app.collector.rebuild()
+    assert w.app.collector.model["aside"]["later"] == 0
+    import datetime as dt
+    day = (dt.date.fromtimestamp(w.clock() / 1000) + dt.timedelta(days=3)).isoformat()
+    w.act("later", key="task:other-task", until=day)
+    w.app.collector.rebuild()
+    assert w.app.collector.model["aside"]["later"] == 1
+    w.act("unhide", key="task:other-task")
+    w.app.collector.rebuild()
+    assert w.app.collector.model["aside"]["later"] == 0

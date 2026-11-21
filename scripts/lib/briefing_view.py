@@ -1761,6 +1761,8 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
            # what is out of sight, only counted: put off to a day, on the watch list, done or obsolete today
            # (briefing.py aside_counts; none when the caller did not count)
            "aside": _aside(result.get("aside")),
+           # the same counts without the cockpit's record (aside_of_record): the cockpit adds its own on every pass
+           "aside_base": _aside(result.get("aside_base")),
            "workplace": data["workplace"], "more": 0, "titles": titles,
            # put off to a day, out of sight until it (counted as later): the cockpit leaves these out of its buckets
            "away": data["away"],
@@ -2097,6 +2099,31 @@ def _aside(counts) -> dict | None:
     if not isinstance(counts, dict):
         return None
     return {k: _int(counts.get(k), 0, 0) for k in ASIDE}
+
+
+def aside_of_record(record, today: str) -> dict:
+    """The out-of-sight counts of what was settled in the cockpit (briefing.py settled_record's shape): a row hidden
+    until a later day is later, one on the watch list's day the watch list, a stream done for this time and a row
+    marked done or not doing today done today; an inbox item counts in the inbox, a row filed to an item (Do it on
+    an issue) not at all. The cockpit counts its own record by this one rule on every pass, so an answer kept there
+    moves the counts at once (round 3 of the four answers: they lagged one step)"""
+    out = {k: 0 for k in ASIDE}
+    record = record if isinstance(record, dict) else {}
+    done_on = record.get("hidden_done") or {}
+    filed = set(record.get("hidden_filed") or ())
+    for key, until in (record.get("hidden") or {}).items():
+        if str(key).startswith("inbox:") or key in filed:
+            continue
+        if key in done_on:
+            out["done_today"] += str(done_on[key])[:10] == today
+            continue
+        if answers.is_list_day(until):
+            out["list"] += 1
+        elif str(until) > today:
+            out["later"] += 1
+    out["done_today"] += sum(1 for key, day in (record.get("dismissed_on") or {}).items()
+                             if not str(key).startswith("inbox:") and str(day)[:10] == today)
+    return out
 
 
 def _aside_line(view: dict) -> str | None:

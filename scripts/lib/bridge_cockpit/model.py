@@ -22,9 +22,9 @@ from .text import EN
 ALSO_MAX = 20
 
 try:
-    from ..briefing_view import art_of_kind, asks_you, meter_of
+    from ..briefing_view import art_of_kind, aside_of_record, asks_you, meter_of
 except ImportError:      # bridge_cockpit loaded as a top-level package, scripts/lib itself on the path
-    from briefing_view import art_of_kind, asks_you, meter_of  # type: ignore[no-redef]
+    from briefing_view import art_of_kind, aside_of_record, asks_you, meter_of  # type: ignore[no-redef]
 
 ATTENTION = frozenset({"needs-you", "waiting"})
 # the two ways a row leaves the briefing in two clicks: done, or not doing it
@@ -719,6 +719,8 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
         # what no bucket shows, only counted under them (briefing_view aside): later, the watch list, done today;
         # None where the briefing counted nothing
         "aside": aside_of(v.get("aside")),
+        # the same without what was settled in the cockpit: the cockpit adds its own record on every pass (aside_now)
+        "aside_base": aside_of(v.get("aside_base")),
         # put off to a day and out of sight until it (briefing_view away): no point of the buckets, not even beside
         # the briefing (with_tasks)
         "away": away_of(v.get("away")),
@@ -753,6 +755,17 @@ def aside_of(value: Any) -> dict | None:
         return None
     return {k: value[k] if isinstance(value.get(k), int) and not isinstance(value.get(k), bool) and value[k] > 0 else 0
             for k in ASIDE_KEYS}
+
+
+def aside_now(view: dict, record: dict | None, today: str) -> dict | None:
+    """The out-of-sight counts as they stand now: the briefing's own (inbox, tasks) and the cockpit's record read on
+    this pass, so a Later, a Done or an undo kept only here moves them at once (round 3 of the four answers: they
+    lagged one step); the view's counts where it carries no base or there is no record"""
+    base = view.get("aside_base")
+    if not isinstance(base, dict) or not isinstance(record, dict):
+        return view.get("aside")
+    extra = aside_of_record(record, today)
+    return {k: int(base.get(k) or 0) + extra.get(k, 0) for k in ASIDE_KEYS}
 
 
 def away_of(value: Any) -> list[dict]:

@@ -2313,7 +2313,7 @@ def settle_row(root: Path, args) -> int:
     return 0
 
 
-def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | None) -> dict:
+def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | None, base_only: bool = False) -> dict:
     """What is out of sight of the buckets, only counted below them (docs/briefings.md § Views):
       later       put off to a day after today, tomorrow too, and comes back on it by itself: an inbox item
                   deferred without anyone it waits on, a row hidden in the cockpit until a day
@@ -2364,25 +2364,10 @@ def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | N
     for status in (root / "work" / "done" / f"{today:%Y-%m}").glob("*/STATUS.md"):
         if str(_frontmatter(status.read_text(encoding="utf-8")).get("closed") or "")[:10] == today.isoformat():
             out["done_today"] += 1
-    record = settled if isinstance(settled, dict) else {}
-    done_on = record.get("hidden_done") or {}
-    filed = set(record.get("hidden_filed") or ())
-    for key, until in (record.get("hidden") or {}).items():
-        if str(key).startswith("inbox:"):
-            continue                            # an inbox item is put off in the inbox, counted above
-        if key in filed:
-            continue                            # filed to the inbox by Do it: its item stands for it, no Later
-        if key in done_on:
-            # a stream done for this time: out of sight until tomorrow, done the day it was done
-            out["done_today"] += str(done_on[key])[:10] == today.isoformat()
-            continue
-        if answers.is_list_day(until):
-            out["list"] += 1
-        elif str(until) > today.isoformat():
-            out["later"] += 1
-    out["done_today"] += sum(1 for key, day in (record.get("dismissed_on") or {}).items()
-                             if not str(key).startswith("inbox:") and str(day)[:10] == today.isoformat())
-    return out
+    if base_only:
+        return out
+    extra = _view().aside_of_record(settled, today.isoformat())
+    return {k: out[k] + extra.get(k, 0) for k in out}
 
 
 def render_view(result: dict, profile: dict, style: str | None = None, color: bool = False) -> str:
@@ -2815,8 +2800,10 @@ def main(argv=None) -> int:
         result["numbering_settled"] = settled_record(root, ctx.now)
     if _view().style_of(profile, args.style) != "sources":
         # out of sight, only counted below the buckets: later, the watch list, done today
-        result["aside"] = aside_counts(root, ctx.now, ctx.lookahead or 0,
-                                       result.get("settled") or result.get("numbering_settled") or settled_record(root, ctx.now))
+        record = result.get("settled") or result.get("numbering_settled") or settled_record(root, ctx.now)
+        result["aside_base"] = aside_counts(root, ctx.now, ctx.lookahead or 0, None, base_only=True)
+        extra = _view().aside_of_record(record, ctx.now.date().isoformat())
+        result["aside"] = {k: v + extra.get(k, 0) for k, v in result["aside_base"].items()}
     if args.cmd == "render" and _view().style_of(profile, args.style) != "sources":
         view_cfg = profile.get("view") if isinstance(profile.get("view"), dict) else {}
         if view_cfg.get("overview") == "file":

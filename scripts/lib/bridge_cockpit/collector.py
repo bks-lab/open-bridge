@@ -138,7 +138,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                 review: dict | None = None, origin_map: tuple = (), triage: dict | None = None,
                 describe: dict | None = None, files: list[dict] | None = None,
                 carry_deferred: bool = False, pairs: dict | None = None, acks: dict | None = None,
-                looks: dict | None = None) -> tuple[dict, dict]:
+                looks: dict | None = None, aside_record: dict | None = None) -> tuple[dict, dict]:
     """The page model (contract section 3.3) and an index row_key -> internal row for the verbs. `triage` (the
     triage items by key) and `describe` (the brief proposals by key) feed the card of each row (card.py).
     `carry_deferred` (Work through on) adds `deferred`: the inbox items a page lists that are put off past the
@@ -393,7 +393,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         # buckets (cockpit.flow.buckets) name and order them as the briefing does
         "buckets": list(view.get("bucket_defs") or []),
         # what is out of sight of the buckets, only counted (model.aside_of): later, the watch list, done today
-        "aside": view.get("aside"),
+        "aside": m.aside_now(view, aside_record, dt.date.fromtimestamp(now / 1000).isoformat()),
         # put off to a day, out of sight until it (briefing_view away): a tab that asks about such an item waits too
         "away": list(view.get("away") or []),
         "review": {"running": review["running"], "error": review["error"], "last": review["last"],
@@ -816,7 +816,7 @@ class Collector:
                 stale=self.stale, profile=app.cfg.profile, tx=app.tx, review=app.review.state(self.task_open),
                 origin_map=getattr(app.cfg, "origin_map", ()), files=self.all_tasks,
                 carry_deferred=(getattr(app.cfg, "flow", None) or {}).get("enabled") is True, pairs=pairs,
-                acks=app.store.acks(), **app.card_sources())
+                acks=app.store.acks(), aside_record=app.store.aside_record(), **app.card_sources())
             # the start page's day book and the week's closed tasks; a failure there never stops the page
             try:
                 app.daybook.record(model)
