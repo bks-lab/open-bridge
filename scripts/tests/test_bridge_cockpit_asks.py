@@ -258,6 +258,23 @@ def test_the_input_line_is_read_as_a_suggested_answer():
     assert scrubbed["suggestion"] == "ja, [token] nochmal versuchen"
     assert ask["hash"] == asks.question_of(CHROME.replace("❯ ja, Kontakt nochmal versuchen", "❯"), "waiting", plain)["hash"]
 
+def test_a_question_in_the_middle_of_the_last_words_still_asks():
+    """a tab that asks and then says why ('... grob 10.000 oder eher 1 Million? Davon hängt ab ...') asks something:
+    it never turns 'fertig', its Done and close the tab is not offered (round 1 of the simulation)"""
+    estimate = ("⏺ Für die Schätzung fehlt mir eine Zahl: Wie viele Datensätze laufen pro Nacht durch den Sync,\n"
+                "  grob 10.000 oder eher 1 Million? Davon hängt ab, ob wir in Batches migrieren.\n\n❯ \n")
+    ask = asks.question_of(estimate, "waiting", plain)
+    assert ask["yes_no"] is False and ask["asks"] is True
+    from lib.bridge_cockpit import model
+    assert model.asks_something(ask) is True
+    # the briefing asks for an answer by number without a question mark
+    brief = "⏺ 4. Robin Park wartet auf den Schlüssel\n  Antwort per Nummer, zum Beispiel: 1 ja, 2 später, 4 nachfassen\n\n❯ \n"
+    assert asks.question_of(brief, "waiting", plain)["asks"] is True
+    # a summary of what it did asks nothing, and a version number is no question
+    assert asks.question_of(SUMMARY, "waiting", plain)["asks"] is False
+    assert asks.question_of("⏺ Bumped v2.3.1 to v2.4. Tests green.\n\n❯ \n", "waiting", plain)["asks"] is False
+
+
 def test_question_of_returns_none_for_an_empty_or_frame_only_screen():
     assert asks.question_of("", "waiting", plain) is None
     assert asks.question_of("╭────╮\n│    │\n╰────╯\n", "waiting", plain) is None
@@ -650,6 +667,17 @@ def test_a_typed_answer_to_a_filed_tab_is_refused_when_a_draft_is_typed(world):
     by_ref["surface:8"] = SUMMARY
     world.act("tab_send", tab_ref="surface:8", text="add the docs", expect="waiting", name="filed-task")
     assert writes(world) == [W(world, "send", "surface:8", "--", "add the docs")]
+
+
+def test_a_bare_message_to_a_tab_is_refused_when_a_draft_is_typed(world):
+    """the tab card's Nachricht sends neither seen, expect nor name: the draft in the input line ('#', which would make
+    'ja' a memory in Claude Code) still refuses typed words before anything reaches the tab"""
+    screens(world, {"surface:8": DRAFTED})
+    world.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        world.act("tab_send", tab_ref="surface:8", text="ja")
+    assert (err.value.status, err.value.code) == (409, "tab_draft")
+    assert world.runner.of("workplace.send") == []
 
 
 def test_without_the_screen_cap_a_typed_answer_reads_no_screen(world):

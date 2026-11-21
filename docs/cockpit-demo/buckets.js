@@ -126,7 +126,9 @@ export function askQuestion(text) {
     else paras[paras.length - 1] = paras[paras.length - 1] ? `${paras[paras.length - 1]} ${l}` : l
   }
   for (const p of paras.filter(Boolean).reverse()) {
-    const sentences = p.match(/[^.!?]+[.!?]+(?=\s|$)|[^.!?]+$/g)?.map(x => x.trim()).filter(Boolean) ?? []
+    // a sentence ends at a mark followed by a space: a dot inside a number (10.000), a version (v2.3.1) or a path
+    // (./deploy.sh) ends none
+    const sentences = p.split(/(?<=[.!?])\s+/).map(x => x.trim()).filter(Boolean)
     for (let i = sentences.length - 1; i >= 0; i--) {
       if (!sentences[i].endsWith('?')) continue
       const q = sentences[i]
@@ -136,13 +138,27 @@ export function askQuestion(text) {
   return last
 }
 
+// Claude Code's own lines a driver may report as a tab's last line (asks.py STATUS, HINT): its mode, its hints,
+// its turn status; never the tab's words
+const TAB_CHROME = /^[\u23f5\u23f8\u23f9✻✶✳✢✽✦※·*]|\?\s+for shortcuts|esc to interrupt|shift\+tab to cycle|auto-compact|accept edits|bypass permissions|plan mode|\/clear to save|update installed/i
+
+/** A tab's words in one line, for every view that names them (Start, the tabs column, the drawer, the card): its
+ *  question (askQuestion of what the server read off its screen), else its last line where that is no line of
+ *  Claude Code's own, else '' */
+export function tabWords(tab) {
+  const q = askQuestion(tab?.ask?.text)
+  if (q) return q
+  const last = previewText(tab?.last)
+  return last && !TAB_CHROME.test(String(tab?.last ?? '').trim()) ? last : ''
+}
+
 /** A point's next sentence, one line: what the tab asks, the step of its card (who does what next), a check-in's
  *  question, else the bucket's fixed sentence. No model call */
 export function nextSentence(x, bucket, s, lang = 'en') {
   const f = (TABLES[lang] ?? TABLES.en).flow.buckets
   const tab = x?.tab ?? null
   if (tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) {
-    const q = askQuestion(tab.ask?.text) || previewText(tab.last)
+    const q = tabWords(tab)
     if (q) return short(q, 240)
   }
   if (x?.group === 'checkin') return f.checkin(x.checkin?.who ?? x.row?.checkin?.who ?? f.someone)

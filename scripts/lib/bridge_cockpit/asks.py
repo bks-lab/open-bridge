@@ -149,6 +149,12 @@ def _dialog(clean: list[str], scrub: Callable[[str], str]) -> tuple[list[dict], 
     return picked, above
 
 
+# words that ask: a question mark that ends a sentence anywhere in the last words (never one inside a word or a number),
+# or a request for an answer without one
+ASKS = re.compile(r"\?(?=\s|$|[\"'”“»)])|\b(?:antwort(?:e|et)?\s+(?:per|mit|bitte)|reply\s+(?:with|by)|answer\s+(?:with|by)|"
+                  r"bitte\s+w[äa]hlen?|w[äa]hle\s|choose\s+(?:one|between)|pick\s+one)\b", re.I)
+
+
 def question_of(text: str, state: str, scrub: Callable[[str], str]) -> dict | None:
     """The question a tab in `state` asks on this screen: {text, options, hash, yes_no, draft, suggestion}, or
     None when nothing readable is left. `scrub` takes out what must never reach the page (the cockpit's key).
@@ -180,11 +186,14 @@ def question_of(text: str, state: str, scrub: Callable[[str], str]) -> dict | No
         return None
     words = _cap(words)
     yes_no = words.endswith("?") or bool(options and YES.match(options[0]["label"]))
+    # it asks, also where the question stands mid-text ("... or a million? That decides ...") or the words ask for an
+    # answer without a question mark ("Reply by number"): such a tab never counts as finished (model.asks_something)
+    asking = yes_no or bool(options) or bool(ASKS.search(words))
     # the options belong to the question: the same words over other options are another question
     material = state + words + "".join(f"\n{o['n']}. {o['label']}" for o in options)
     digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
     return {"text": words, "options": options, "hash": digest, "yes_no": yes_no, "draft": draft,
-            "suggestion": suggestion}
+            "suggestion": suggestion, "asks": asking}
 
 
 def draft_of(text: str) -> bool:

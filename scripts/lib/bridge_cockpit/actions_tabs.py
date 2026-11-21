@@ -145,8 +145,11 @@ class TabVerbs:
         tab = self.tab(tab_ref)
         if not m.is_live(tab):
             raise self.not_applicable("the tab holds no agent", "tab_ref")
-        if seen is not None or expect is not None or name is not None:
-            tab, _ = self.guard_fresh(ctx, tab_ref, expect, seen, name, True)
+        # always guarded against a draft in the input line: typed words would be appended to it (a '#' there makes
+        # the answer a memory in Claude Code), whether the page named the question it answers or not
+        guarded = seen is not None or expect is not None or name is not None
+        tab, _ = self.guard_fresh(ctx, tab_ref, expect, seen, name, True)
+        if guarded:
             if not m.is_live(tab):
                 raise ActionError(409, "tab_moved", self.tx["tab_moved"], None)
             # a dialog takes its options (tab_option), never typed words: a digit typed there would pick

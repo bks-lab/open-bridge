@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { duration, groupTabs, stateToken, canTab, noTabDriver, pastMerge, pastShown, pastText, screenLines, screenPoll, previewText, railOn, SCREEN_FAST_MS, SCREEN_FAST_FOR_MS, SCREEN_POLL_MS, tabStateKey, termEcho, termKey, termParts, termPaste, termQueue } from '../logic.js'
+import { duration, groupTabs, stateToken, canTab, noTabDriver, pastMerge, pastShown, pastText, screenLines, screenPoll, previewText, tabWords, railOn, SCREEN_FAST_MS, SCREEN_FAST_FOR_MS, SCREEN_POLL_MS, tabStateKey, termEcho, termKey, termParts, termPaste, termQueue } from '../logic.js'
 import { T } from '../text.js'
 import { SendBox } from './chat.js'
 import { TabControls } from './detail.js'
@@ -311,7 +311,7 @@ export function TabCard({ tab, s, c, byKey, slim = false }) {
     <h3 class="tabcard-name">${hasRow
       ? html`<button type="button" class="btn-link" title=${t.showTab(tab.name)} onClick=${() => c.select(rowKey)}>${tab.name}</button>`
       : html`<button type="button" class="btn-link" title=${t.btnTabView} onClick=${() => c.openTabView(tab.ref)}>${tab.name}</button>`}</h3>
-    ${full && previewText(tab.last) ? html`<p class="tab-last clamp2" title=${tab.last}>${previewText(tab.last)}</p>` : null}
+    ${full && tabWords(tab) ? html`<p class="tab-last clamp2" title=${tab.ask?.text || tab.last}>${tabWords(tab)}</p>` : null}
     ${full ? html`<${GuideTree} tab=${tab} s=${s} c=${c} compact />` : html`<${GuideLine} tab=${tab} s=${s} />`}
     ${tab.settled ? html`<p class="small"><${StateLine} token="success" word=${t.tabSettled[tab.settled] ?? tab.settled} /></p>` : null}
     ${full && (tab.slug || tab.team || tab.role || tab.filed_by) ? html`<div class="chips">

@@ -4,7 +4,7 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, workPageOf, homeCatalog, homeChosen,
+  attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, tabWords, workPageOf, homeCatalog, homeChosen,
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
   rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv, askMark,
@@ -85,7 +85,7 @@ export function ReturnCard({ r, s, c }) {
     ${row ? html`<p class="rcard-tags"><${KindTag} row=${row} s=${s} /><${OriginTag} row=${row} /></p>` : null}
     <${ReturnSteps} stage=${r.live} />
     ${r.result?.text ? html`<p class="rcard-answer"><span class="label-caps">${h.returnAnswer}</span> ${short(r.result.text, 280)}</p>`
-      : r.tab?.last || tab?.last ? html`<p class="rcard-last mono">${short(previewText(tab?.last ?? r.tab.last), 160)}</p>` : null}
+      : tabWords(tab ?? r.tab) ? html`<p class="rcard-last mono">${short(tabWords(tab ?? r.tab), 160)}</p>` : null}
     ${r.live === 'lost' ? html`<p class="rcard-answer"><span class="label-caps">${h.returnStage.lost}</span> ${h.returnLostHint}</p>` : null}
     ${closable ? html`<p class="small"><${StateLine} token="success" word=${h.returnSettled} /></p>` : null}
     <div class="hcard-acts">
@@ -143,7 +143,7 @@ export function ReturnPanel({ s, c, keys }) {
       <span class="muted small">${h.returnMode[r.mode] ?? r.mode} · ${h.returnAgo(ago)}</span></header>
     <${ReturnSteps} stage=${r.live} />
     ${r.result?.text ? html`<p class="rcard-answer"><span class="label-caps">${h.returnAnswer}</span> ${r.result.text}</p>`
-      : tab?.last || r.tab?.last ? html`<p class="rcard-last mono">${short(previewText(tab?.last ?? r.tab.last), 220)}</p>` : null}
+      : tabWords(tab ?? r.tab) ? html`<p class="rcard-last mono">${short(tabWords(tab ?? r.tab), 220)}</p>` : null}
     ${r.live === 'lost' ? html`<p class="rcard-answer">${h.returnLostHint}</p>` : null}
     <div class="hcard-acts">
       ${r.result?.key ? html`<${Btn} size="xs" variant="primary" onClick=${() => c.openItem(r.result.key, null)}>${h.returnOpenAnswer}<//>` : null}
@@ -209,16 +209,18 @@ export function PinStar({ rowKey, s, c }) {
 function useTabPreview(tab, c, on) {
   const [text, setText] = useState('')
   useEffect(() => {
-    if (!on || previewText(tab.last)) return
+    if (!on || tabWords(tab)) return
     let live = true
     c.tabScreen(tab.ref).then(res => {
       if (!live || !res?.ok) return
-      const lines = String(res.data?.text ?? '').split('\n').map(previewText).filter(Boolean)
-      setText(lines.slice(-3).join(' · '))
+      // the question of the screen read now, else its last lines without Claude Code's own (tabWords)
+      const text = String(res.data?.text ?? '')
+      const lines = text.split('\n').filter(l => tabWords({ last: l })).map(previewText).filter(Boolean)
+      setText(tabWords({ ask: { text: lines.join('\n') } }) || lines.slice(-3).join(' · '))
     })
     return () => { live = false }
   }, [tab.ref, tab.since_ms, on])
-  return previewText(tab.last) || text
+  return tabWords(tab) || text
 }
 
 /** An agent tab as a card: the band carries its project and the last lines of its screen, like a thumbnail */

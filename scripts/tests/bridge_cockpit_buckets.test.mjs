@@ -281,3 +281,20 @@ test('a nudge on a blocked task names what it waits on, and Wait keeps that bloc
   // no "on": task.py wait keeps the blocker the task has
   assert.deepEqual(wait.run.then('2026-10-16'), { verb: 'runs_on', args: { keys: [t.key], until: '2026-10-16' } })
 })
+
+test('askQuestion never cuts a question at a dot inside a number, a version or a path', () => {
+  assert.equal(logic.askQuestion('Shall I bump v2.3.1 to v2.4? It fixes the bug.'), 'Shall I bump v2.3.1 to v2.4?')
+  assert.equal(logic.askQuestion('Für die Schätzung fehlt mir eine Zahl: Wie viele Datensätze laufen pro Nacht durch den Sync,\ngrob 10.000 oder eher 1 Million? Davon hängt ab, ob wir in Batches migrieren.'),
+    'Für die Schätzung fehlt mir eine Zahl: Wie viele Datensätze laufen pro Nacht durch den Sync, grob 10.000 oder eher 1 Million?')
+  assert.equal(logic.askQuestion('Run ./deploy.sh --env staging now. Do you want to proceed?'), 'Run ./deploy.sh --env staging now. Do you want to proceed?')
+  // a question mid-text asks (asks.question_of `asks`), as one at the end does
+  assert.equal(logic.asksSomething({ text: 'Done? Then fine.', asks: true }), true)
+})
+
+test('tabWords: what a tab asks or said last, never the driver\'s chrome line', () => {
+  const chrome = { last: '⏵⏵ accept edits on (shift+tab to cycle)', ask: { text: 'Soll ich den Vertrag kündigen?' } }
+  assert.equal(logic.tabWords(chrome), 'Soll ich den Vertrag kündigen?')
+  assert.equal(logic.tabWords({ last: '⏵⏵ accept edits on (shift+tab to cycle)' }), '')
+  assert.equal(logic.tabWords({ last: '? for shortcuts' }), '')
+  assert.equal(logic.tabWords({ last: 'Tests are green.' }), 'Tests are green.')
+})

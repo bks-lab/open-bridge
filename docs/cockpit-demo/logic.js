@@ -2222,7 +2222,7 @@ export function waitLage(tab) {
  *  a question mark at the end), options, or a draft in its prompt. Every waiting tab has its last words read, so
  *  words alone ask nothing; a tab that said it is done closes */
 export function asksSomething(ask) {
-  return !!ask && !!(ask.yes_no || ask.options?.length || ask.draft || /\?\s*$/.test(ask.text ?? ''))
+  return !!ask && !!(ask.yes_no || ask.asks || ask.options?.length || ask.draft || /\?\s*$/.test(ask.text ?? ''))
 }
 
 /** The close of a tab wherever a point or a card has one (views/detail.js TabClose), null where it may not close

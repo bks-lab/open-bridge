@@ -6,7 +6,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   detailNeedsLoad, duration, formatDay, indexRows, short,
   stateToken, canTab, settledRefs, statusSplit, tabCloseOffer, tabNextStep, areaScope, homeAreas, startWaiting,
-  skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow, personOf, flowBucketsOn, tabPoint
+  skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow, personOf, flowBucketsOn, tabPoint, tabWords
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ItemCard, TASK_FACTS_SKIP, describeKey, describeOf } from './card.js'
@@ -333,7 +333,7 @@ function TabInfo({ row, s, c }) {
       <span class="muted">${tab.workspace ? `${tab.workspace} / ` : ''}${tab.name}</span>
       ${tab.since_ms ? html`<span class="mono muted">${t.sinceFor(duration(s.now - tab.since_ms))}</span>` : null}
     </div>
-    ${tab.last ? html`<p class="tab-last">${tab.last}</p>` : null}
+    ${tabWords(tab) ? html`<p class="tab-last">${tabWords(tab)}</p>` : null}
     ${tab.filed_by ? html`<p class="muted"><${StateLine} token="success" word=${t.resultFiledLong} /></p>` : null}
     <${TabControls} tab=${tab} s=${s} c=${c} />
   </div>`
