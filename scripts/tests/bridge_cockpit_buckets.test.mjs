@@ -388,7 +388,8 @@ test('a tab whose question needs a number or a choice is answered in words first
   const x = { group: 'asks', id: 'tab:surface:2', kind: 'tab', tab: q, row: null }
   const a = logic.bucketAnswers(x, 'do', s, 'de')
   assert.equal(a[0].run.kind, 'say')
-  assert.ok(a.some(b => b.run.verb === 'tab_go_on'))
+  // round 3 of the four answers: "Go on" answers no which-way question, it stands no more beside the words
+  assert.ok(!a.some(b => b.run.verb === 'tab_go_on'))
   const calls = []
   const c = new Proxy({}, { get: (_, p) => (p === 'then' || typeof p === 'symbol' ? undefined
     : (...args) => { calls.push([p, ...args]); return p === 'reply' ? Promise.resolve({ ok: true }) : undefined }) })

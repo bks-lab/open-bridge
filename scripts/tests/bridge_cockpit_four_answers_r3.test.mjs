@@ -122,3 +122,16 @@ test('a waiting card names what it waits on and how long', () => {
     bucket="waiting" s=${state({ work: [named] })} c=${c} />`)
   assert.match(el2.$('.fb-marks').text(), /waits on Jordan/)
 })
+
+// ---------------------------------------------------------------- go on
+
+test('go on is offered only where the tab asks nothing', () => {
+  // round 3: the briefing tab asking for an answer by number and a which-way question both got "Go on"
+  const s = state()
+  const base = { ref: 'surface:14', name: 'Briefing', state: 'waiting', live: true, since_ms: NOW - 5 * MIN }
+  const by = tab => logic.replyOptions(tab, s, text.TABLES.en).buttons.map(b => b.verb)
+  assert.ok(!by({ ...base, ask: { text: 'Antwort per Nummer, zum Beispiel "3 später montag" oder "1 mach".', hash: 'h1', asks: true } }).includes('tab_go_on'))
+  assert.ok(!by({ ...base, ask: { text: 'Which way do you take, and should the answer go to Jordan after?', hash: 'h2', asks: true } }).includes('tab_go_on'))
+  assert.ok(by({ ...base, ask: { text: 'Commit now?', hash: 'h3', yes_no: true, asks: true } }).includes('tab_go_on'))
+  assert.ok(by({ ...base, ask: { text: 'Summary: the import ran.', hash: 'h4' } }).includes('tab_go_on'))
+})

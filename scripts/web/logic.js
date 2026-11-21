@@ -2995,7 +2995,10 @@ export function replyOptions(tab, s, t = TABLES.en) {
     buttons.push({ id: 'yes', ...replySend(tab, r.yesText), label: r.yes })
     buttons.push({ id: 'no', ...replySend(tab, r.noText), label: r.no })
   }
-  if (!tab.filed_by) buttons.push({ id: 'goOn', verb: 'tab_go_on', label: r.goOn, args: { tab_ref: tab.ref, ...replyGuard(tab) } })
+  // no go on where the tab asks which way or for an answer of its own (by number, a choice): only its words answer
+  // that (round 3 of the four answers: the briefing tab and a which-way question got "Go on"); a yes or no keeps it
+  const asks = !!(ask && !ask.yes_no && (ask.asks || /\?\s*$/.test(String(ask.text ?? ''))))
+  if (!tab.filed_by && !asks) buttons.push({ id: 'goOn', verb: 'tab_go_on', label: r.goOn, args: { tab_ref: tab.ref, ...replyGuard(tab) } })
   return { buttons, textBox: true }
 }
 
