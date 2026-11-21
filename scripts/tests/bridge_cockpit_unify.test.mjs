@@ -71,7 +71,7 @@ test('bucketAnswers: a row an agent tab already works on is never started a seco
   const r = task('build', { bucket: 'delegate', tab: { ref: 'surface:5', live: true, state: 'working' } })
   const a = logic.bucketAnswers(logic.rowPoint(r, s), 'delegate', s, 'en')
   assert.ok(a.every(x => x.run.verb !== 'do_it'), 'no do_it on a live tab')
-  assert.deepEqual(a.map(x => x.meaning), ['later'])
+  assert.deepEqual(a.map(x => x.meaning), ['later', 'obsolete'])
 })
 
 test('workShows: the bucket filter of By source keeps the rows of that bucket, a stale filter of the other mode keeps all', () => {
@@ -125,7 +125,7 @@ test('Due by buckets: every row its bucket word, the bucket\'s answers, the firs
   // More holds the rest of the bucket's answers, the same acts as the card's
   acts.button(en.flow.buckets.more).click()
   await rounds()
-  assert.deepEqual(buttonsOf(acts).filter(x => !['☆', '★', en.flow.buckets.more].includes(x)), ['Ja', 'Später', 'Streichen'])
+  assert.deepEqual(buttonsOf(acts).filter(x => !['☆', '★', en.flow.buckets.more].includes(x)), ['Ja', 'Später', 'Streichen', en.flow.buckets.obsolete])
   acts.button('Später').click()
   await rounds()
   assert.deepEqual(c.calls.filter(x => x[0] === 'act').at(-1), ['act', 'later', { key: item.key, until: TOMORROW }])

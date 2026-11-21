@@ -170,7 +170,9 @@ function waitsOn(x, f) {
  *  sends: {kind: 'reply', verb, args} a tab's own answer (c.reply), {kind: 'act', verb, args} a verb of the server
  *  (c.act), {kind: 'pick', then} a day picked first, then `then(day)` gives the act. An answer that cannot go for this
  *  point (a stream is never dropped, a tab without a row is not put off) is left out; a tab's own answers (a dialog's
- *  options, yes and no, the ready answer of #702's tab_accept) stand for yes and come first */
+ *  options, yes and no, the ready answer of #702's tab_accept) stand for yes and come first. Last, fixed and quiet, stands
+ *  Obsolete (meaning `obsolete`, `confirm` and `quiet` true: the page asks first and never shows it strong), the
+ *  same on every point in every bucket (obsoleteRun) */
 export function bucketAnswers(x, bucket, s, lang = 'en') {
   const t = TABLES[lang] ?? TABLES.en
   const f = t.flow.buckets
@@ -214,7 +216,22 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
       : act({ verb: 'later', args: { key, until: isoDate(now + PARK_DAYS * DAY) } }))
     add('keep', isTask(row) ? act({ verb: 'task_keep', args: { keys: [key] } }) : null)
   }
+  const gone = obsoleteRun(row, own, f)
+  if (gone) out.push({ id: `obsolete${out.length}`, meaning: 'obsolete', label: f.obsolete, run: gone, confirm: true, quiet: true })
   return out
+}
+
+/** What Obsolete sends, the fixed last answer of every point: the classic "Drop because out of date" as one settle
+ *  (actions_work.py v_settle) with the reason as its text, so the history keeps it. A task is closed as not done, an
+ *  inbox item dropped with the note and counted as out of date under its source (inbox.py drop --reason outdated), an
+ *  issue or any other row hidden here (its source, GitHub too, stays as it is), a stream ended (the page asked: the
+ *  confirm). Null where it cannot go: no row, a read-only one, one the server does not settle as not done, or a tab's
+ *  question about anything but an inbox item (`own` false: the tab's own answers win) */
+function obsoleteRun(row, own, f) {
+  if (!row?.key || !own) return null
+  if (Array.isArray(row.settle) && !row.settle.includes('not_doing')) return null
+  return { kind: 'act', verb: 'settle', args: { keys: [row.key], outcome: 'not_doing', text: f.obsoleteText,
+    ...(row.inbox_id ? { reason: 'outdated' } : {}), ...(isStream(row) ? { stream: true } : {}) } }
 }
 
 /** The kind of a point in a word (Agent tab, Inbox, Task, Issue or PR, Point) */

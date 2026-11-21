@@ -112,7 +112,7 @@ test('do: yes lets the Bridge take the next step, later puts it off to the next 
   const s = state()
   const item = ask('20261009-0900-q1')
   const a = answersOf(row(item), 'do', s)
-  assert.deepEqual(a.map(x => x.label), ['Ja', 'Später', 'Streichen'])
+  assert.deepEqual(a.map(x => x.label), ['Ja', 'Später', 'Streichen', en.obsolete])
   assert.deepEqual(a[0].run, { kind: 'act', verb: 'do_it', args: { keys: [item.key] } })
   assert.deepEqual(a[1].run, { kind: 'act', verb: 'later', args: { key: item.key, until: TOMORROW } })
   assert.equal(a[2].run.verb, 'settle')
@@ -138,7 +138,7 @@ test('delegate, plan, waiting, drop: go, a day picked, a nudge that only drafts,
   const s = state()
   const t = task('t', { bucket: 'delegate' })
   const go = answersOf(row(t), 'delegate', s)
-  assert.deepEqual(go.map(x => x.label), ['Los', 'Nicht jetzt'])
+  assert.deepEqual(go.map(x => x.label), ['Los', 'Nicht jetzt', en.obsolete])
   assert.deepEqual(go[0].run, { kind: 'act', verb: 'do_it', args: { keys: [t.key] } })
   const plan = answersOf(row(t), 'plan', s)
   assert.equal(plan[0].run.kind, 'pick')
@@ -149,7 +149,7 @@ test('delegate, plan, waiting, drop: go, a day picked, a nudge that only drafts,
   assert.match(w[0].run.args.note, /never send/i)
   assert.deepEqual(w[1].run.then('2026-10-16'), { verb: 'runs_on', args: { keys: [t.key], until: '2026-10-16', on: 'Ada' } })
   const d = answersOf(row(t), 'drop', s)
-  assert.deepEqual(d.map(x => [x.label, x.run.verb]), [['Parken', 'shelve'], ['Behalten', 'task_keep']])
+  assert.deepEqual(d.map(x => [x.label, x.run.verb]), [['Parken', 'shelve'], ['Behalten', 'task_keep'], [en.obsolete, 'settle']])
 })
 
 // ---------------------------------------------------------------- the page
@@ -166,7 +166,7 @@ test('the page by buckets: the buckets left with their counts, one card with Nex
   assert.equal(el.$('.fb-title').text(), 'Fetch the prompt')
   assert.equal(el.$('.fb-next p').text(), 'I draft a note that asks for the prompt.')
   const buttons = el.$$('.fb-answers button')
-  assert.deepEqual(buttons.map(b => b.text()), ['Ja', 'Später', 'Streichen'])
+  assert.deepEqual(buttons.map(b => b.text()), ['Ja', 'Später', 'Streichen', en.obsolete])
   assert.ok(buttons[0].hasClass('btn-primary'))
   assert.match(el.$('.fb-nr').text(), /no\. 3/)
   // no right column: what else the page offers stands under More

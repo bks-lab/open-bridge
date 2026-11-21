@@ -298,6 +298,15 @@ of Work through says the number the chat shows ([Buckets](bridge-cockpit.md#buck
 view also names every shown bucket with its title and answers, an empty one too
 (`bucket_defs`), in the profile's order.
 
+**Obsolete on every row.** Besides its bucket's answers every numbered row takes one fixed
+word, "obsolete" (German "veraltet"): "3 obsolete" or "3 veraltet", in a style with letters
+too. It is not one of the profile's options and needs no letter. It does what the cockpit's
+last answer Obsolete does ([Buckets](bridge-cockpit.md#buckets)): an inbox item is dropped
+with the note "veraltet" and `--reason outdated`, a task is closed as not done with the
+reason noted, a stream is ended the same way, an issue or a pull request is hidden in the
+cockpit and stays open on GitHub. What each one runs:
+[control.md](../skills/briefing/references/control.md).
+
 **The headline count.** "N asks for you today" counts the asks among the Do rows
 (every row that is no inbox item, and of the inbox only an ask). When Do holds
 more, reports and ideas filed for today, they are counted apart ("· 3 reports",

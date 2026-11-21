@@ -174,3 +174,16 @@ def test_a_cockpit_pass_leaves_out_what_was_settled_in_the_cockpit_when_it_numbe
     v = bv.build(result(*rows, numbering_settled=settled), profile({"style": "calm"}, _whole=True))
     nr = {r["title"]: r.get("nr") for b in v["buckets"] for r in b["items"]}
     assert nr == {"Sign": None, "Read": 1, "Pay": 2}
+
+
+def test_obsolete_is_an_answer_of_every_numbered_row_with_the_cockpits_act():
+    """"3 veraltet" (or "3 obsolete") answers any numbered row as the cockpit's fixed last answer Obsolete does:
+    one act per kind of row, written down where the briefing reads its answers (control.md) and in both docs."""
+    control = (ROOT / "skills" / "briefing" / "references" / "control.md").read_text(encoding="utf-8")
+    row = next((line for line in control.splitlines() if line.startswith("|") and "veraltet" in line and "obsolete" in line), "")
+    assert row, "the answer table names veraltet and obsolete"
+    for act in ("inbox.py drop", "--reason outdated", "task.py close", "--declined", "--stream", "GitHub"):
+        assert act in control, act
+    for doc in ("briefings.md", "bridge-cockpit.md"):
+        text = (ROOT / "docs" / doc).read_text(encoding="utf-8")
+        assert re.search(r"veraltet", text) and re.search(r"[Oo]bsolete", text), doc

@@ -553,6 +553,14 @@
 .fb-next p { margin: 0; font-size: var(--text-h4); color: var(--ink); overflow-wrap: anywhere; }
 .fb-answers { display: flex; flex-wrap: wrap; gap: 10px; }
 .fb-answers .btn { min-height: 44px; padding: 0 18px; font-size: var(--text-body); max-width: 100%; }
+/* Obsolete: the fixed, quiet last answer, always at the right end of the card's answers; its confirm stands in its place */
+.fb-answers .btn.fb-quiet { margin-left: auto; min-height: 36px; padding: 0 12px; font-size: var(--text-sm); color: var(--on-surface-muted); }
+.fb-confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.fb-answers > .fb-confirm { margin-left: auto; }
+.fb-answers .fb-confirm .btn { min-height: 36px; font-size: var(--text-sm); }
+.fb-confirm-q { color: var(--on-surface); font-weight: 600; }
+.fb-dock { min-width: 0; }
+.fb-dock:empty { display: none; }
 .fb-pick { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); }
 .fb-pick .label-caps { margin: 0; }
 .fb-pick-own { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

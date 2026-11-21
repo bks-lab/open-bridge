@@ -1253,6 +1253,27 @@ by its place among the bucket's options, whatever the profile calls it:
 | waiting | nudge · wait | nudge: `do_it` with the check-in's sentence that only drafts a message, never sends it. wait: a day picked, then `runs_on` until it, on whom it waits |
 | drop | park · keep | park: a task `shelve` (an idea), anything else out of sight for 30 days. keep: `task_keep` |
 
+**Obsolete** (de: **Veraltet**) is the fixed last answer of every point in
+every bucket, always at the same place: quiet (never the strong one; on the
+card at the right end of the answers, on a row's bar last under More) and not a
+word of the profile. It is the classic "Drop because out of date" as one
+`settle` with outcome not doing and the text `obsolete` (de: `veraltet`), so the
+history keeps the reason: a task is closed as not done, an inbox item is
+dropped with that note and `reason: outdated` (counted as out of date under its
+source), an issue, a pull request or any other row is hidden here and stays
+open on GitHub, a stream is ended (`stream: true`). A click asks first, in
+place ("Really obsolete? Yes / Cancel"); the answer then offers its undo in a
+toast like any other. A tab's question keeps its own answers: there Obsolete
+stands only where the tab asks about an inbox item. The briefing takes the same
+word on any numbered row ("3 obsolete", "3 veraltet",
+[control.md](../skills/briefing/references/control.md)).
+
+Under the card stands the free line again (views/flowinstruct.js, as on the
+classic point): **Instruct** and **Ask** (de: Anweisen, Fragen) for anything the
+buttons do not cover, scoped to the point; Instruct only with
+`cockpit.flow.instruct`, Ask always where the point has a row. A tab alone has
+none.
+
 An answer a point cannot take is left out: a stream is never dropped, and a tab
 is put off or dropped only where it asks about an inbox item (on a task or a
 stream behind it, later would put off the whole task, not the question). The

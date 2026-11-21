@@ -10,17 +10,20 @@
 // views/flowtabs.js PointTabs: Description, Steps, Activity). An answer moves on to the next point by itself (the card
 // is held by its id, logic.js focusIndex); the walk bar under it only goes back and forth, it never decides. After the
 // last point of a bucket the page offers the next bucket that holds one.
+// Every point ends with the fixed, quiet answer Obsolete (buckets.js bucketAnswers), which asks first in place; under
+// the card stands the free line (views/flowinstruct.js InstructLine: Instruct and Ask) for what the buttons do not cover.
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  answerMark, bucketAnswers, bucketDefs, bucketPoints, detailNeedsLoad, errorText, focusIndex, formatDay, nextSentence, openBucket, parseDate, pickDays,
-  pointArea, pointKindWord, pointName, short, viewBucket,
+  answerMark, bucketAnswers, bucketDefs, bucketPoints, detailNeedsLoad, errorText, focusIndex, formatDay, instructScope, nextSentence, openBucket, parseDate,
+  pickDays, pointArea, pointKindWord, pointName, short, viewBucket,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { WorkSwitch } from './day.js'
 import { FlowAside } from './flowside.js'
+import { InstructLine } from './flowinstruct.js'
 import { PointTabs } from './flowtabs.js'
 import { Btn } from './parts.js'
 
@@ -61,18 +64,22 @@ function DayPick({ s, onPick, onCancel, busy, uid = 'fb-pick-day' }) {
 /** The answers of a point in its bucket and what a click on one does, the one place every view sends an answer
  *  from (the card here, the bar of a row on Due, By source, By Jev and the tabs column): a tab's own answer goes
  *  to the tab (c.reply) and is marked answered, a verb of the server goes out as c.act, an answer that needs a
- *  day opens the day picker first. `onDone` runs once an answer went through (the card moves on) */
+ *  day opens the day picker first, one that asks first (Obsolete) its confirm in place (`confirm`, sent by `run(a,
+ *  null, true)`). `onDone` runs once an answer went through (the card moves on) */
 export function useBucketAnswer(x, bucket, s, c, onDone = null) {
   const lang = language()
   const t = T()
   const [pick, setPick] = useState(null)
+  const [confirm, setConfirm] = useState(null)
   const [note, setNote] = useState(null)
   const row = x?.row ?? null
   const tab = x?.tab ?? null
   const answers = x ? bucketAnswers(x, bucket, s, lang) : []
   const busy = !!(s.ui?.busy?.[row?.key] || (tab && s.ui?.busy?.[tab.ref]))
-  const run = async (a, day = null) => {
+  const run = async (a, day = null, sure = false) => {
     setNote(null)
+    if (a.confirm && !sure) { setPick(null); setConfirm(a); return }
+    setConfirm(null)
     if (a.run.kind === 'pick' && !day) { setPick(a); return }
     if (a.run.kind === 'reply') {
       const r = await c.reply(a.run.verb, a.run.args)
@@ -89,7 +96,22 @@ export function useBucketAnswer(x, bucket, s, c, onDone = null) {
     if (r?.ok) onDone?.()
     else if (r?.note) setNote(r.note)
   }
-  return { answers, run, pick, setPick, note, busy }
+  return { answers, run, pick, setPick, confirm, setConfirm, note, busy }
+}
+
+/** The answers as buttons, in their order: the strong one where `strong` says so, a quiet one (Obsolete) a ghost,
+ *  one whose confirm is open its question in place, Yes and Cancel */
+function AnswerButtons({ list, strong, size, busy, pick, confirm, run, setConfirm, max }) {
+  const f = T().flow.buckets
+  return list.map(a => (confirm?.id === a.id
+    ? html`<span key=${a.id} class="fb-confirm" role="group" aria-label=${f.obsoleteAsk}>
+        <span class="fb-confirm-q small">${f.obsoleteAsk}</span>
+        <${Btn} size=${size} variant="secondary" busy=${busy} cls="fb-confirm-yes" onClick=${() => run(a, null, true)}>${f.obsoleteYes}<//>
+        <${Btn} size=${size} variant="ghost" cls="fb-confirm-no" onClick=${() => setConfirm(null)}>${f.obsoleteNo}<//>
+      </span>`
+    : html`<${Btn} key=${a.id} size=${size} variant=${strong(a) ? 'primary' : a.quiet ? 'ghost' : 'secondary'} busy=${busy}
+        pressed=${pick?.id === a.id ? true : undefined} title=${a.quiet ? f.obsoleteTip : a.label} cls=${`fb-answer fb-answer-${a.meaning}${a.quiet ? ' fb-quiet' : ''}`}
+        onClick=${() => run(a)}>${short(a.label, max)}<//>`))
 }
 
 /** A point's bucket as one small chip, the bucket's title, with its number in the printed briefing beside it */
@@ -108,17 +130,19 @@ export function BucketChip({ x, bucket, s }) {
 export function BucketBar({ x, s, c, size = 'xs', bucket = null, chip = true }) {
   const f = T().flow.buckets
   const b = bucket ?? viewBucket(x)
-  const { answers, run, pick, setPick, note, busy } = useBucketAnswer(x, b, s, c)
+  const { answers, run, pick, setPick, confirm, setConfirm, note, busy } = useBucketAnswer(x, b, s, c)
   const [more, setMore] = useState(false)
-  const [first, ...rest] = answers
-  const btn = (a, strong) => html`<${Btn} key=${a.id} size=${size} variant=${strong ? 'primary' : 'secondary'} busy=${busy}
-    pressed=${pick?.id === a.id ? true : undefined} title=${a.label} cls=${`fb-answer fb-answer-${a.meaning}`} onClick=${() => run(a)}>${short(a.label, 40)}<//>`
+  // the strong one is the first the bucket offers, never the quiet Obsolete, which stands last under More
+  const first = answers[0] && !answers[0].quiet ? answers[0] : null
+  const rest = first ? answers.slice(1) : answers
+  const btns = (list, strong) => html`<${AnswerButtons} list=${list} strong=${() => strong} size=${size} busy=${busy} pick=${pick}
+    confirm=${confirm} run=${run} setConfirm=${setConfirm} max=${40} />`
   const uid = `fb-pick-${String(x?.id ?? 'x').replace(/[^\w-]/g, '-')}`
   return html`<span class="fb-bar">
     ${chip ? html`<${BucketChip} x=${x} bucket=${b} s=${s} />` : null}
-    ${first ? btn(first, true) : null}
+    ${first ? btns([first], true) : null}
     ${rest.length ? html`<${Btn} size=${size} variant="ghost" pressed=${more} cls="fb-bar-more" onClick=${() => setMore(!more)}>${f.more}<//>` : null}
-    ${more ? html`<span class="fb-bar-rest">${rest.map(a => btn(a, false))}</span>` : null}
+    ${more ? html`<span class="fb-bar-rest">${btns(rest, false)}</span>` : null}
     ${pick ? html`<${DayPick} s=${s} busy=${busy} uid=${uid} onPick=${day => run(pick, day)} onCancel=${() => setPick(null)} />` : null}
     ${note ? html`<span class="fb-note small" role="status">${note}</span>` : null}
   </span>`
@@ -132,7 +156,7 @@ export function BucketCard({ x, bucket, s, c }) {
   useItemDetail(x, s, c)
   const row = x.row ?? null
   const tab = x.tab ?? null
-  const { answers, run, pick, setPick, note, busy } = useBucketAnswer(x, bucket, s, c, () => c.flowDecided?.())
+  const { answers, run, pick, setPick, confirm, setConfirm, note, busy } = useBucketAnswer(x, bucket, s, c, () => c.flowDecided?.())
   const marks = [pointKindWord(x, lang), pointArea(x), row?.due ? f.due(formatDay(String(row.due).slice(0, 10), lang)) : null,
     row?.gate === 'only-you' ? f.onlyYou : null, bucket === 'waiting' && (x.checkin?.who ?? row?.checkin?.who) ? f.with(x.checkin?.who ?? row.checkin.who) : null]
     .filter(Boolean)
@@ -146,8 +170,8 @@ export function BucketCard({ x, bucket, s, c }) {
     ${sub ? html`<p class="fb-sub muted">${sub}</p>` : null}
     <div class="fb-next"><span class="label-caps">${f.nextLabel}</span><p>${nextSentence(x, bucket, s, lang)}</p></div>
     ${answers.length ? html`<div class="fb-answers" role="group" aria-label=${f.nextLabel}>
-      ${answers.map((a, i) => html`<${Btn} key=${a.id} size="sm" variant=${i === 0 ? 'primary' : 'secondary'} busy=${busy}
-        pressed=${pick?.id === a.id ? true : undefined} title=${a.label} cls=${`fb-answer fb-answer-${a.meaning}`} onClick=${() => run(a)}>${short(a.label, 60)}<//>`)}
+      <${AnswerButtons} list=${answers} strong=${a => a === answers[0] && !a.quiet} size="sm" busy=${busy} pick=${pick} confirm=${confirm}
+        run=${run} setConfirm=${setConfirm} max=${60} />
     </div>` : null}
     ${pick ? html`<${DayPick} s=${s} busy=${busy} onPick=${day => run(pick, day)} onCancel=${() => setPick(null)} />` : null}
     ${note ? html`<p class="fb-note small" role="status">${note}</p>` : null}
@@ -174,7 +198,11 @@ export function BucketBody({ s, c }) {
   const i = focusIndex(points, s.ui?.flowBucketAt)
   const x = points[i] ?? null
   const onwards = open ? buckets.find(b => b.id !== open.id && b.points.length) ?? null : null
-  const legend = open ? f.legend[open.id]?.(...open.options.map(o => o.charAt(0).toUpperCase() + o.slice(1))) ?? '' : ''
+  // what each answer of the open bucket does, and the fixed last one every point has
+  const legend = open ? [f.legend[open.id]?.(...open.options.map(o => o.charAt(0).toUpperCase() + o.slice(1))), f.obsoleteLegend(f.obsolete)]
+    .filter(Boolean).join(' ') : ''
+  // the free line under the card for what the buttons do not cover, scoped to the point (views/flowinstruct.js)
+  const scope = x && !x.readOnly ? instructScope(x, [], new Set(), null, s) : null
   return html`<div class="col col-page flow flow-buckets">
     <header class="page-head flow-head">
       <${WorkSwitch} s=${s} c=${c} />
@@ -204,6 +232,7 @@ export function BucketBody({ s, c }) {
           : html`<div class="fb-empty"><p>${all.length ? f.cleared : f.empty}</p>
             ${onwards ? html`<${Btn} size="sm" variant="primary" onClick=${() => c.flowBucket(onwards.id)}>${f.onwards(onwards.title)}<//>`
               : html`<p class="muted">${f.allDone}</p>`}</div>`}
+        ${x ? html`<div class="fb-dock flow-dock"><${InstructLine} key=${x.id} scope=${scope} x=${x} s=${s} c=${c} /></div>` : null}
         ${x ? html`<div class="fb-walk">
           <${Btn} size="sm" variant="secondary" icon="back" disabled=${i === 0} onClick=${() => c.flowBucketGo(points[i - 1].id, i - 1)}>${f.prev}<//>
           <span class="fb-pos muted small">${f.pos(i + 1, points.length)}</span>

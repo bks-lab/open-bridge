@@ -2226,6 +2226,27 @@ def test_settle_asks_before_a_stream_ends_and_rows_say_whether_they_settle(world
     assert world.row("ref:example/repo#12")["settle"] == ["done", "not_doing"]
 
 
+def test_the_answer_obsolete_is_one_settle_for_every_kind_of_row(world):
+    """Work through's fixed last answer Obsolete (web/buckets.js obsoleteRun) sends what the classic "Drop because out
+    of date" does, as one settle with its reason as text: a task closed as declined with the reason, an inbox item
+    dropped with the note and counted as outdated, an issue hidden here (nothing on GitHub), a stream ended"""
+    tx = world.app.tx
+    world.runner.calls.clear()
+    world.act("settle", keys=["task:demo-task"], outcome="not_doing", text="obsolete")
+    assert writes(world) == [K(world, "close", "demo-task", "--declined", "--reason", tx["close_reason"]["not_doing"] + ": obsolete")]
+    world.runner.calls.clear()
+    world.act("settle", keys=[f"inbox:{ONLY_ID}"], outcome="not_doing", text="obsolete", reason="outdated")
+    assert writes(world) == [I(world, "drop", ONLY_ID, "--note", "dropped in the cockpit: obsolete", "--reason", "outdated")]
+    world.runner.calls.clear()
+    world.act("settle", keys=["ref:example/repo#12"], outcome="not_doing", text="obsolete")
+    assert not any("gh" in str(c) and "close" in str(c) for c in world.runner.calls), "never closed on GitHub"
+    assert world.app.store.dismissed()["ref:example/repo#12"]["outcome"] == "not_doing"
+    world.runner.calls.clear()
+    world.act("settle", keys=["task:quiet-task"], outcome="not_doing", text="obsolete", stream=True)
+    assert writes(world) == [K(world, "close", "quiet-task", "--stream", "--declined", "--reason",
+                               tx["close_reason"]["not_doing"] + ": obsolete")]
+
+
 def test_task_close_keeps_the_task_when_task_py_fails(world):
     world.runner.handlers["task.close"] = lambda argv: fail("no such task")
     res = world.act("task_close", keys=["task:other-task"], reason="done")

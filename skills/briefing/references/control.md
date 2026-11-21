@@ -126,6 +126,10 @@ Two things are yours besides:
   (park = `status: backlog`). A profile may rename the options; their order
   keeps these meanings. In `style: calm` there are no letters: "3 yes", "3 later",
   "3 drop" (or the bucket's own words) name the row and the answer.
+- **Obsolete, on every row.** Besides its bucket's answers, any numbered row
+  takes the fixed word "obsolete" (German "veraltet"): "3 obsolete", "3 veraltet",
+  also in a style with letters. It is the cockpit's last answer Obsolete, the
+  same act for the same kind of row (table below), and it needs no letter.
 
 A stream that runs every morning belongs in the profile, not in this list: a
 `command` section with `report_ok: true` turns it into rows and an all-clear
@@ -191,6 +195,7 @@ Answers map onto the inbox, never onto memory or a log sentence:
 | yes once {condition} | `inbox.py approve <id> --when-json '<probe>'` (only `your-yes`; `run` executes it later) |
 | later / tomorrow / `b` | `inbox.py defer <id> --until <date>` |
 | drop it / `c` | `inbox.py drop <id> --note "<why>"` |
+| obsolete / veraltet, on any numbered row | the cockpit's Obsolete: an inbox item `inbox.py drop <id> --note "veraltet" --reason outdated`; a task `task.py close <slug> --declined --reason "Wird nicht gemacht: veraltet"`; a stream the same with `--stream`; an issue or PR is hidden in the cockpit (its answer Obsolete), never closed on GitHub; a row an agent tab asks about is answered in the tab, unless it asks about an inbox item |
 | done already | `inbox.py close <id> --note "<how>"` and, if the probe missed it, fix the probe |
 | status | `workplace.py status` plus the open count per task from the inbox |
 | tell {tab}: {text} | `workplace.py send <tab> <text>`; show what goes where first unless the person named both |
