@@ -10,6 +10,8 @@
 .jev-actions { display: flex; gap: 8px; flex: 0 0 auto; }
 .jev-error { border: 1px solid var(--danger); color: var(--danger); border-radius: var(--radius-lg); padding: 10px 14px;
   background: color-mix(in srgb, var(--danger) 8%, var(--surface-raised)); }
+/* inside the picture it lies over it: the orbit and the plan never jump while they come in (round 2) */
+.jev-stage > .jev-error { position: absolute; top: 10px; left: 12px; right: 12px; z-index: 2; }
 
 .jev-grid { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
 /* by the page's own width, not the window's: the task detail beside the page narrows it */

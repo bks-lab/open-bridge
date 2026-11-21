@@ -280,3 +280,20 @@ test('the bucket strip of By source counts every row of the page: the rows not s
   await rounds()
   assert.deepEqual(c.calls.find(x => x[0] === 'loadMore'), ['loadMore', 'work', 'inbox'])
 })
+
+// ---------------------------------------------------------------- Jev
+
+test('Jev after a failed daily order says so on every visit that day, in plain words, never "nothing to rate"', async () => {
+  const { jevAnswer, jevErrorText } = (await loadCockpit()).jev
+  const failed = jevAnswer({ ok: true, data: { order: null, failed_today: true, today: null } })
+  assert.equal(failed.ok, false)
+  assert.equal(failed.failedToday, true)
+  assert.equal(jevAnswer({ ok: true, data: { order: null, today: null } }).data.empty, true, 'no order and no failure: empty')
+  // a refusal names its status in words, never the API's JSON
+  const raw = 'Jev refused the request (401): {"detail":{"error_type":"authentication_error","message":"Cannot authenticate"}}'
+  for (const lang of ['de', 'en']) {
+    const said = jevErrorText(raw, lang)
+    assert.doesNotMatch(said, /[{}]|error_type|authentication_error/)
+    assert.match(said, /401/)
+  }
+})

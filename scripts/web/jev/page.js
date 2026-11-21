@@ -45,6 +45,10 @@ const TEXT = {
     effort: ['Minuten', '< 1 h', '½ Tag', 'Tage'], tasks: 'Aufgaben', judgments: 'Urteile', ms: 'ms',
     cached: 'aus dem Zwischenspeicher', empty: 'Im Dashboard steht gerade nichts, was Jev bewerten könnte.',
     error: 'Jev hat nicht geantwortet', legendSize: 'Größe = Priorität', legendRing: 'Ring = Sicherheit',
+    failedToday: 'Die heutige Bewertung ging schief. „Neu bewerten“ fragt Jev noch einmal.',
+    status: code => (code === '401' || code === '403' ? `Jev lehnt den Schlüssel ab (${code}). Bitte den Jev-Schlüssel in den Einstellungen prüfen.`
+      : code === '429' ? `Jev ist gerade ausgelastet (${code}). Später noch einmal versuchen.` : `Jev hat mit einem Fehler geantwortet (${code}).`),
+    unreachable: 'Jev war nicht erreichbar.',
     quick: n => `${n} schnelle Gewinne`, mine: n => `${n} nur für dich`, give: n => `${n} abgebbar`, sure: 'sicher',
     stale: 'seither geändert', staleTitle: 'Das Dashboard hat sich seit dieser Bewertung geändert. Jev bewertet von selbst einmal am Tag, neu bewerten geht jederzeit.',
     gone: 'Nichts aus dieser Bewertung steht noch im Dashboard.', from: 'von', tokens: 'Tokens', today: 'heute',
@@ -62,6 +66,10 @@ const TEXT = {
     effort: ['minutes', '< 1 h', '½ day', 'days'], tasks: 'tasks', judgments: 'judgments', ms: 'ms',
     cached: 'from cache', empty: 'The dashboard holds nothing Jev could rate right now.',
     error: 'Jev did not answer', legendSize: 'size = priority', legendRing: 'ring = confidence',
+    failedToday: 'Today\'s rating failed. "Rate again" asks Jev once more.',
+    status: code => (code === '401' || code === '403' ? `Jev refuses the key (${code}). Please check the Jev key in the settings.`
+      : code === '429' ? `Jev is busy right now (${code}). Try again later.` : `Jev answered with an error (${code}).`),
+    unreachable: 'Jev could not be reached.',
     quick: n => `${n} quick wins`, mine: n => `${n} only you`, give: n => `${n} to hand off`, sure: 'sure',
     stale: 'changed since', staleTitle: 'The dashboard changed since this rating. Jev rates by itself once a day; rating again works any time.',
     gone: 'Nothing from this rating is on the dashboard any more.', from: 'from', tokens: 'tokens', today: 'today',
@@ -71,6 +79,24 @@ const TEXT = {
   },
 }
 const tx = () => TEXT[language() === 'de' ? 'de' : 'en']
+
+/** A failed rating in the page's words: its HTTP status said plainly, never the API's own JSON or English (round 2:
+ *  '... (401): {"detail":{"error_type":...}}' stood in a German page) */
+export function jevErrorText(message, lang = language()) {
+  const t = TEXT[lang === 'de' ? 'de' : 'en']
+  const code = String(message ?? '').match(/\b([45]\d\d)\b/)?.[1]
+  return code ? t.status(code) : t.unreachable
+}
+
+/** What the work tab's Jev view makes of the server's answer (POST /api/jev/rank with daily): its order as the plan,
+ *  an empty plan where nothing was ordered, and a failure where today's daily order failed: then every visit that day
+ *  says so, never "nothing to rate" over a full dashboard (round 2) */
+export function jevAnswer(res) {
+  if (!res.ok) return res
+  if (!res.data?.order && res.data?.failed_today) return { ok: false, failedToday: true }
+  const data = orderPlan(res.data.order) ?? { ok: true, empty: true, plan: { items: [], first: null } }
+  return { ok: true, data: { ...data, today: res.data.today } }
+}
 
 // the server cuts a title it sends to Jev at this length (jev.py pick_rows); an order kept from before shows it
 // cut at a word end with an ellipsis (logic.js trimCut)
@@ -362,7 +388,7 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
       setSt({ reading: false, err: null, data: keptBy[store] })
     } else {
       const msg = res.data?.error?.message || res.error?.message || ''
-      setSt(x => ({ ...x, reading: false, err: msg || t.error }))
+      setSt(x => ({ ...x, reading: false, err: res.failedToday ? t.failedToday : jevErrorText(msg) }))
     }
   }
 
@@ -608,7 +634,8 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
   }
   const onDot = (it, e) => onOpen(it, listRef.current?.querySelector(`[data-open="${CSS.escape(it.key)}"]`) ?? e.currentTarget)
 
-  const thinking = !plan && (st.reading || st.err)
+  // reading shows only while Jev reads: beside an error the picture rests (round 2: "Jev liest 20 Aufgaben" spun on)
+  const thinking = !plan && st.reading
   const calmNow = still()
   return html`<div class="col col-page jev-page">
     <header class="page-head jev-top">
@@ -622,10 +649,10 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
           onClick=${() => run(true)}><span class="btn-label">${t.rerun}</span></button>
       </div>
     </header>
-    ${st.err ? html`<div class="jev-error" role="alert">${t.error}: ${st.err}</div>` : null}
-    ${st.data?.empty ? html`<div class="panel panel-pad muted">${t.empty}</div>` : html`
+    ${st.data?.empty && !st.err ? html`<div class="panel panel-pad muted">${t.empty}</div>` : html`
     <div class="jev-grid">
       <div class="jev-stage panel">
+        ${st.err ? html`<div class="jev-error" role="alert">${t.error}: ${st.err}</div>` : null}
         ${plan ? html`<${Headline} items=${items} data=${st.data} headRef=${headRef} />` : null}
         <svg class="jev-svg" viewBox=${`0 0 ${W} ${H}`} role="img" aria-label=${t.title} preserveAspectRatio="xMidYMid meet">
           <defs>
@@ -658,12 +685,7 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
  *  with daily), so the page's private filter applies and Jev orders once a day by itself. `extra` are the
  *  keys of rows only the work page holds, so they stay in the picture; `top` is the tab's view switch */
 export function JevWork({ s, c, page, extra, top }) {
-  const ask = async force => {
-    const res = await c.jevWork(page.id, force)
-    if (!res.ok) return res
-    const data = orderPlan(res.data.order) ?? { ok: true, empty: true, plan: { items: [], first: null } }
-    return { ok: true, data: { ...data, today: res.data.today } }
-  }
+  const ask = async force => jevAnswer(await c.jevWork(page.id, force))
   // the work page's own items by key: a plan entry the model holds no row for still shows its kind and source
   const pageItems = new Map((page.sections ?? []).flatMap(sec => (s.more?.[`${page.id}/${sec.id}`]?.items ?? sec.items ?? [])
     .map(it => [triageKey(it), it])).filter(([k]) => k))
