@@ -166,3 +166,30 @@ def test_a_stream_done_for_this_time_is_out_of_sight_until_tomorrow_and_done_tod
     assert world.app.store.hidden() == {"task:demo-task": "2026-12-01"}
     assert set(world.app.store.settled.hidden_done("2026-11-30")) == {"task:demo-task"}
     assert "until" not in res["note"].lower() and "2026" not in res["note"]
+
+
+def test_how_long_a_task_rests_reaches_its_card(tmp_path):
+    # round 1 of the four answers: the briefing said "resting for 55 days" (resting: 55), the page's row said None,
+    # so no card showed the quiet mark "ruht seit N Tagen"
+    from test_bridge_cockpit import World, collect_fixture, ok
+    w = World(tmp_path, prepare=False)
+    try:
+        def resting(argv):
+            data = collect_fixture(w.root)
+            data["view"]["buckets"][2]["items"][0]["resting"] = 55
+            return ok(data)
+        w.runner.handlers["briefing.collect"] = resting
+        w.app.tabs.poll()
+        w.app.collector.request("both")
+        w.app.collector.drain()
+        row = w.row("task:demo-task")
+        assert row["resting"] == 55
+    finally:
+        w.close()
+
+
+def test_a_quiet_task_beside_the_briefing_says_its_days_too():
+    tasks = [{"slug": "q", "label": "q", "title": "Q", "area": "A", "area_names": ["A"], "priority": None, "blocked_by": None,
+              "stale": True, "age": 53, "type": None, "status": "doing", "next": None, "updated": None, "origin": None}]
+    got = m.with_tasks(m.parse_view({"view": {"buckets": []}}, True, 0), tasks)
+    assert [r["resting"] for b in got["buckets"] for r in b["rows"]] == [53]

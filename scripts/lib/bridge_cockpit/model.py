@@ -904,6 +904,9 @@ def with_tasks(view: dict, tasks: list[dict], tx: dict = EN) -> dict:
                          priority=t["priority"], area=t["area"], area_names=list(t["area_names"]), task_type=t["type"],
                          status=t.get("status"), next=task_next(t, inbox_rows), origin_raw=t.get("origin"),
                          updated=t.get("updated"))
+        if t["stale"] and not t["blocked_by"]:
+            # a quiet task says how long it rests, as a row of the briefing does (the card's quiet mark)
+            base["resting"] = resting_of(t.get("age")) or True
         base["key"] = row_key(base)
         return base
 
