@@ -343,9 +343,11 @@ class WorkVerbs:
             return
         if row.get("task"):
             slug = self.slug(row)
-            run = ctx.call("task.next", slug, self.task_cmd("next", slug, "--who", who, "--check", until, "--json"), SHORT_TIMEOUT)
+            step, cleared = self.step_for(slug, row)
+            run = ctx.call("task.next", slug, self.task_cmd("next", slug, *step, "--who", who, "--check", until, "--json"),
+                           SHORT_TIMEOUT)
             if not run.ok:
-                ctx.note(self.tx["later_failed"].format(err=m.short(run.err, 100)), bad=True)
+                ctx.note(self.tx["owner_failed"].format(err=m.short(run.err, 100)), bad=True)
                 return
             if text:
                 self.write_note(ctx, row, words)
@@ -354,8 +356,8 @@ class WorkVerbs:
             ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task",
                                 "did": did, "ident": slug, "undone_ms": None,
                                 "work_kind": "stream" if row.get("stream") else "task",
-                                "undo": {"verb": "task_next", "args": {"slug": slug, "who": old_who or "me",
-                                                                       "clear_check": True}}})
+                                "undo": {"verb": "task_next", "args": cleared or {"slug": slug, "who": old_who or "me",
+                                                                                  "clear_check": True}}})
             ctx.note(self.tx[back_w].format(who=who, until=until) + f": {m.short(row['title'], 60)}")
             ctx.delta()
             self.app.collector.request("both")
@@ -364,13 +366,15 @@ class WorkVerbs:
         self.hide_until(ctx, row, until)
 
     def v_task_next(self, ctx: Ctx, slug: str, who: str | None = None, check: str | None = None,
-                    clear_check: bool = False) -> None:
+                    clear_check: bool = False, clear: bool = False) -> None:
         """Who takes a task's step and its check-in day (task.py next --who --check / --clear-check), the step kept:
-        the undo of In progress, and the check-in's answers on a task"""
-        if who is None and check is None and not clear_check:
-            raise bad_arg("who", "give who, a check-in day or clear_check")
-        argv = self.task_cmd("next", slug, *(["--who", who] if who else []), *(["--check", check] if check else []),
-                             *(["--clear-check"] if clear_check else []), "--json")
+        the undo of In progress, and the check-in's answers on a task. `clear` takes the step away (task.py next
+        --clear): the undo of a hand-over that named the task itself as its step"""
+        if who is None and check is None and not clear_check and not clear:
+            raise bad_arg("who", "give who, a check-in day, clear_check or clear")
+        argv = (self.task_cmd("next", slug, "--clear", "--json") if clear else
+                self.task_cmd("next", slug, *(["--who", who] if who else []), *(["--check", check] if check else []),
+                              *(["--clear-check"] if clear_check else []), "--json"))
         run = ctx.call("task.next", slug, argv, SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
@@ -393,14 +397,15 @@ class WorkVerbs:
             raise self.not_applicable("only a task's step has someone who takes it", "key")
         slug = self.slug(row)
         old_who = (((found.get("out") or {}).get("card") or {}).get("next") or {}).get("who")
-        run = ctx.call("task.next", slug, self.task_cmd("next", slug, "--who", who, "--json"), SHORT_TIMEOUT)
+        step, cleared = self.step_for(slug, row)
+        run = ctx.call("task.next", slug, self.task_cmd("next", slug, *step, "--who", who, "--json"), SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["owner_failed"].format(err=m.short(run.err, 100)), bad=True)
             return
         said = self.tx.get(f"owner_{who.lower()}", who)
         ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task", "did": f"next step with {who}",
                             "ident": slug, "undone_ms": None, "work_kind": "stream" if row.get("stream") else "task",
-                            "undo": {"verb": "task_next", "args": {"slug": slug, "who": old_who or "me"}}})
+                            "undo": {"verb": "task_next", "args": cleared or {"slug": slug, "who": old_who or "me"}}})
         ctx.note(self.tx["owner_set"].format(who=said, title=m.short(row["title"], 60)))
         ctx.delta()
         self.app.collector.request("both")
@@ -438,6 +443,29 @@ class WorkVerbs:
             return {"slug": slug}
         return {"slug": slug, "back": True, "on": was["blocked_by"],
                 **{k: was[f] for k, f in (("since", "blocked_since"), ("until", "quiet_until")) if was.get(f)}}
+
+    def task_step(self, slug: str) -> str | None:
+        """The what of a task's next step as its STATUS.md names it (next: {what} or next: "..."), else None"""
+        for kind in ("tasks", "streams"):
+            try:
+                text = (self.app.root / "work" / kind / slug / "STATUS.md").read_text(encoding="utf-8")
+                break
+            except (OSError, UnicodeDecodeError):
+                continue
+        else:
+            return None
+        nxt = split_front(text)[0].get("next")
+        what = nxt.get("what") if isinstance(nxt, dict) else nxt
+        return " ".join(what.split()) if isinstance(what, str) and what.strip() else None
+
+    def step_for(self, slug: str, row: dict) -> tuple:
+        """(argv words, undo args) of a hand-over: a task without a step of its own takes itself as the step (its
+        title), so task.py next has something to give someone (round 1: 36 of 40 tasks had none and every With …
+        was refused); the undo of such a hand-over clears the step again"""
+        if self.task_step(slug):
+            return (), None
+        title = " ".join(str(row.get("title") or slug).split())[:300]
+        return (title,), {"slug": slug, "clear": True}
 
     def task_fields(self, slug: str, keys: tuple) -> dict:
         """Plain values of these frontmatter fields of an open task or stream ({} where it has none): a blocker as

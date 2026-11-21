@@ -54,7 +54,14 @@ def test_no_other_day_past_a_year_is_taken(world):
 
 # ---------------------------------------------------------------- With … (who has the next step)
 
+def _with_step(world, slug="demo-task", what="Ship it"):
+    path = world.root / "work" / "tasks" / slug / "STATUS.md"
+    path.write_text(path.read_text(encoding="utf-8").replace("origin: invented\n", f"origin: invented\nnext: {{what: {what}}}\n"),
+                    encoding="utf-8")
+
+
 def test_task_owner_hands_the_step_to_the_bridge_and_its_undo_gives_it_back(world):
+    _with_step(world)
     world.runner.calls.clear()
     res = world.act("task_owner", key="task:demo-task", who="bridge")
     assert writes(world)[0] == K(world, "next", "demo-task", "--who", "bridge", "--json")
@@ -64,6 +71,26 @@ def test_task_owner_hands_the_step_to_the_bridge_and_its_undo_gives_it_back(worl
     world.runner.calls.clear()
     world.act(undo["verb"], **undo["args"])
     assert writes(world)[0][:5] == K(world, "next", "demo-task", "--who")[:5]
+
+
+def test_task_owner_on_a_task_without_a_step_names_the_task_as_its_step(world):
+    # round 1 of the four answers: 36 of 40 tasks had no next step, and task.py next refused "has no next step to
+    # give someone", in English, for every one. The task itself is the step then; the undo takes that step back
+    world.runner.calls.clear()
+    res = world.act("task_owner", key="task:demo-task", who="bridge")
+    assert writes(world)[0] == K(world, "next", "demo-task", world.row("task:demo-task")["title"], "--who", "bridge", "--json")
+    assert res["ok"]
+    undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+    assert undo == {"verb": "task_next", "args": {"slug": "demo-task", "clear": True}}
+    world.runner.calls.clear()
+    world.act(undo["verb"], **undo["args"])
+    assert writes(world)[0] == K(world, "next", "demo-task", "--clear", "--json")
+
+
+def test_handing_a_task_without_a_step_to_a_person_names_the_task_as_its_step(world):
+    world.runner.calls.clear()
+    world.act("work_on", key="task:demo-task", who="Noa", until="2026-12-01")
+    assert writes(world)[0] == K(world, "next", "demo-task", world.row("task:demo-task")["title"], "--who", "Noa", "--check", "2026-12-01", "--json")
 
 
 def test_task_owner_takes_a_task_and_one_line_only(world):
@@ -95,3 +122,14 @@ def test_the_view_carries_what_is_out_of_sight_and_how_long_a_task_rests():
     # an older briefing counts nothing: none, never zeros it did not count
     assert m.parse_view({"view": {"buckets": []}}, True, 0)["aside"] is None
     assert m.parse_view({"view": {"aside": {"later": "x", "list": -1}}}, True, 0)["aside"] == {"later": 0, "list": 0, "done_today": 0}
+
+
+def test_an_inbox_item_a_page_lists_names_its_task_but_is_no_task_of_its_own():
+    # round 1 of the four answers: a task parked onto the watch list left a second point in Do, titled as its open
+    # inbox item ("Estimate for Avery is ready to send"), with all four answers and no number: the inbox page's item
+    # named the task, and the collector made a task row of it, with the item's title and no status
+    view = {"pages": [{"id": "work", "sections": [
+        {"id": "inbox", "kind": "inbox", "view": "table", "items": [{"title": "Estimate for Avery is ready", "task": "est"}]},
+        {"id": "tasks", "kind": "tasks", "view": "table", "items": [{"title": "Plan the move", "task": "move"}]},
+        {"id": "board", "kind": "tasks", "view": "taskboard", "items": [{"title": "Board card", "task": "board"}]}]}]}
+    assert m.page_tasks(view) == [("move", "Plan the move")]

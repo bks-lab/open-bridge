@@ -238,7 +238,8 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
                      "until": ("day", False)},
     # stage 4 of the one point view: In progress with someone until a check-in day, its undo and Stuck on the check-in
     "work_on": {"key": ("key", True), "who": ("line", True), "until": ("date", True), "text": ("text", False)},
-    "task_next": {"slug": ("slug", True), "who": ("line", False), "check": ("date", False), "clear_check": ("bool", False)},
+    "task_next": {"slug": ("slug", True), "who": ("line", False), "check": ("date", False), "clear_check": ("bool", False),
+                  "clear": ("bool", False)},
     # With … under More of a bucket card: who takes a task's next step (you, the Bridge), undone by task_next
     "task_owner": {"key": ("key", True), "who": ("line", True)},
     "checkin_stuck": {"key": ("key", True), "text": ("text", False)},

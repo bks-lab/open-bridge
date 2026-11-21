@@ -318,6 +318,15 @@ def task_row(slug: str, title: str) -> dict:
     return row
 
 
+def page_tasks(view: dict) -> list[tuple]:
+    """[(slug, title)] of the tasks the pages show as tasks, in page order: an item of a taskboard section is none (its
+    page resolves task:<slug> from the folder, actions.page_entry), nor is an inbox item that names its task (it is
+    that item, never the task: round 1 of the four answers had a parked task back in Do under its item's title)"""
+    return [(it["task"], it.get("title") or it["task"]) for pg in view.get("pages", []) for sec in pg.get("sections", [])
+            if sec.get("view") != "taskboard" and sec.get("kind") != "inbox"
+            for it in sec.get("items", []) if isinstance(it.get("task"), str) and it.get("task")]
+
+
 def task_row_for(slug: str, title: str, tasks: list[dict], tx: dict = EN) -> dict:
     t = next((x for x in tasks if x["slug"] == slug), None)
     if t is None:

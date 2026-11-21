@@ -10577,6 +10577,9 @@ def test_work_on_puts_an_item_with_someone_until_its_check_in_day_and_takes_it_b
     undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "inbox"][0]
     assert undo["verb"] == "inbox_reopen"
     # a task: who takes its step and the check-in day, the step kept; the undo puts the old who back
+    status = world.root / "work" / "tasks" / "demo-task" / "STATUS.md"
+    status.write_text(status.read_text(encoding="utf-8").replace("origin: invented\n", "origin: invented\nnext: {what: Draft it}\n"),
+                      encoding="utf-8")
     world.runner.calls.clear()
     world.act("work_on", key="task:demo-task", who="lena", until=TOMORROW)
     assert writes(world)[0] == K(world, "next", "demo-task", "--who", "lena", "--check", TOMORROW, "--json")

@@ -299,13 +299,11 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
     # `trow ?? taskRow(slug, title)`. The slug is checked again before it reaches an argv.
     # A taskboard section (view: taskboard) names every task and stream on its own page: they are no rows of Work,
     # and its verbs resolve task:<slug> from the folder (actions.page_entry)
-    page_items = [it for pg in view.get("pages", []) for sec in pg["sections"] if sec.get("view") != "taskboard"
-                  for it in sec["items"] if isinstance(it.get("task"), str) and it.get("task")]
-    page_tasks = [(it["task"], it.get("title") or it["task"]) for it in page_items]
+    page_tasks = m.page_tasks(view)
     # They go out as task_rows too, so a task opened from a page shows the same actions as one on the card.
     task_rows = []
     # the page's full title beats the short label; an item without a title does not
-    page_titles = {it["task"]: it["title"] for it in reversed(page_items) if it.get("title")}
+    page_titles = {slug: title for slug, title in reversed(page_tasks) if title != slug}
     # and every task the last check judged, so its overview row has the same actions
     review_tasks = [(slug, v["title"]) for slug, v in verdicts.items()]
     # a task the list of every task names (cockpit.files_scope all) carries its status and fields from there too
