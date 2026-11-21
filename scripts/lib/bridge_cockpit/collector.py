@@ -391,6 +391,8 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         "buckets": list(view.get("bucket_defs") or []),
         # what is out of sight of the buckets, only counted (model.aside_of): later, the watch list, done today
         "aside": view.get("aside"),
+        # put off to a day, out of sight until it (briefing_view away): a tab that asks about such an item waits too
+        "away": list(view.get("away") or []),
         "review": {"running": review["running"], "error": review["error"], "last": review["last"],
                    "keys": [f"task:{slug}" for slug in verdicts if f"task:{slug}" in index]},
         "pages": pages, "alarms": alarms,

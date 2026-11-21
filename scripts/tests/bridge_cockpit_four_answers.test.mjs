@@ -355,3 +355,13 @@ test('the menu of Later closes on a click beside it and on Escape, never coverin
   await rounds()
   assert.equal(el.$('.fb-later-menu'), null, 'Escape')
 })
+
+test('Later on a tab card puts its item off: the tab that asks about it leaves Do until that day', () => {
+  // round 1 (tabs): the item was deferred, but the tab point stayed in Do with only its own answer left
+  const tab = { ref: 'surface:7', name: 'Robin again · c7ae', state: 'waiting', item: '20261009-0900-c7ae', live: true, since_ms: NOW - 60000,
+    ask: { text: 'Shall I contact Robin again?', yes_no: true } }
+  const s = state({ tabs: [tab] })
+  s.model.away = [{ key: 'inbox:20261009-0900-c7ae', until: TOMORROW }]
+  const { all } = logic.bucketPoints(s, 'en')
+  assert.ok(!all.some(x => x.tab?.ref === tab.ref))
+})
