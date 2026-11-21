@@ -296,6 +296,12 @@ def s_tabs(w: World) -> None:
     w.act("tab_send", tab_ref="surface:13", text="--yes", seen=ask["surface:13"]["hash"], expect="waiting",
           name="waiting plain")
     w.act("tab_go_on", tab_ref="surface:13", seen=ask["surface:13"]["hash"], name="waiting plain")
+    # the answer the input line holds ready goes out with Enter alone
+    screens["surface:13"] = "⏺ Shall I go on?\n──────\n❯ yes, go on\n──────\n"
+    w.clock.advance(61)                 # a question a minute old is read again
+    w.app.tabs.poll()
+    ready = next(t["ask"] for t in w.app.tabs_state()["tabs"] if t["ref"] == "surface:13")
+    w.act("tab_accept", tab_ref="surface:13", seen=ready["hash"], text=ready["suggestion"], name="waiting plain")
     w.act("adopt", key="task:other-task", tab_ref="surface:11")
     w.act("tab_close", tab_ref="surface:8")
     w.act("start_control")
@@ -696,7 +702,8 @@ STATE_FIELDS = {
     "quick.convs[].about": (dict, type(None)),        # the row or item a chat is about; None for a free one
 }
 # the keys and types of a tab's question (asks.py), when it has one
-ASK_FIELDS = {"text": str, "options": list, "hash": str, "yes_no": bool, "draft": bool}
+ASK_FIELDS = {"text": str, "options": list, "hash": str, "yes_no": bool, "draft": bool,
+              "suggestion": (str, type(None))}     # the answer the input line holds ready, None without one
 
 
 def state_values(data, path: str) -> list:
@@ -750,7 +757,8 @@ def test_state_fields_the_page_reads_are_present(tmp_path):
     assert state_values(state, "sessions.sessions[].tab.ws_ref") == ["workspace:9"]
     assert state_values(state, "tabs.tabs[].state_source") == ["hook", None]
     none, ask = state_values(state, "tabs.tabs[].ask")
-    assert none is None and {k: type(v) for k, v in ask.items()} == ASK_FIELDS
+    assert none is None and set(ask) == set(ASK_FIELDS)
+    assert all(isinstance(ask[k], types) for k, types in ASK_FIELDS.items()), ask
     assert ask["options"] == [{"n": 1, "label": "Yes"}, {"n": 2, "label": "No"}]
 
 

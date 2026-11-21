@@ -114,6 +114,36 @@ NAMED_DRAFT = """\
   ⏵⏵ auto mode on (shift+tab to cycle)
 """
 
+# the tail of a waiting Claude Code tab (20.11.): its last words, then the turn's status line, a recap of the session,
+# a right-aligned hint line and Claude Code's own suggestion for the answer in the input line. The question is the
+# words, never the chrome around them
+CHROME = """\
+  - Noch offen: Frau Biyik ist noch nicht in Apple Kontakte eingetragen, weil die Kontakte-App vorhin auf keine Anfrage reagiert hat. Soll ich
+    es noch einmal versuchen?
+
+✻ Sautéed for 59s · done 11:08
+
+※ recap: Es ging um die Westhouse-Anfrage „Tester KI“: Die Bewerbung ist von dir gesendet, und die neue CV-Adresse ... ist
+  für künftige Bewerbungen notiert. Offen ist nur noch, Frau Biyik in Apple Kontakte einzutragen, soll ich es noch einmal versuchen? (turn off
+  recaps in /config)
+                                                               new task? /clear to save 159k tokens · ✔ Update installed · /restart to apply
+──────────────────────────────────────────────────────────────
+❯ ja, Kontakt nochmal versuchen
+──────────────────────────────────────────────────────────────
+  ➜ repo git:(user/x↑1) +35 -2  [Opus 5.5 · medium]  16%/1M · $2.32
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 2 agents
+"""
+CHROME_SAID = "⏺ Die Bewerbung ist gesendet.\n\n" + CHROME
+UPDATE_HINT = """\
+⏺ Done. The release notes are written.
+
+                                                                        ✔ Update installed · /restart to apply
+──────────────────────────────────────────────────────────────
+❯ #
+──────────────────────────────────────────────────────────────
+  ? for shortcuts
+"""
+
 
 def plain(text: str) -> str:
     return text
@@ -197,6 +227,36 @@ def test_a_draft_under_a_rule_that_carries_the_session_name_is_seen():
     assert named["draft"] is True and named["text"] == "Done. Shall I commit the three files?"
     assert asks.draft_of(NAMED_DRAFT.replace("❯ commit th", "❯")) is False
 
+
+def test_the_question_is_the_agents_last_words_never_claude_code_chrome():
+    """no recap, no right-aligned hint, no turn status: the last words of the agent, wrapped lines as they come"""
+    for screen in (CHROME, CHROME_SAID):
+        ask = asks.question_of(screen, "waiting", plain)
+        assert ask["text"].endswith("Soll ich\nes noch einmal versuchen?"), ask["text"]
+        assert "recap" not in ask["text"] and "/clear" not in ask["text"] and "Sautéed" not in ask["text"]
+        assert ask["yes_no"] is True
+    assert asks.question_of(CHROME_SAID, "waiting", plain)["text"].startswith("Die Bewerbung ist gesendet.")
+    update = asks.question_of(UPDATE_HINT, "waiting", plain)
+    assert update["text"] == "Done. The release notes are written." and update["yes_no"] is False
+    # a paragraph of the agent's words after a blank line stays part of them
+    two = "⏺ The flag is documented.\n\n  Should I add it to the changelog?\n\n✻ Baked for 3s\n"
+    assert asks.question_of(two, "waiting", plain)["text"] == "The flag is documented.\nShould I add it to the changelog?"
+
+
+def test_the_input_line_is_read_as_a_suggested_answer():
+    """read-screen cannot tell Claude Code's grey suggestion from typed text: either is the answer the tab holds ready"""
+    ask = asks.question_of(CHROME, "waiting", plain)
+    assert ask["suggestion"] == "ja, Kontakt nochmal versuchen" and ask["draft"] is True
+    assert asks.question_of(SUMMARY, "waiting", plain)["suggestion"] is None
+    # a line without a word (`❯ #`) is held as typed, but offers no answer
+    update = asks.question_of(UPDATE_HINT, "waiting", plain)
+    assert update["draft"] is True and update["suggestion"] is None
+    assert asks.question_of(NAMED_DRAFT, "waiting", plain)["suggestion"] == "commit th"
+    # the suggestion is scrubbed like the words, and it is no part of the question's hash
+    secret = "s3cr3t"
+    scrubbed = asks.question_of(CHROME.replace("Kontakt", secret), "waiting", lambda x: x.replace(secret, "[token]"))
+    assert scrubbed["suggestion"] == "ja, [token] nochmal versuchen"
+    assert ask["hash"] == asks.question_of(CHROME.replace("❯ ja, Kontakt nochmal versuchen", "❯"), "waiting", plain)["hash"]
 
 def test_question_of_returns_none_for_an_empty_or_frame_only_screen():
     assert asks.question_of("", "waiting", plain) is None
@@ -420,6 +480,10 @@ def test_tab_send_refuses_when_a_draft_is_typed(world):
     with pytest.raises(ActionError) as err:
         world.act("tab_go_on", tab_ref="surface:13", seen=seen)
     assert err.value.code == "tab_draft" and world.runner.of("workplace.send") == []
+    # go on without the question it answers (the tab's own controls send none) reads the input line all the same
+    with pytest.raises(ActionError) as err:
+        world.act("tab_go_on", tab_ref="surface:13")
+    assert err.value.code == "tab_draft" and world.runner.of("workplace.send") == []
 
 
 def test_a_reply_with_a_different_tab_name_is_refused(world):
@@ -455,6 +519,48 @@ def test_tab_send_with_expect_repolls_and_sends_when_unchanged(world):
         world.act("tab_send", tab_ref="surface:13", text="go", expect="shell")
     assert err.value.code == "invalid_argument"
 
+
+def test_tab_accept_presses_enter_on_the_suggested_answer_only_while_it_stands(world):
+    by_ref = {"surface:13": CHROME}
+    asked(world, by_ref)
+    ask = ask_of(world, "surface:13")
+    world.runner.calls.clear()
+    res = world.act("tab_accept", tab_ref="surface:13", seen=ask["hash"], text=ask["suggestion"], name="waiting plain")
+    assert writes(world) == [W(world, "key", "surface:13", "enter")]
+    assert res["ok"] and "ja, Kontakt nochmal versuchen" in res["note"]
+    # another line in the input by now: nothing is pressed
+    by_ref["surface:13"] = CHROME.replace("❯ ja, Kontakt nochmal versuchen", "❯ nein, lass es")
+    world.runner.calls.clear()
+    with pytest.raises(ActionError) as err:
+        world.act("tab_accept", tab_ref="surface:13", seen=ask["hash"], text=ask["suggestion"])
+    assert (err.value.status, err.value.code, err.value.field) == (409, "tab_moved", None)
+    # an empty input line: nothing to accept
+    by_ref["surface:13"] = CHROME.replace("❯ ja, Kontakt nochmal versuchen", "❯")
+    with pytest.raises(ActionError) as err:
+        world.act("tab_accept", tab_ref="surface:13", seen=ask["hash"], text=ask["suggestion"])
+    assert err.value.code == "tab_moved"
+    # another question by now
+    by_ref["surface:13"] = SUMMARY.replace("❯\n", "❯ ja, Kontakt nochmal versuchen\n")
+    with pytest.raises(ActionError) as err:
+        world.act("tab_accept", tab_ref="surface:13", seen=ask["hash"], text=ask["suggestion"])
+    assert err.value.code == "tab_moved"
+    assert writes(world) == []
+    # the hash and the text are needed, a dialog is answered by its options
+    for bad in ({"text": "x"}, {"seen": ask["hash"]}):
+        with pytest.raises(ActionError) as err:
+            world.act("tab_accept", tab_ref="surface:13", **bad)
+        assert err.value.code == "invalid_argument"
+    with pytest.raises(ActionError) as err:
+        world.act("tab_accept", tab_ref="surface:7", seen=ask["hash"], text="x")
+    assert err.value.code == "not_applicable"
+    # without the key right of the driver there is no Enter to press
+    world.runner.handlers["workplace.caps"] = lambda argv: ok({"caps": ["tabs", "send", "screen"]})
+    world.app.driver_caps(fresh=True)
+    by_ref["surface:13"] = CHROME
+    with pytest.raises(ActionError) as err:
+        world.act("tab_accept", tab_ref="surface:13", seen=ask["hash"], text=ask["suggestion"])
+    assert (err.value.status, err.value.code) == (503, "driver_cannot")
+    assert writes(world) == []
 
 def test_tab_option_sends_the_digit_of_the_option(world):
     asked(world, {"surface:7": PERMISSION})

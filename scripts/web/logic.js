@@ -2247,7 +2247,8 @@ export function tabNextStep(tab, can, settled = false) {
   const closes = tabCloses(tab, can, settled)
   if (tab.state === 'needs-you' && can('key')) return ['yes', 'no']
   if (tab.state === 'waiting' && own && finished && closes) return ['close']
-  if (tab.state === 'waiting' && own && !tab.filed_by) return closes ? ['go_on', 'close'] : ['go_on']
+  // go on types words, which the server refuses while the input line holds text (tab_draft)
+  if (tab.state === 'waiting' && own && !tab.filed_by && !tab.ask?.draft) return closes ? ['go_on', 'close'] : ['go_on']
   const way = can('focus') ? ['jump'] : can('screen') ? ['view'] : []
   return closes ? [...way, 'close'] : way
 }
@@ -2941,7 +2942,10 @@ export function replySend(tab, text) {
  *  label}], textBox }. A dialog (needs-you) gets one button per option it shows, never free text and never
  *  a bare yes for a choice; one that could not be read gets the tab and today's yes and no. A waiting tab
  *  gets yes and no as words only when it asks a yes or no question, go on unless its result is filed, and
- *  the text box. The control session answers through its own box. Each control needs its driver right */
+ *  the text box. A waiting tab whose input line holds text (Claude Code's own suggestion or typed words, the
+ *  screen cannot tell) gets only that answer, sent with Enter alone (tab_accept, with the question's hash):
+ *  the server refuses typed words while the line holds text (tab_draft), so nothing that types is offered.
+ *  The control session answers through its own box. Each control needs its driver right */
 export function replyOptions(tab, s, t = TABLES.en) {
   const none = { buttons: [], textBox: false }
   if (!tab) return none
@@ -2964,7 +2968,15 @@ export function replyOptions(tab, s, t = TABLES.en) {
     }
     return { buttons, textBox: false }
   }
-  if (tab.state !== 'waiting' || tab.is_control || !send) return none
+  if (tab.state !== 'waiting' || tab.is_control) return none
+  if (ask?.draft) {
+    const ready = typeof ask.suggestion === 'string' ? ask.suggestion.trim() : ''
+    if (ready && ask.hash && key) {
+      buttons.push({ id: 'accept', verb: 'tab_accept', label: r.accept(short(ready, 60)), args: { tab_ref: tab.ref, text: ask.suggestion, ...replyGuard(tab) } })
+    }
+    return { buttons, textBox: false }
+  }
+  if (!send) return none
   if (ask?.yes_no) {
     buttons.push({ id: 'yes', ...replySend(tab, r.yesText), label: r.yes })
     buttons.push({ id: 'no', ...replySend(tab, r.noText), label: r.no })
@@ -3009,7 +3021,8 @@ export function guideChoices(tab, entry, s) {
       id: `guide-${o.n}`, verb: 'tab_option', args: { tab_ref: tab.ref, n: o.n, ...replyGuard(tab) },
       label: o.label, why: o.why ?? '', send: null, n: o.n, risky: !!o.risky, picked: entry.pick === i }))
   }
-  if (!canTab(s, 'send')) return []
+  // typed words are refused while the input line holds text (tab_draft): the guide's answers type words
+  if (!canTab(s, 'send') || tab.ask?.draft) return []
   return options.map((o, i) => ({ o, i })).filter(({ o }) => typeof o.send === 'string' && o.send).map(({ o, i }) => ({
     id: `guide-${i}`, ...replySend(tab, o.send), label: o.label, why: o.why ?? '', send: o.send, n: null,
     risky: !!o.risky, picked: entry.pick === i }))

@@ -28,6 +28,13 @@ TOOL_CALL = re.compile(r"^⏺\s*[A-Za-z][\w.:-]*\(")
 STATUS = re.compile(r"^(?:[✻✶✳✢✽✦⏵⏸⏹·*]\s|\?\s+for shortcuts)|esc to interrupt|shift\+tab to cycle|auto-compact",
                     re.IGNORECASE)
 YES = re.compile(r"^(yes|ja)\b", re.IGNORECASE)
+# Claude Code's own lines around the agent's words, never part of them: a turn's status line (`✻ Baked for 3s`), the
+# session recap (`※ recap: ...`, wrapped over the lines under it), and the hints it right-aligns above the input line
+TURN_CHROME = re.compile(r"^(?:[✻✶✳✢✽✦]\s|※)")
+RECAP = re.compile(r"^※")
+HINT = re.compile(r"/clear to save|/restart to apply|update installed|turn off recaps|\?\s+for shortcuts", re.IGNORECASE)
+RIGHT_ALIGNED = 24  # leading spaces of a line Claude Code puts at the right edge
+WORD = re.compile(r"\w")
 
 
 def _clean(line: str) -> str:
@@ -70,13 +77,21 @@ def _prompt_box(raw: list[str], clean: list[str], after: int) -> int | None:
     return None
 
 
+def _chrome(raw: str, clean: str) -> bool:
+    """A line of Claude Code itself: a turn's status, the recap, a hint, a line at the right edge"""
+    indent = len(raw) - len(raw.lstrip(" "))
+    return bool(TURN_CHROME.match(clean) or HINT.search(clean) or (clean and indent >= RIGHT_ALIGNED))
+
+
 def _meaningful(line: str) -> bool:
     return bool(line) and not STATUS.search(line) and not line.startswith("⎿") and not TOOL_CALL.match(line)
 
 
-def _said(clean: list[str], end: int) -> list[str]:
-    """The last lines of the agent's last block of words before `end`: no prompt box, frames, tool calls,
-    tool output, status lines or blank lines. Without a block of words, the last such lines of the screen."""
+def _said(raw: list[str], clean: list[str], end: int) -> list[str]:
+    """The last lines of the agent's last block of words before `end`: the block starts at its `⏺` line and ends at
+    the first line of Claude Code's own (a turn's status, the recap, a hint, the prompt) or a tool call;
+    blank lines, tool output and status lines inside it are left out. Without a block of words, the last such lines
+    of the screen, never a line of Claude Code's own nor the recap's wrapped lines."""
     start = None
     for i in range(end - 1, -1, -1):
         if clean[i].startswith("⏺") and not TOOL_CALL.match(clean[i]):
@@ -84,14 +99,24 @@ def _said(clean: list[str], end: int) -> list[str]:
             break
     out: list[str] = []
     if start is not None:
-        for line in clean[start:end]:
-            if PROMPT.match(line) or TOOL_CALL.match(line):
+        for i in range(start, end):
+            line = clean[i]
+            if PROMPT.match(line) or TOOL_CALL.match(line) or _chrome(raw[i], line):
                 break
             line = line[1:].strip() if line.startswith("⏺") else line
             if _meaningful(line):
                 out.append(line)
     else:
-        out = [line for line in clean[:end] if _meaningful(line) and not PROMPT.match(line)]
+        recap = False
+        for i in range(end):
+            line = clean[i]
+            if RECAP.match(line):
+                recap = True
+            elif not line or _chrome(raw[i], line) or PROMPT.match(line):
+                recap = False
+            if recap or _chrome(raw[i], line) or PROMPT.match(line) or not _meaningful(line):
+                continue
+            out.append(line)
     return out[-LAST_LINES:]
 
 
@@ -125,16 +150,22 @@ def _dialog(clean: list[str], scrub: Callable[[str], str]) -> tuple[list[dict], 
 
 
 def question_of(text: str, state: str, scrub: Callable[[str], str]) -> dict | None:
-    """The question a tab in `state` asks on this screen: {text, options, hash, yes_no, draft}, or None
-    when nothing readable is left. `scrub` takes out what must never reach the page (the cockpit's key)."""
+    """The question a tab in `state` asks on this screen: {text, options, hash, yes_no, draft, suggestion}, or
+    None when nothing readable is left. `scrub` takes out what must never reach the page (the cockpit's key).
+
+    `draft`: the input line holds text, so typed words would be appended to it. `suggestion`: that text as an
+    answer the tab holds ready (None without a word in it). The screen cannot tell Claude Code's grey prompt
+    suggestion from typed text; either goes out with Enter alone (tab_accept). It is no part of the hash."""
     raw = [line.rstrip() for line in str(text or "").splitlines()]
     clean = [_clean(line) for line in raw]
     last_said = max((i for i, line in enumerate(clean) if line.startswith("⏺")), default=-1)
     box = _prompt_box(raw, clean, last_said)
-    draft = False
+    draft, suggestion = False, None
     if box is not None:
-        typed = PROMPT.match(clean[box]).group(1)
-        draft = bool(typed and typed.strip())
+        typed = (PROMPT.match(clean[box]).group(1) or "").strip()
+        draft = bool(typed)
+        if WORD.search(typed):
+            suggestion = _cap(scrub(typed).strip())
     end = box if box is not None else len(clean)
     if box is not None and box > 0 and RULE.match(raw[box - 1]):
         end = box - 1                      # the rule above the prompt, and a session name on it, is no word said
@@ -143,7 +174,7 @@ def question_of(text: str, state: str, scrub: Callable[[str], str]) -> dict | No
     if dialog:
         options, lines = dialog
     else:
-        lines = _said(clean, end)
+        lines = _said(raw, clean, end)
     words = scrub("\n".join(lines)).strip()
     if not words and not options:
         return None
@@ -152,7 +183,8 @@ def question_of(text: str, state: str, scrub: Callable[[str], str]) -> dict | No
     # the options belong to the question: the same words over other options are another question
     material = state + words + "".join(f"\n{o['n']}. {o['label']}" for o in options)
     digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
-    return {"text": words, "options": options, "hash": digest, "yes_no": yes_no, "draft": draft}
+    return {"text": words, "options": options, "hash": digest, "yes_no": yes_no, "draft": draft,
+            "suggestion": suggestion}
 
 
 def draft_of(text: str) -> bool:

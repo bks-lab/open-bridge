@@ -852,6 +852,25 @@ test('a tab_moved answer keeps the draft and shows the note', async () => {
   assert.equal(el.$('textarea').value, 'yes, all three')
 })
 
+test('a tab with an answer ready in its input line leads with that answer, says so and types nothing', async () => {
+  const s = cockpitState(NOW)
+  const base = tabOf(s, 'surface:12')
+  const tab = { ...base, ask: { ...base.ask, draft: true, suggestion: 'yes, all three' } }
+  const sent = []
+  const c = new Proxy({}, { get: (_, p) => p === 'reply' ? (...a) => { sent.push(a); return Promise.resolve({ ok: true }) }
+    : p === 'then' ? undefined : () => undefined })
+  const el = mount(html`<${TabReply} tab=${tab} s=${s} c=${c} />`)
+  assert.equal(el.$('.reply-draft').text(), en.reply.draft)
+  const btns = el.$$('.reply-btns button')
+  assert.equal(btns[0].text(), en.reply.accept('yes, all three'))
+  assert.ok(btns[0].hasClass('btn-primary'))
+  assert.equal(el.$('textarea'), null)
+  assert.ok(btns.slice(1).every(b => b.text() === en.reply.openTab), 'nothing that types words')
+  btns[0].click()
+  await tick()
+  assert.deepEqual(sent[0].slice(0, 2), ['tab_accept', { tab_ref: 'surface:12', text: 'yes, all three', seen: tab.ask.hash, name: 'demo-task research' }])
+})
+
 test('a row that left stays greyed for one poll', () => {
   const s = cockpitState(NOW)
   const el = renderSide(s)
