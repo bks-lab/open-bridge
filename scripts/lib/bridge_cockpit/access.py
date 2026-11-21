@@ -68,7 +68,8 @@ OWNER_VERBS = frozenset("""
     seen_focus seen_read seen_unread
     return_analyse return_forget return_read return_task return_task_undo return_unread row_action row_undo run_seen runs_on session_link session_resume session_unlink shelve snapshot
     snapshot_list start_agent start_control tab_accept tab_close tab_done tab_go_on tab_jump tab_keys tab_move tab_new tab_no
-    tab_option tab_rename tab_send tab_yes task_keep task_reopen task_review task_running task_unmerge team_role
+    tab_option tab_rename tab_send tab_yes task_keep task_park task_reopen task_review task_running task_unmerge task_unpark
+    team_role
     ticker_edit ticker_profile ticker_refresh ticker_settings ticker_settings_reset timeline_ask to_task
     to_task_undo tour_done tour_reset unhide worker_advise workspace_active workspace_close workspace_delete
     workspace_new workspace_plan workspace_rename workspace_switch workspaces_enabled view_switch""".split())

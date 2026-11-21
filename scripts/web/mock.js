@@ -2298,6 +2298,13 @@ export function createMockTransport(opts = {}) {
       if (r?.inbox_state === 'deferred') { Object.assign(r, { inbox_state: 'open', until: null, checkin: null }); publish() }
       return null
     }
+    if (verb === 'task_park' || verb === 'task_unpark') {
+      // park: status backlog, the task stays open (task.py status); its undo, the status before
+      const r = rowOf(verb === 'task_park' ? args.key : `task:${args.slug}`)
+      if (r) Object.assign(r, verb === 'task_park' ? { status: 'backlog', bucket: null } : { status: args.as ?? 'doing' })
+      publish()
+      return null
+    }
     if (verb === 'task_running' || verb === 'task_keep') {
       const keys = verb === 'task_running' ? [`task:${args.slug}`] : args.keys ?? []
       for (const k of keys) {

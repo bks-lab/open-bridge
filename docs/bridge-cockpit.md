@@ -1251,7 +1251,7 @@ by its place among the bucket's options, whatever the profile calls it:
 | plan | schedule · later | schedule: a day picked (tomorrow, Monday, in a week, in a month, another day), then `later` to it. later: to the next briefing day |
 | delegate | go · not now | go: `do_it`. not now: `later` to the next briefing day |
 | waiting | nudge · wait | nudge: `do_it` with the check-in's sentence that only drafts a message, never sends it. wait: a day picked, then `runs_on` until it, on whom it waits |
-| drop | park · keep | park: a task `shelve` (an idea), anything else out of sight for 30 days. keep: `task_keep` |
+| drop | park · keep | park: a task `task_park` (status backlog, the task stays in `work/tasks/`, as the briefing's park; undone by `task_unpark`), anything else out of sight for 30 days. keep: `task_keep` (a recommendation of the task check is dismissed; without one the task gets a dated note `Kept: stays open`, so its quiet days count from today) |
 
 **Obsolete** (de: **Veraltet**) is the fixed last answer of every point in
 every bucket, always at the same place: quiet (never the strong one; on the

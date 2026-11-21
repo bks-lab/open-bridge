@@ -9,7 +9,9 @@
     python3 scripts/task.py merge <keep> --from <slug> [--heading TEXT] [--json]
     python3 scripts/task.py unmerge <keep> --from <slug> [--as doing|backlog|review] [--json]
     python3 scripts/task.py review [slug ...] [--all] [--fresh] [--keep SLUG ...] [--json]
-    python3 scripts/task.py wait <slug> --until YYYY-MM-DD [--on TEXT] | --clear [--json]
+    python3 scripts/task.py wait <slug> --until YYYY-MM-DD [--on TEXT] | --clear
+        | --back [--on TEXT] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--json]
+    python3 scripts/task.py status <slug> {doing,review,backlog} [--note TEXT] [--json]
     python3 scripts/task.py new [slug] --headline TEXT | --from-inbox ID [--status backlog|doing] [--situation TEXT]
         [--origin TEXT] [--json]
     python3 scripts/task.py log [--] <context> <text>
@@ -209,6 +211,17 @@ def stale_links(root: Path, old: str) -> list[str]:
         return []
 
 
+def _frontmatter_values(text: str, keys) -> dict:
+    """The raw values of single-line `key: value` frontmatter fields, as written (quotes kept), {} for none."""
+    head = text.split("\n---", 1)[0] if text.startswith("---") else ""
+    out = {}
+    for key in keys:
+        found = re.search(rf"^{re.escape(key)}:[ \t]*(.*?)[ \t]*$", head, re.M)
+        if found and found.group(1):
+            out[key] = found.group(1)
+    return out
+
+
 def remove_fields(text: str, keys) -> str:
     """Drop `key:` lines of the frontmatter, with their indented continuation lines."""
     lines = text.splitlines(keepends=True)
@@ -310,7 +323,12 @@ def close_task(root: Path, slug: str, *, reason: str | None = None, declined: bo
         fields.append(("was_stream", "true", "closed"))
     # a normal close drops an old "outcome: declined", which would otherwise survive and mislabel the task; a task
     # closed as merged keeps its blocker, so an undo of the merge opens it as it was (unmerge_task)
-    text = remove_fields(text, ("merged_into",))
+    text = remove_fields(text, ("merged_into", "waited_on", "waited_since"))
+    # a closed task waits on nobody: its blocker is kept as waited_on/waited_since, so a reopen (the undo of Obsolete
+    # or of a close) gives it back what it waited on (reopen_task)
+    if not merged_into:
+        fm = _frontmatter_values(text, ("blocked_by", "blocked_since"))
+        fields += [(k, fm[o], "closed") for o, k in (("blocked_by", "waited_on"), ("blocked_since", "waited_since")) if fm.get(o)]
     text = remove_fields(set_fields(text, fields), (() if merged_into else ("blocked_by", "blocked_since"))
                          + (() if declined or merged_into else ("outcome",)))
     word = "Declined" if declined else "Closed"
@@ -355,16 +373,57 @@ def close_task(root: Path, slug: str, *, reason: str | None = None, declined: bo
     return out
 
 
+# ---------------------------------------------------------------- status of an open task
+
+OPEN_STATUSES = ("doing", "review", "backlog")
+
+
+def status_task(root: Path, slug: str, status: str, *, note: str | None = None, today: str | None = None) -> dict:
+    """An open task's status moves, the task stays where it is: the briefing's "park" (status: backlog, control.md)
+    and its undo (the status before). A closed task is task.py close and reopen, never this. A dated note when one is
+    given; last_updated today either way."""
+    if status not in OPEN_STATUSES:
+        raise ValueError(f"status one of {', '.join(OPEN_STATUSES)} (closing is task.py close)")
+    today = today or dt.date.today().isoformat()
+    path = find_status(root, slug)
+    text = path.read_bytes().decode("utf-8")
+    was = _frontmatter_values(text, ("status",)).get("status")
+    text = set_fields(text, [("status", status, None), ("last_updated", today, None)])
+    note = " ".join((note or "").split())
+    if note:
+        text = add_note(text, note, today)
+    path.write_bytes(text.encode("utf-8"))
+    with contextlib.redirect_stdout(sys.stderr):
+        regenerate_board(root)
+    return {"slug": slug, "status": status, "was": was}
+
+
 # ---------------------------------------------------------------- runs on
 
 def wait_task(root: Path, slug: str, *, until: str | None = None, on: str | None = None, clear: bool = False,
-              today: str | None = None) -> dict:
+              today: str | None = None, back: bool = False, since: str | None = None) -> dict:
     """"Runs on": the task waits on a person or a run until a day to look again. It stays doing; blocked_by says
-    on what, quiet_until until when nobody asks after it (briefing advice, task review). clear takes it back."""
+    on what, quiet_until until when nobody asks after it (briefing advice, task review). clear takes it back. back is
+    the undo of a wait on a task that waited already: blocked_by, blocked_since and quiet_until become exactly what
+    on, since and until give (each one absent goes), so the undo gives back what it waited on before."""
     today = today or dt.date.today().isoformat()
     path = find_status(root, slug)
     text = path.read_bytes().decode("utf-8")
     kept = False
+    if back:
+        for day in (since, until):
+            if day:
+                dt.date.fromisoformat(day)
+        on = " ".join((on or "").split()) or None
+        text = remove_fields(text, ("blocked_by", "blocked_since", "quiet_until"))
+        fields = ([("blocked_by", json.dumps(on, ensure_ascii=False), "status")] if on else [])
+        fields += [("blocked_since", since, "blocked_by" if on else "status")] if since and on else []
+        fields += [("quiet_until", until, "blocked_by" if on else "status")] if until else []
+        text = add_note(set_fields(text, fields) if fields else text, "Wait taken back", today)
+        path.write_bytes(text.encode("utf-8"))
+        with contextlib.redirect_stdout(sys.stderr):
+            regenerate_board(root)
+        return {"slug": slug, "quiet_until": until, "on": on}
     if clear:
         text = remove_fields(text, ("blocked_by", "blocked_since", "quiet_until"))
         text = add_note(text, "Running again", today)
@@ -694,7 +753,10 @@ def reopen_task(root: Path, slug: str, *, status: str = "doing", note: str | Non
     dest = work / ("streams" if re.search(r"^was_stream:\s*true\s*$", text, re.M) else "tasks") / slug
     today = now.date().isoformat()
     note = " ".join((note or "").split())
-    text = remove_fields(set_fields(text, [("status", status, None)]), ("closed", "outcome", "was_stream", "merged_into"))
+    fm = _frontmatter_values(text, ("waited_on", "waited_since"))
+    back = [(k, fm[o], "status") for o, k in (("waited_since", "blocked_since"), ("waited_on", "blocked_by")) if fm.get(o)]
+    text = remove_fields(set_fields(text, [("status", status, None), *back]),
+                         ("closed", "outcome", "was_stream", "merged_into", "waited_on", "waited_since"))
     if noted:
         text = add_note(text, f"Reopened: {note}" if note else "Reopened", today)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -1780,13 +1842,25 @@ def _remember(cache: dict, need: list, answered: dict, now: dt.datetime, previou
                               "kept": bool(old.get("kept")) and old.get("hash") == t["hash"]}
 
 
-def keep(root: Path, slugs) -> dict:
-    """Dismiss the recommendation of these tasks until their evidence changes."""
+def keep(root: Path, slugs, today: str | None = None) -> dict:
+    """Keep these tasks open. A task with a recommendation of the check has it dismissed until its evidence changes;
+    one without (nobody ran the check, the briefing's "keep" on a resting task) gets a dated note "Kept: stays open",
+    which moves last_updated to today, so nobody asks again before it rests once more (the briefing's quiet advice
+    counts from last_updated). A task that is not open fails before anything is written."""
+    today = today or dt.date.today().isoformat()
     cache = _load_cache(root)
-    missing = [s for s in slugs if s not in cache["tasks"]]
-    if missing:
-        raise ValueError(f"no recommendation to keep for: {', '.join(missing)}")
-    for s in slugs:
+    plain = [s for s in slugs if s not in cache["tasks"]]
+    paths = {s: find_status(root, s) for s in plain}          # an unknown slug raises here, nothing written yet
+    for s, path in paths.items():
+        text = path.read_bytes().decode("utf-8")
+        path.write_bytes(add_note(text, "Kept: stays open", today).encode("utf-8"))
+    if plain:
+        with contextlib.redirect_stdout(sys.stderr):
+            regenerate_board(root)
+    dismissed = [s for s in slugs if s in cache["tasks"]]
+    if not dismissed:
+        return {"kept": list(slugs), "noted": plain}
+    for s in dismissed:
         cache["tasks"][s]["kept"] = True
     # the dashboard's overview reads the last run: it shows the dismissal at once, not after the next check
     last = cache.get("last") if isinstance(cache.get("last"), dict) else None
@@ -1794,7 +1868,7 @@ def keep(root: Path, slugs) -> dict:
         if isinstance(t, dict) and t.get("slug") in slugs:
             t["kept"] = True
     _save_cache(root, cache)
-    return {"kept": list(slugs)}
+    return {"kept": list(slugs), "noted": plain}
 
 
 def render_review(result: dict) -> str:
@@ -1855,11 +1929,20 @@ def main(argv=None) -> int:
     sh.add_argument("--until", help=f"YYYY-MM-DD, the day the idea may surface again (default: today + {SHELVE_DAYS} days)")
     sh.add_argument("--reason", default="")
     sh.add_argument("--json", action="store_true")
+    stp = sub.add_parser("status", help="an open task's status (doing, review, backlog), the task stays in place: "
+                                        "the briefing's park is backlog")
+    stp.add_argument("slug")
+    stp.add_argument("status", choices=OPEN_STATUSES)
+    stp.add_argument("--note", default=None, help="a dated note with it")
+    stp.add_argument("--json", action="store_true")
     wt = sub.add_parser("wait", help="runs on: waits on a person or a run until a day, nobody asks before")
     wt.add_argument("slug")
     wt.add_argument("--until", help="YYYY-MM-DD, the day to look again")
     wt.add_argument("--on", default=None, help="what it waits on; without it simply \"runs on\"")
     wt.add_argument("--clear", action="store_true", help="running again: blocked_by and quiet_until go")
+    wt.add_argument("--back", action="store_true",
+                    help="the undo of a wait: blocked_by, blocked_since and quiet_until become --on, --since, --until")
+    wt.add_argument("--since", default=None, help="with --back: YYYY-MM-DD, the day it began to wait")
     wt.add_argument("--json", action="store_true")
     lg = sub.add_parser("log", help="one row in today's block of work/log.md, for a decision on a row with no task or "
                                     "inbox item of its own (an issue, a deadline)")
@@ -1934,8 +2017,12 @@ def main(argv=None) -> int:
             for warning in out["warnings"]:
                 print(f"task: warning: {warning}", file=sys.stderr)
             return 0
+        if args.cmd == "status":
+            out = status_task(root, args.slug, args.status, note=args.note)
+            print(json.dumps(out, ensure_ascii=False) if args.json else f"{out['slug']} {out['was']} -> {out['status']}")
+            return 0
         if args.cmd == "wait":
-            out = wait_task(root, args.slug, until=args.until, on=args.on, clear=args.clear)
+            out = wait_task(root, args.slug, until=args.until, on=args.on, clear=args.clear, back=args.back, since=args.since)
             print(json.dumps(out, ensure_ascii=False) if args.json else
                   (f"{out['slug']} running again" if args.clear else f"{out['slug']} runs on until {out['quiet_until']}"))
             return 0

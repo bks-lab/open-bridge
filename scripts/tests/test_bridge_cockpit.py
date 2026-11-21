@@ -1485,6 +1485,41 @@ def test_runs_on_puts_off_an_item_with_what_it_waits_on_and_quiets_a_task(world)
     assert writes(world)[0] == K(world, "wait", "demo-task", "--clear", "--json")
 
 
+def test_the_undo_of_runs_on_gives_a_waiting_task_back_what_it_waited_on(world):
+    # Wait on a task that waits already (Waiting on others): the undo restores its blocker and the day it began,
+    # never clears them (the round-1 sim lost "waiting for Robin to reply" this way)
+    status = world.root / "work" / "tasks" / "demo-task" / "STATUS.md"
+    text = status.read_text(encoding="utf-8")
+    status.write_text(text.replace("---\n", '---\nblocked_by: "waiting for Robin to reply"\nblocked_since: "2026-10-01"\n'
+                                   "quiet_until: 2026-10-05\n", 1) if text.startswith("---") else text, encoding="utf-8")
+    world.act("runs_on", keys=["task:demo-task"], until=TOMORROW)
+    undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+    assert undo == {"verb": "task_running", "args": {"slug": "demo-task", "back": True, "on": "waiting for Robin to reply",
+                                                     "since": "2026-10-01", "until": "2026-10-05"}}
+    world.runner.calls.clear()
+    world.act(undo["verb"], **undo["args"])
+    assert writes(world)[0] == K(world, "wait", "demo-task", "--back", "--on", "waiting for Robin to reply",
+                                 "--since", "2026-10-01", "--until", "2026-10-05", "--json")
+
+
+def test_task_park_puts_a_task_in_the_backlog_as_the_briefing_does_and_the_undo_gives_its_status_back(world):
+    # Park of Park or drop on a task: status backlog, the task stays in work/tasks (control.md "park = status:
+    # backlog"), never closed as declined the way shelve does
+    world.runner.calls.clear()
+    res = world.act("task_park", key="task:demo-task", reason="untouched for 52 days")
+    assert writes(world) == [K(world, "status", "demo-task", "backlog", "--note", "Parked: untouched for 52 days", "--json")]
+    assert res["ok"] is True
+    undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+    assert undo == {"verb": "task_unpark", "args": {"slug": "demo-task", "as": "doing"}}
+    world.runner.calls.clear()
+    world.act(undo["verb"], **undo["args"])
+    assert writes(world) == [K(world, "status", "demo-task", "doing", "--note", "Park taken back", "--json")]
+
+
+def test_task_park_refuses_a_stream_and_an_inbox_item(world):
+    refused(world, "not_applicable", "task_park", key=f"inbox:{YES_ID}", reason="x")
+
+
 def test_shelve_parks_a_task_with_its_reason_and_reopen_takes_it_back(world):
     # "Drop because" of the Work through page on a task: task.py shelve, an idea in the inbox and the task declined
     world.runner.calls.clear()

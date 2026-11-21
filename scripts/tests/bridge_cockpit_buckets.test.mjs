@@ -149,7 +149,12 @@ test('delegate, plan, waiting, drop: go, a day picked, a nudge that only drafts,
   assert.match(w[0].run.args.note, /never send/i)
   assert.deepEqual(w[1].run.then('2026-10-16'), { verb: 'runs_on', args: { keys: [t.key], until: '2026-10-16', on: 'Ada' } })
   const d = answersOf(row(t), 'drop', s)
-  assert.deepEqual(d.map(x => [x.label, x.run.verb]), [['Parken', 'shelve'], ['Behalten', 'task_keep'], [en.obsolete, 'settle']])
+  assert.deepEqual(d.map(x => [x.label, x.run.verb]), [['Parken', 'task_park'], ['Behalten', 'task_keep'], [en.obsolete, 'settle']])
+  // park is the briefing's park: status backlog, never a close as declined (control.md)
+  assert.equal(d[0].run.args.key, t.key)
+  // a backlog task is parked already: only keep and Obsolete are left
+  const parked = answersOf(row(task('b', { status: 'backlog' })), 'drop', s)
+  assert.deepEqual(parked.map(x => x.run.verb), ['task_keep', 'settle'])
 })
 
 // ---------------------------------------------------------------- the page

@@ -530,3 +530,25 @@ def test_a_task_that_runs_on_is_left_out_of_a_check_of_all_until_its_day(repo):
     assert slugs == ["alpha"]
     assert [t["slug"] for t in task.gather(repo, ["waits"], Fake(), now_day=NOW.date())] == ["waits"]   # named: checked
     assert {t["slug"] for t in task.gather(repo, None, Fake(), now_day=dt.date(2026, 10, 21))} == {"alpha", "waits"}
+
+
+def test_keep_without_a_recommendation_keeps_the_task_with_a_dated_note(repo):
+    # the briefing's "keep" on a resting task (Park or drop): no check has run, the task still stays, and its
+    # last_updated moves to today, so the quiet row comes back only once it rests again (skills/briefing advise.py)
+    add(repo, "alpha")
+    add(repo, "beta")
+    review(repo, Fake(answers={HAIKU: verdicts(["alpha"], "close")}), "alpha")
+    out = task.keep(repo, ["alpha", "beta"], today="2026-10-09")
+    assert out == {"kept": ["alpha", "beta"], "noted": ["beta"]}
+    beta = (repo / "work" / "tasks" / "beta" / "STATUS.md").read_text(encoding="utf-8")
+    assert "last_updated: 2026-10-09" in beta and "- 2026-10-09: Kept: stays open" in beta
+    # a task with a recommendation is only dismissed: a note would change its evidence and undo the dismissal
+    alpha = (repo / "work" / "tasks" / "alpha" / "STATUS.md").read_text(encoding="utf-8")
+    assert "Kept" not in alpha
+    cache = json.loads((repo / ".bridge" / "task-review.json").read_text(encoding="utf-8"))
+    assert cache["tasks"]["alpha"]["kept"] is True and "beta" not in cache["tasks"]
+
+
+def test_keep_of_an_unknown_task_still_fails(repo):
+    with pytest.raises(ValueError):
+        task.keep(repo, ["ghost"])

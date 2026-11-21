@@ -91,6 +91,10 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # the Work through page's "Drop because" on a task: parked as an idea with its reason (task.py shelve);
     # until: the day the idea may surface again, else task.py's own default
     "shelve": {"key": ("key", True), "reason": ("reason", True), "until": ("date", False), "by": ("by", False)},
+    # Park of Park or drop on a task, the briefing's park: status backlog, the task stays open (task.py status);
+    # task_unpark is its undo, the status before
+    "task_park": {"key": ("key", True), "reason": ("text", False), "by": ("by", False)},
+    "task_unpark": {"slug": ("slug", True), "as": ("restore_as", False)},
     "unhide": {"key": ("key", True)},
     "drop": {"key": ("key", True), "reason": ("drop_reason", False)},
     "inbox_unmute": {"id": ("inbox_id", True)},
@@ -218,7 +222,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "worker_advise": {"host": ("worker_ref", True), "id": ("worker_ref", True)},
     "inbox_reopen": {"id": ("inbox_id", True), "note": ("text", False)},
     "runs_on": {"keys": ("keys", True), "until": ("date", True), "on": ("text", False)},
-    "task_running": {"slug": ("slug", True)},
+    # back: the undo of a wait on a task that waited already, its blocker (on), the day it began and its quiet day
+    "task_running": {"slug": ("slug", True), "back": ("bool", False), "on": ("text", False), "since": ("day", False),
+                     "until": ("day", False)},
     # stage 4 of the one point view: In progress with someone until a check-in day, its undo and Stuck on the check-in
     "work_on": {"key": ("key", True), "who": ("line", True), "until": ("date", True), "text": ("text", False)},
     "task_next": {"slug": ("slug", True), "who": ("line", False), "check": ("date", False), "clear_check": ("bool", False)},

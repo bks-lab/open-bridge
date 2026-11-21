@@ -123,7 +123,9 @@ Two things are yours besides:
   letters: do `a yes · b later · c drop` (inbox approve, defer, drop),
   delegate `a go · b not now` (start it, or leave it), waiting `a nudge · b wait`
   (a nudge is a DRAFT for the person, never sent), drop `a park · b keep`
-  (park = `status: backlog`). A profile may rename the options; their order
+  (park = `status: backlog`, `task.py status <slug> backlog --note "Parked: <why>"`; keep = `task.py review
+  --keep <slug>`, which dismisses the task check's recommendation or, without one, notes "Kept: stays open"
+  so its quiet days count from today). A profile may rename the options; their order
   keeps these meanings. In `style: calm` there are no letters: "3 yes", "3 later",
   "3 drop" (or the bucket's own words) name the row and the answer.
 - **Obsolete, on every row.** Besides its bucket's answers, any numbered row

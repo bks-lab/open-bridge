@@ -6,7 +6,7 @@
 // docs/briefings.md where it names none. Each card says one next sentence and offers its bucket's answers, the first
 // one "the Bridge does the next step". An answer is the act the briefing's answer is (skills/briefing/references/
 // control.md): the meaning of an answer is its place in the bucket's options, whatever the profile calls it, and it
-// goes out as a verb of the server the rest of the page already uses (do_it, later, settle, shelve, task_keep,
+// goes out as a verb of the server the rest of the page already uses (do_it, later, settle, task_park, task_keep,
 // runs_on, the tab's own answers). No DOM, no network. logic.js passes every name on.
 import { TABLES } from './text.js'
 import { DAY, actionRow, flowAction, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
@@ -25,7 +25,7 @@ export const BUCKET_MEANINGS = {
 // the person, so they stand in Do
 const TAB_GROUPS = ['asks', 'back', 'result', 'lost']
 
-// how long a park keeps a point that is no task out of sight (a task is shelved as an idea instead)
+// how long a park keeps a point that is no task out of sight (a task goes to the backlog instead)
 const PARK_DAYS = 30
 
 /** Whether Work through shows the briefing's buckets: the page on, its switch cockpit.flow.buckets on, and the
@@ -212,7 +212,9 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
   if ((bucket === 'do' || bucket === 'plan' || bucket === 'delegate') && own) add('later', later)
   if (bucket === 'do' && own) add('drop', key && !isStream(row) ? act(flowAction('drop', row, f.dropText)) : null)
   if (bucket === 'drop') {
-    add('park', !key || isStream(row) ? null : isTask(row) ? act({ verb: 'shelve', args: { key, reason: f.parkText } })
+    // park is the briefing's park (control.md: status backlog, the task stays open); a backlog task is parked already
+    add('park', !key || isStream(row) || row.status === 'backlog' ? null
+      : isTask(row) ? act({ verb: 'task_park', args: { key, reason: f.parkText } })
       : act({ verb: 'later', args: { key, until: isoDate(now + PARK_DAYS * DAY) } }))
     add('keep', isTask(row) ? act({ verb: 'task_keep', args: { keys: [key] } }) : null)
   }

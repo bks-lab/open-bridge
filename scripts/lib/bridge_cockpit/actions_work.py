@@ -261,6 +261,8 @@ class WorkVerbs:
                 self.settle(ctx, row, self.tx["runs_on_note"].format(until=until))
             elif row.get("task"):
                 slug = self.slug(row)
+                # what it waited on before, so the undo gives that back instead of clearing it (task.py wait --back)
+                was = self.task_fields(slug, ("blocked_by", "blocked_since", "quiet_until"))
                 run = ctx.call("task.wait", slug, self.task_cmd("wait", slug, "--until", until,
                                                               *(["--on", on] if on else []), "--json"), SHORT_TIMEOUT)
                 if not run.ok:
@@ -269,7 +271,7 @@ class WorkVerbs:
                 ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task",
                                     "did": f"runs on until {until}", "ident": slug, "undone_ms": None,
                                     "work_kind": "stream" if row.get("stream") else "task",
-                                    "undo": {"verb": "task_running", "args": {"slug": slug}}})
+                                    "undo": {"verb": "task_running", "args": self.wait_back(slug, was)}})
                 ctx.note(self.tx["runs_on_note"].format(until=until) + f": {title}")
                 ctx.delta()
             else:
@@ -367,9 +369,44 @@ class WorkVerbs:
         ctx.delta()
         self.app.collector.request("both")
 
-    def v_task_running(self, ctx: Ctx, slug: str) -> None:
-        """A task that ran on is worked on again: blocked_by and quiet_until go (task.py wait --clear)."""
-        run = ctx.call("task.wait", slug, self.task_cmd("wait", slug, "--clear", "--json"), SHORT_TIMEOUT)
+    @staticmethod
+    def wait_back(slug: str, was: dict) -> dict:
+        """The undo of a wait: a task that waited on nothing runs again (--clear), one that waited already gets back
+        its blocker, the day it began and its quiet day as they were (--back)"""
+        if not was.get("blocked_by"):
+            return {"slug": slug}
+        return {"slug": slug, "back": True, "on": was["blocked_by"],
+                **{k: was[f] for k, f in (("since", "blocked_since"), ("until", "quiet_until")) if was.get(f)}}
+
+    def task_fields(self, slug: str, keys: tuple) -> dict:
+        """Plain values of these frontmatter fields of an open task or stream ({} where it has none): a blocker as
+        its text, a day as YYYY-MM-DD"""
+        for kind in ("tasks", "streams"):
+            try:
+                text = (self.app.root / "work" / kind / slug / "STATUS.md").read_text(encoding="utf-8")
+                break
+            except (OSError, UnicodeDecodeError):
+                continue
+        else:
+            return {}
+        front = split_front(text)[0]
+        out = {}
+        for k in keys:
+            v = front.get(k)
+            if isinstance(v, (dt.date, dt.datetime)):
+                v = v.isoformat()[:10]
+            if isinstance(v, str) and v.strip():
+                out[k] = " ".join(v.split())[:200]
+        return out
+
+    def v_task_running(self, ctx: Ctx, slug: str, back: bool = False, on: str | None = None, since: str | None = None,
+                       until: str | None = None) -> None:
+        """A task that ran on is worked on again: blocked_by and quiet_until go (task.py wait --clear). With `back`
+        (the undo of a wait on a task that waited already) it waits on what it waited on before (task.py wait --back)."""
+        argv = (self.task_cmd("wait", slug, "--back", *(["--on", on] if on else []), *(["--since", since] if since else []),
+                              *(["--until", until] if until else []), "--json") if back
+                else self.task_cmd("wait", slug, "--clear", "--json"))
+        run = ctx.call("task.wait", slug, argv, SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
             return
@@ -589,6 +626,43 @@ class WorkVerbs:
                             "reason": reason})
         self.settle(ctx, row, self.tx["task_shelved"])
         self.settle_soon(ctx)
+
+    def v_task_park(self, ctx: Ctx, key: str, reason: str | None = None) -> None:
+        """Park of Park or drop on a task, the briefing's park (control.md: park = status: backlog): the task stays in
+        work/tasks with status backlog and a dated note with the reason (task.py status), so no bucket of the
+        briefing holds it any more. Never closed: Shelve and Obsolete close, Park only sets aside. A stream runs on and
+        an inbox item is put off instead. Taken back by its old status (task_unpark)."""
+        entry = self.entry(key)
+        row = entry["row"]
+        if not row.get("task") or row.get("inbox_id") or row.get("stream") or (entry["out"] or {}).get("stream"):
+            raise self.not_applicable("only a task is parked in the backlog; a stream runs on, an inbox item is put off", "key")
+        slug = self.slug(row)
+        before = self.task_status(slug) or "doing"
+        reason = " ".join((reason or "").split())[:200]
+        note = "Parked" + (f": {reason}" if reason else "")
+        run = ctx.call("task.status", slug, self.task_cmd("status", slug, "backlog", "--note", note, "--json"), SHORT_TIMEOUT)
+        if not run.ok:
+            ctx.note(self.tx["park_failed"].format(title=m.short(row["title"], 40), err=m.short(run.err, 100)), bad=True)
+            return
+        ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task", "did": "parked",
+                            "ident": slug, "undone_ms": None, "work_kind": "task",
+                            "undo": {"verb": "task_unpark", "args": {"slug": slug, "as": before if before in REOPEN_AS else "doing"}}})
+        ctx.note(self.tx["task_parked"].format(title=m.short(row["title"], 60)), go=row_go(row))
+        ctx.delta()
+        self.app.collector.request("both")
+
+    def v_task_unpark(self, ctx: Ctx, slug: str, **kw) -> None:
+        """The undo of a park: the status it had before (task.py status), with a note"""
+        status = kw.get("as") or "doing"
+        run = ctx.call("task.status", slug, self.task_cmd("status", slug, status, "--note", "Park taken back", "--json"), SHORT_TIMEOUT)
+        if not run.ok:
+            ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
+            return
+        if getattr(self.app, "history", None) is not None:
+            self.app.history.mark_undone("task_unpark", slug)
+        ctx.note(self.tx["running_again"].format(slug=slug), go={"kind": "item", "key": f"task:{slug}"})
+        ctx.delta()
+        self.app.collector.request("both")
 
     def v_inbox_unmute(self, ctx: Ctx, id: str) -> None:  # noqa: A002 - the API name
         run = ctx.call("inbox.unmute", id, self.inbox("unmute", id), SHORT_TIMEOUT)
