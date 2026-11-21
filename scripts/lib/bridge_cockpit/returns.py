@@ -423,9 +423,11 @@ def _words(lang: str) -> dict:
     return LINES["de" if str(lang).startswith("de") else "en"]
 
 
-def start_line(mode: str, lang: str) -> str:
+def start_line(mode: str, lang: str, word: str | None = None) -> str:
+    """The note a start leaves in its item's own log; `word` names the act as the page did (Do it of the four answers,
+    round 2: it still said "AI machen lassen"), else the mode's own word"""
     w = _words(lang)
-    return f"{w['head']}: {w['start'].format(mode=w['mode'].get(mode, mode))}"
+    return f"{w['head']}: {w['start'].format(mode=word or w['mode'].get(mode, mode))}"
 
 
 def log_line(r: dict, lang: str) -> tuple[str, str, str] | None:

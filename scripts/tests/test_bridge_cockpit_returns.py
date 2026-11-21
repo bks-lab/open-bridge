@@ -141,6 +141,8 @@ def test_what_goes_to_the_log_and_what_the_agent_already_wrote(tmp_path):
     assert returns.log_line({"item": ITEM, "stage": "lost", "result": None}, "en") == ("inbox", ITEM, "With AI: the tab ended without a word")
     assert returns.start_line("go", "de") == "Bei der AI: Agent gestartet aus dem Cockpit (AI machen lassen)"
     assert returns.start_line("report", "en") == "With AI: agent started from the cockpit (advise)"
+    # round 2 of the four answers: with the buckets on the act is named as the page names it
+    assert returns.start_line("go", "de", "Mach das") == "Bei der AI: Agent gestartet aus dem Cockpit (Mach das)"
 
 
 def test_the_cockpits_own_notes_are_no_answer(tmp_path):

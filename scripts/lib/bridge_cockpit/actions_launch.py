@@ -188,7 +188,7 @@ class LaunchSteps:
                                   **({"conv": r["conv"]} if r.get("conv") else {})}
                                  for r in launched if r.get("key") and m.launch_item(r)])
             # and the item's own log says so, for every other reader (returns.py)
-            line = ret.start_line(mode, app.cfg.language)
+            line = ret.start_line(mode, app.cfg.language, do_word if mode == "go" and not team and self.buckets_on() else None)
             for r in launched:
                 item = m.launch_item(r)
                 if r.get("task") == item and SLUG_RE.match(item):
