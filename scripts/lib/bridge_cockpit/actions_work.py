@@ -16,8 +16,8 @@ from . import activity as act
 from . import model as m
 from .details import INBOX_ID_RE, inbox_facts, split_front
 from .history import REOPEN_AS, item as history_item
-from .actions_base import (CLOSE_TIMEOUT, DATE_RE, DECLINED_REASONS, MERGE_MAX, SHORT_TIMEOUT, SLUG_RE, TEAM_RE, ActionError, Ctx, bad_arg,
-                           row_go)
+from .actions_base import (CLOSE_TIMEOUT, DATE_RE, DECLINED_REASONS, LIST_DAY, MERGE_MAX, SHORT_TIMEOUT, SLUG_RE, TEAM_RE, ActionError, Ctx,
+                           bad_arg, row_go)
 from .quick import MODELS
 from .text import TABLES
 
@@ -207,7 +207,9 @@ class WorkVerbs:
         if revisit and ctx.person is None and self.app.seen_on():
             self.revisit_on(ctx, row, until, text)
             return
-        words = self.tx["later_note"].format(until=until) + (f": {text}" if text else "")
+        # the watch list (until LIST_DAY) is put off without a day: its words name the list, never the far day
+        listed = until == LIST_DAY
+        words = self.tx["list_note" if listed else "later_note"].format(until=until) + (f": {text}" if text else "")
         # every inbox item is put off, whatever its gate: hidden only, a free one would still run meanwhile
         if row.get("inbox_id"):
             item = self.inbox_id(row)
@@ -218,8 +220,8 @@ class WorkVerbs:
                 ctx.note(self.tx["later_failed"].format(err=m.short(run.err, 100)), bad=True)
                 return
             # like a hide, a defer can be taken back from the note and the history (inbox_reopen)
-            ctx.history.append(history_item(row["key"], row["title"], "inbox", f"later until {until}", item))
-            self.settle(ctx, row, self.tx["planned_back" if plan else "later_back"].format(until=until))
+            ctx.history.append(history_item(row["key"], row["title"], "inbox", "on the watch list" if listed else f"later until {until}", item))
+            self.settle(ctx, row, self.tx["list_back" if listed else "planned_back" if plan else "later_back"].format(until=until))
             return
         self.write_note(ctx, row, words)
         self.hide_until(ctx, row, until)
@@ -375,6 +377,31 @@ class WorkVerbs:
             return
         if getattr(self.app, "history", None) is not None:
             self.app.history.mark_undone("task_next", slug)
+        ctx.delta()
+        self.app.collector.request("both")
+
+    def v_task_owner(self, ctx: Ctx, key: str, who: str) -> None:
+        """With … under More of a bucket card: who takes a task's next step, you (me) or the Bridge (bridge), the step
+        and any check-in kept (task.py next --who). The point moves to the bucket that says so (Do or Plan for you, I'll
+        do for the Bridge); the undo gives the step back to whoever had it (task_next)."""
+        who = " ".join(str(who or "").split())
+        if not who or "\n" in str(who) or len(who) > 60:
+            raise bad_arg("who", "one line of 1 to 60 characters: who has the step")
+        found = self.entry(key)
+        row = found["row"]
+        if not row.get("task") or row.get("inbox_id"):
+            raise self.not_applicable("only a task's step has someone who takes it", "key")
+        slug = self.slug(row)
+        old_who = (((found.get("out") or {}).get("card") or {}).get("next") or {}).get("who")
+        run = ctx.call("task.next", slug, self.task_cmd("next", slug, "--who", who, "--json"), SHORT_TIMEOUT)
+        if not run.ok:
+            ctx.note(self.tx["owner_failed"].format(err=m.short(run.err, 100)), bad=True)
+            return
+        said = self.tx.get(f"owner_{who.lower()}", who)
+        ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task", "did": f"next step with {who}",
+                            "ident": slug, "undone_ms": None, "work_kind": "stream" if row.get("stream") else "task",
+                            "undo": {"verb": "task_next", "args": {"slug": slug, "who": old_who or "me"}}})
+        ctx.note(self.tx["owner_set"].format(who=said, title=m.short(row["title"], 60)))
         ctx.delta()
         self.app.collector.request("both")
 

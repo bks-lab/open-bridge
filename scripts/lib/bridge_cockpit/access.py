@@ -58,7 +58,7 @@ PERSON_LANGUAGES = ("de", "en")
 PERSON_THEMES = ("auto", "light", "dark")
 OWNER_VERBS = frozenset("""
     a2a_ask a2a_forget a2a_poll account_status adopt advise approve_all area ask_via_tab chat_remind chat_tab checkin_stuck
-    task_next work_on
+    task_next task_owner work_on
     collect_context describe_apply describe_discard describe_run do_it explain_note files_ask finding_ack
     features_preset features_reset features_restart features_save
     finding_unack flow_activity_summary flow_attach flow_instruct flow_merge flow_theme_move flow_theme_new
@@ -113,7 +113,9 @@ MODEL_NEUTRAL: dict[str, Any] = {
     "stale": False, "profile": "", "title": "", "headline": "", "headline_rest": "", "since": None, "skipped": [], "agenda": [], "status": [],
     "extras": {"clear": [], "hygiene": [], "workplace": None}, "pages": [], "alarms": [], "teams": [], "briefing_badge": 0,
     "review": {"running": False, "error": None, "last": None, "keys": []}, "days": {"quota": {}, "counts": {}},
-    "week": {"quota": {}, "counts": {}}, "returns": [], "buckets": []}
+    "week": {"quota": {}, "counts": {}}, "returns": [], "buckets": [],
+    # the owner's out-of-sight counts (later, watch list, done today) count rows a person does not see
+    "aside": None}
 
 # a date as a person gets it: what the calendar says, nothing a page of the owner hangs on it. No overlaps: they name
 # the events beside it, which may stand in a calendar that is not theirs. No figures either, they count all of them

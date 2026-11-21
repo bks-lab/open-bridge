@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: MIT
 """What the cockpit takes over from the briefing for Work through by its buckets (cockpit.flow.buckets).
 
-The briefing's view names its buckets with their titles and answers (`bucket_defs`) and numbers every row as the
+The briefing's view names its buckets with their titles (`bucket_defs`, no answers of their own: every point takes the
+four of lib/answers.py) and numbers every row as the
 printed briefing does (`nr`); the cockpit keeps both, the buckets as the model's `buckets`, the number as each row's
-`brief_nr`, so a card says "In the briefing: no. 3" and "3 yes" in the chat is the same act as a click on the card.
+`brief_nr`, so a card says "In the briefing: no. 3" and "3 do" in the chat is the same act as a click on the card.
 """
 from __future__ import annotations
 
@@ -13,13 +14,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.bridge_cockpit import model as m  # noqa: E402
 
-DEFS = [{"id": "do", "title": "Tun (du, heute)", "options": ["ja", "später", "streichen"]},
-        {"id": "plan", "title": "Planen", "options": ["einplanen", "später"]}]
+DEFS = [{"id": "do", "title": "Tun"}, {"id": "plan", "title": "Planen"}]
 
 
 def raw(items, defs=DEFS):
     return {"profile": "cockpit", "title": "Cockpit",
-            "view": {"buckets": [{"id": "do", "title": "Tun (du, heute)", "items": items}], "bucket_defs": defs}}
+            "view": {"buckets": [{"id": "do", "title": "Tun", "items": items}], "bucket_defs": defs}}
 
 
 def test_a_row_keeps_its_number_in_the_printed_briefing():
@@ -39,8 +39,8 @@ def test_the_view_keeps_the_profiles_buckets_in_its_order():
     assert view["bucket_defs"] == DEFS
 
 
-def test_only_the_five_buckets_each_once_with_answers_of_text():
+def test_only_the_four_buckets_each_once_an_older_profiles_answers_left_out():
     defs = [{"id": "plan", "title": "", "options": ["einplanen", 3, " ", "später"]}, {"id": "plan", "title": "again"},
-            {"id": "tasks", "title": "no bucket of the briefing"}, "x"]
-    assert m.bucket_defs_of(defs) == [{"id": "plan", "title": "plan", "options": ["einplanen", "später"]}]
+            {"id": "tasks", "title": "no bucket of the briefing"}, {"id": "drop", "title": "Parken"}, "x"]
+    assert m.bucket_defs_of(defs) == [{"id": "plan", "title": "plan"}]
     assert m.bucket_defs_of(None) == []

@@ -95,7 +95,8 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # revisit (Work through with cockpit.flow.seen on): read now, back unread on `until` or on something new before it;
     # nothing hidden, nothing put off, the sentence a note only when there is one (actions_work.py v_later)
     # plan: Schedule of Plan (the same defer), whose note says it is planned, never "later"
-    "later": {"key": ("key", True), "until": ("date", True), "text": ("text", False), "by": ("by", False),
+    # until: a day within a year, or the watch list's day (lib/answers.py LIST_DAY): Later to the watch list
+    "later": {"key": ("key", True), "until": ("later_day", True), "text": ("text", False), "by": ("by", False),
               "revisit": ("bool", False), "plan": ("bool", False)},
     "hide": {"key": ("key", True), "until": ("date", True)},
     # the Work through page's "Drop because" on a task: parked as an idea with its reason (task.py shelve);
@@ -238,6 +239,8 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # stage 4 of the one point view: In progress with someone until a check-in day, its undo and Stuck on the check-in
     "work_on": {"key": ("key", True), "who": ("line", True), "until": ("date", True), "text": ("text", False)},
     "task_next": {"slug": ("slug", True), "who": ("line", False), "check": ("date", False), "clear_check": ("bool", False)},
+    # With … under More of a bucket card: who takes a task's next step (you, the Bridge), undone by task_next
+    "task_owner": {"key": ("key", True), "who": ("line", True)},
     "checkin_stuck": {"key": ("key", True), "text": ("text", False)},
     # the files view takes over a suggested next step: next: {what} with a dated note (task.py next)
     "task_set_next": {"key": ("key", True), "text": ("line", True)},
@@ -415,6 +418,15 @@ def check_date(value: Any, field: str, today: dt.date) -> str:
     if not today < day <= today + dt.timedelta(days=366):
         raise bad_arg(field, "must be after today and within 366 days")
     return value
+
+
+#: the watch list's day (lib/answers.py LIST_DAY): a point put off to it never comes back by itself
+LIST_DAY = "9999-12-31"
+
+
+def check_later_day(value: Any, field: str, today: dt.date) -> str:
+    """A day to put a point off to: within a year (check_date), or the watch list's day"""
+    return LIST_DAY if value == LIST_DAY else check_date(value, field, today)
 
 
 def check_day(value: Any, field: str) -> str:

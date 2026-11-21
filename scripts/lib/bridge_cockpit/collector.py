@@ -389,6 +389,8 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         # the briefing profile's buckets in its order, titles and answers (model.bucket_defs_of): Work through's
         # buckets (cockpit.flow.buckets) name and order them as the briefing does
         "buckets": list(view.get("bucket_defs") or []),
+        # what is out of sight of the buckets, only counted (model.aside_of): later, the watch list, done today
+        "aside": view.get("aside"),
         "review": {"running": review["running"], "error": review["error"], "last": review["last"],
                    "keys": [f"task:{slug}" for slug in verdicts if f"task:{slug}" in index]},
         "pages": pages, "alarms": alarms,

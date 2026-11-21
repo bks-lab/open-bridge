@@ -11,7 +11,7 @@ from . import model as m
 from . import returns as ret
 from .collector import START_HOLD_MS
 from .history import item as history_item
-from .actions_base import (ACTIVE_INBOX_STATES, CMUX_TIMEOUT, INBOX_ID_RE, LAUNCH_TIMEOUT, SHORT_TIMEOUT, SLUG_RE,
+from .actions_base import (ACTIVE_INBOX_STATES, CMUX_TIMEOUT, INBOX_ID_RE, LAUNCH_TIMEOUT, LIST_DAY, SHORT_TIMEOUT, SLUG_RE,
                            TAB_REF_RE, Ctx)
 
 
@@ -50,8 +50,9 @@ class LaunchSteps:
     def hide_until(self, ctx: Ctx, row: dict, until: str) -> None:
         self.clear_twins(row["key"])
         self.app.store.hide(row["key"], until, str(row["title"]))
-        ctx.history.append(history_item(row["key"], row["title"], "other", f"hidden until {until}"))
-        ctx.note(self.tx["hidden_note"].format(until=until, title=m.short(row["title"], 60)))
+        listed = until == LIST_DAY
+        ctx.history.append(history_item(row["key"], row["title"], "other", "on the watch list" if listed else f"hidden until {until}"))
+        ctx.note(self.tx["hidden_list_note" if listed else "hidden_note"].format(until=until, title=m.short(row["title"], 60)))
 
     def jump_to(self, ctx: Ctx, tab: dict) -> bool:
         ref = tab["ref"]

@@ -305,7 +305,9 @@ def _base_row(**extra) -> dict:
            # the inbox ids of the asks this line took in (briefing_view._fold): they end with it
            "also_inbox": [],
            # its number in the printed briefing (briefing_view.numbered), None where it prints none
-           "brief_nr": None}
+           "brief_nr": None,
+           # a task nobody touched for a while (the briefing's advice quiet): its days, True where it names none
+           "resting": None}
     row.update(extra)
     return row
 
@@ -653,6 +655,7 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
                 also_inbox=[x for x in _list(i.get("also_inbox")) if isinstance(x, str)][:ALSO_MAX],
                 # the row's number in the printed briefing ("3 yes", briefing_view.numbered), None where it prints none
                 brief_nr=i["nr"] if isinstance(i.get("nr"), int) and not isinstance(i.get("nr"), bool) and i["nr"] > 0 else None,
+                resting=resting_of(i.get("resting")),
             )
             # Same key twice (same number from two trackers): the second gets the block added.
             key = row_key(base)
@@ -702,27 +705,47 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
         # the profile's buckets in its order with their titles and answers (briefing_view bucket_defs), also an
         # empty one: Work through sorts its points into them (flow.buckets)
         "bucket_defs": bucket_defs_of(v.get("bucket_defs")),
+        # what no bucket shows, only counted under them (briefing_view aside): later, the watch list, done today;
+        # None where the briefing counted nothing
+        "aside": aside_of(v.get("aside")),
         "agenda": agenda,
         "status": status,
         "pages": parse_pages(data, tx),
     }
 
 
-BRIEF_BUCKETS = ("do", "plan", "delegate", "waiting", "drop")
+# the briefing's four buckets (briefing_view BUCKETS); an older briefing's "drop" is left out, its rows stand in the four
+BRIEF_BUCKETS = ("do", "plan", "delegate", "waiting")
+ASIDE_KEYS = ("later", "list", "done_today")
 
 
 def bucket_defs_of(value: Any) -> list[dict]:
-    """[{id, title, options}] of the view's bucket_defs: the five ids of the briefing only, each once, a title and at
-    most ten answers of text; an older briefing sends none, then the list is empty and the page takes its defaults"""
+    """[{id, title}] of the view's bucket_defs: the four ids of the briefing only, each once, with a title. No bucket
+    has answers of its own: every point takes the same four (lib/answers.py). An older briefing sends none, then the
+    list is empty and the page takes its defaults"""
     out, seen = [], set()
     for b in (_dict(x) for x in _list(value)):
         bid = b.get("id")
         if bid not in BRIEF_BUCKETS or bid in seen:
             continue
         seen.add(bid)
-        out.append({"id": bid, "title": as_text(b.get("title")) or bid,
-                    "options": [o.strip() for o in _list(b.get("options")) if isinstance(o, str) and o.strip()][:10]})
+        out.append({"id": bid, "title": as_text(b.get("title")) or bid})
     return out
+
+
+def aside_of(value: Any) -> dict | None:
+    """{later, list, done_today} of the view's out-of-sight counts, each a whole number from 0; None uncounted"""
+    if not isinstance(value, dict):
+        return None
+    return {k: value[k] if isinstance(value.get(k), int) and not isinstance(value.get(k), bool) and value[k] > 0 else 0
+            for k in ASIDE_KEYS}
+
+
+def resting_of(value: Any) -> int | bool | None:
+    """A resting task's days (a whole number above zero), True where the briefing names none, else None"""
+    if value is True:
+        return True
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
 
 def _json_list(out: Any) -> list:
