@@ -25,6 +25,7 @@ import { WorkSwitch } from './day.js'
 import { FlowAside } from './flowside.js'
 import { InstructLine } from './flowinstruct.js'
 import { PointTabs } from './flowtabs.js'
+import { PointCard } from './flowpoint.js'
 import { Btn } from './parts.js'
 
 const isTab = x => !!x?.tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')
@@ -228,6 +229,10 @@ function cardIntoView() {
   window.requestAnimationFrame?.(() => document.querySelector?.('.fb-main')?.scrollIntoView?.({ block: 'start', behavior: calm ? 'auto' : 'smooth' }))
 }
 
+/** The name of an entry of what runs: its entry's title, its tab's name, a session's own name (sessions carry a name,
+ *  never a title: an empty button stood under Running for a busy session without a tab, round 2) */
+export const runTitle = v => v?.entry?.title ?? v?.tab?.name ?? v?.session?.tab?.name ?? v?.session?.name ?? v?.session?.title ?? v?.session?.id ?? v?.id ?? ''
+
 /** The page by buckets: the buckets on the left, the open one's head, one card, the walk under it */
 export function BucketBody({ s, c }) {
   const lang = language()
@@ -238,9 +243,11 @@ export function BucketBody({ s, c }) {
   // what runs (an agent at work) and what an agent finished to read are no decision: they stand quiet under the
   // buckets, each a way to its entry, so nothing that runs is lost from the page
   const runs = runningOf(parts)
-  const running = [...runs.sessions.map(v => ({ id: v.entry?.id ?? v.id, title: v.entry?.title ?? v.tab?.name ?? v.session?.title ?? '', open: v.entry ? () => c.flowRun(v.entry.id) : () => c.flowRunning() })),
+  const running = [...runs.sessions.map(v => ({ id: v.entry?.id ?? v.id, title: runTitle(v), open: v.entry ? () => c.flowRun(v.entry.id) : () => c.flowRunning() })),
     ...runs.loose.map(e => ({ id: e.id, title: e.title ?? e.tab?.name ?? '', open: () => c.flowRun(e.id) }))]
   const reads = (parts.read ?? []).map((r, k) => ({ id: r.id, title: r.title ?? r.row?.title ?? '', open: () => c.flowReadOpen(r.id, k) }))
+  // an entry of what runs, opened from the list under the buckets: its card in the middle, the buckets stay
+  const runEntry = s.ui?.flowView === 'run' ? (parts.lane ?? []).find(e => e.id === s.ui.flowRunId) ?? null : null
   const open = openBucket(buckets, s.ui?.flowBucket)
   const points = open?.points ?? []
   const at = s.ui?.flowBucketAt ?? null
@@ -290,18 +297,20 @@ export function BucketBody({ s, c }) {
           <h2 class="fb-head-title">${open.title}</h2><span class="fb-head-sub muted">${f.sub[open.id]}</span>
           ${legend ? html`<p class="fb-legend muted small">${legend}</p>` : null}
         </header>` : null}
-        ${movedAway ? html`<div class="fb-moved" role="status"><p>${f.moved}</p>
+        ${runEntry ? html`<div class="fb-run"><${Btn} size="sm" variant="secondary" icon="back" onClick=${() => c.flowBucket(open?.id ?? null)}>${f.back(open?.title ?? f.label)}<//>
+            <${PointCard} x=${runEntry} s=${s} c=${c} /></div>`
+          : movedAway ? html`<div class="fb-moved" role="status"><p>${f.moved}</p>
             ${points.length ? html`<${Btn} size="sm" variant="primary" onClick=${() => c.flowBucketGo(points[i].id, i)}>${f.movedOn}<//>` : null}</div>`
           : x ? html`<${BucketCard} key=${x.id} x=${x} bucket=${open.id} s=${s} c=${c} onDone=${onwardsAfter} />`
           : html`<div class="fb-empty"><p>${Object.values(answered).some(v => v?.bucket === open?.id) ? f.cleared : f.empty}</p>
             ${onwards ? html`<${Btn} size="sm" variant="primary" onClick=${() => c.flowBucket(onwards.id)}>${f.onwards(onwards.title)}<//>`
               : html`<p class="muted">${f.allDone}</p>`}</div>`}
-        ${x ? html`<div class="fb-walk">
+        ${x && !runEntry ? html`<div class="fb-walk">
           <${Btn} size="sm" variant="secondary" icon="back" disabled=${i === 0} onClick=${() => c.flowBucketGo(points[i - 1].id, i - 1)}>${f.prev}<//>
           <span class="fb-pos muted small">${f.pos(i + 1, points.length)}</span>
           <${Btn} size="sm" variant="secondary" disabled=${i >= points.length - 1} onClick=${() => c.flowBucketGo(points[i + 1].id, i + 1)}>${f.next2}<//>
         </div>` : null}
-        ${x ? html`<div class="fb-dock flow-dock"><${InstructLine} key=${x.id} scope=${scope} x=${x} s=${s} c=${c} /></div>` : null}
+        ${x && !runEntry ? html`<div class="fb-dock flow-dock"><${InstructLine} key=${x.id} scope=${scope} x=${x} s=${s} c=${c} /></div>` : null}
       </section>
     </div>
   </div>`

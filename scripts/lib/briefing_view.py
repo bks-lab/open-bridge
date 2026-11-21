@@ -503,8 +503,9 @@ BRIEFING_KINDS = ("inbox", "advise", "tasks")
 PAGE_OF_KIND = {"inbox": "work", "tasks": "work", "command": "status", "calendar": "dates", "tracker": "trackers",
                 "commits": "today", "activity": "today"}
 DEFAULT_PAGES = ("work", "status", "dates", "trackers", "today")
-# where a default page sits: work and status in front, the rest behind More, today's activity under the day list
-DEFAULT_PAGE_GROUP = {"work": "main", "status": "main", "dates": "more", "trackers": "more", "today": "day"}
+# where a default page sits: work in front as the "by source" view of the work tab, status in front, the rest behind
+# More, today's activity under the day list
+DEFAULT_PAGE_GROUP = {"work": "work", "status": "main", "dates": "more", "trackers": "more", "today": "day"}
 REST_PAGE = "more"
 # the cockpit's Setup page (briefing.py collect --setup, scripts/bridge-setup.py): its three sections and how each
 # stands there; a profile may place any of them on a page of its own, the rest stand on this page

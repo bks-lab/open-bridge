@@ -168,7 +168,16 @@ export function askQuestion(text) {
 
 // Claude Code's own lines a driver may report as a tab's last line (asks.py STATUS, HINT): its mode, its hints,
 // its turn status; never the tab's words
-const TAB_CHROME = /^[\u23f5\u23f8\u23f9✻✶✳✢✽✦※·*]|\?\s+for shortcuts|esc to interrupt|shift\+tab to cycle|auto-compact|accept edits|bypass permissions|plan mode|\/clear to save|update installed/i
+// its tool calls ("⏺ Bash(…)") and their output ("⎿ 3") are what it ran, not what it says (round 2: "⎿ 3" stood as a
+// tab's line on the start page)
+const TAB_CHROME = /^[\u23f5\u23f8\u23f9\u23bf✻✶✳✢✽✦※·*]|^\u23fa\s*[A-Z][\w-]*\(|\?\s+for shortcuts|esc to interrupt|shift\+tab to cycle|auto-compact|accept edits|bypass permissions|plan mode|\/clear to save|update installed/i
+
+/** The last lines of a tab's screen in its own words (every view that shows a few: Start, the running card), without
+ *  Claude Code's own lines (TAB_CHROME) and without the mark it puts before what the agent says */
+export function tabLines(text, n = 3) {
+  return String(text ?? '').split('\n').filter(l => l.trim() && !TAB_CHROME.test(l.trim()))
+    .map(l => previewText(l.trim().replace(/^\u23fa\s*/, ''))).filter(Boolean).slice(-n)
+}
 
 /** Whether words may go to a tab as a message: an agent at work in it, no dialog (a dialog takes its options; the
  *  driver types the words and presses Enter, which picks the highlighted one) and no draft in its input line (the

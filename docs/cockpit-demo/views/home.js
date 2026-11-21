@@ -4,7 +4,7 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, tabWords, shownNumber, flowBucketsOn, doWord, workPageOf, homeCatalog, homeChosen,
+  attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, tabLines, tabWords, shownNumber, flowBucketsOn, doWord, workPageOf, homeCatalog, homeChosen,
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
   rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv, askMark,
@@ -215,7 +215,7 @@ function useTabPreview(tab, c, on) {
       if (!live || !res?.ok) return
       // the question of the screen read now, else its last lines without Claude Code's own (tabWords)
       const text = String(res.data?.text ?? '')
-      const lines = text.split('\n').filter(l => tabWords({ last: l })).map(previewText).filter(Boolean)
+      const lines = tabLines(text, 1000)
       setText(tabWords({ ask: { text: lines.join('\n') } }) || lines.slice(-3).join(' · '))
     })
     return () => { live = false }

@@ -91,9 +91,11 @@ def test_without_a_pages_block_every_section_finds_a_page_by_its_kind():
 
 
 def test_default_pages_sit_where_a_person_looks_for_them():
-    # work in front, dates and trackers behind More, what happened today under the day list (no second "Today" tab)
+    # work in front, dates and trackers behind More, what happened today under the day list (no second "Today" tab).
+    # The work page is the "by source" view of the work tab (group work), in front with it: as a tab of its own a
+    # profile without pages hid the work tab's views, Work through and its buckets among them (round 2, 21.11.2026)
     groups = {p["id"]: p["group"] for p in bv.pages(_result(), _profile())}
-    assert groups == {"work": "main", "status": "main", "dates": "more", "trackers": "more", "today": "day", "more": "more"}
+    assert groups == {"work": "work", "status": "main", "dates": "more", "trackers": "more", "today": "day", "more": "more"}
     titles = {p["id"]: p["title"] for p in bv.pages(_result(), _profile())}
     assert titles["work"] == "Work" and titles["today"] == "What happened today"
 

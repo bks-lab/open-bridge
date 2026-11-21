@@ -25,7 +25,7 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   askQuestion, asksSomething, checkinDays, detailNeedsLoad, dropReasonWord, duration, flowAction, flowDrive, flowSettings, formatDay, guideOf, nextWho, personOf,
-  pointName, pointStand, pointStep, previewText, reminderTo, reportsTicked, sourceTrack, resultText, short, soloSource, stageTone, tabOfTask, dropWhat, seenOn,
+  pointName, pointStand, pointStep, previewText, reminderTo, reportsTicked, sourceTrack, resultText, short, soloSource, stageTone, tabLines, tabOfTask, dropWhat, seenOn,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { KindTag } from './day.js'
@@ -41,7 +41,8 @@ import { AskLine, TabReply } from './reply.js'
 const SCREEN_LINES = 12
 
 /** The last lines of a tab's screen, the way they stood */
-const tailLines = (text, n = SCREEN_LINES) => String(text ?? '').split('\n').map(previewText).filter(Boolean).slice(-n)
+// a tab's last lines in its own words, never Claude Code's mode line (buckets.js tabLines)
+const tailLines = (text, n = SCREEN_LINES) => tabLines(text, n)
 
 /** A card's title in the walk bar and the strip under it: the title of the point opened, a tab's name only for a tab
  *  with no row behind it */

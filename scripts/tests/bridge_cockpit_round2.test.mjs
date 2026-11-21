@@ -226,3 +226,29 @@ test('the walk stands right under the card, above the free line, never sticky un
   const css = readFileSync(new URL('../web/flow.css', import.meta.url), 'utf8')
   assert.doesNotMatch(css.match(/\.fb-walk \{[^}]*\}/)[0], /sticky/)
 })
+
+// ---------------------------------------------------------------- what a tab says, on every view
+
+test('a tab\'s lines are its own words: no tool output, no tool call, no mode line', () => {
+  const screen = '⏺ Ich prüfe die Backup-Logs von Fabrikam.\n⏺ Bash(grep -c FAILED backup.log)\n  ⎿  3\n✶ Investigating… (esc to interrupt)\n⏵⏵ accept edits on (shift+tab to cycle)'
+  assert.deepEqual(logic.tabLines(screen), ['Ich prüfe die Backup-Logs von Fabrikam.'])
+  assert.equal(logic.tabWords({ last: '  ⎿  3' }), '')
+  assert.equal(logic.tabWords({ last: '▸▸ accept edits on (shift+tab to cycle)' }), '')
+  assert.deepEqual(logic.tabLines('▸▸ accept edits on (shift+tab to cycle)'), [])
+})
+
+test('an entry of what runs opens beside the buckets, never in the classic layout, and a session is named', async () => {
+  const working = { ref: 'surface:5', name: 'fabrikam-backup', state: 'working', slug: 'backup', since_ms: NOW - 5 * MIN, workspace: 'Home', live: true,
+    last: '▸▸ accept edits on (shift+tab to cycle)' }
+  const s = state({ work: [task('backup'), task('other')], tabs: [working], driver: { caps: ['tabs', 'launch', 'focus', 'screen'] } })
+  const runs = logic.runningOf(logic.flowParts(s))
+  const id = runs.loose[0]?.id ?? runs.sessions[0]?.entry?.id
+  assert.ok(id, 'the backup runs')
+  const el = mount(html`<${views.flow.FlowPage} s=${{ ...s, ui: { ...s.ui, flowView: 'run', flowRunId: id } }} c=${recorder()} />`)
+  await rounds()
+  assert.ok(el.$('.fb-grid'), 'the buckets stay on the left')
+  assert.ok(el.$('.fb-main .fx-hero'), 'the running card in the middle')
+  assert.doesNotMatch(el.$('.fb-main').text(), /accept edits/)
+  // a busy session without a tab is named by its own name
+  assert.equal(views.flowbuckets.runTitle({ session: { name: 'ops review', id: 's1' } }), 'ops review')
+})
