@@ -128,9 +128,21 @@ def later_until(choice: str | None, today: dt.date, day=None) -> str:
 DOTTED = re.compile(r"^(\d{1,2})\.(\d{1,2})\.?(\d{4})?$")
 
 
+# small words before a day ("am montag", "bis montag", "next monday") and after it ("montag bitte"): no day of their own
+DAY_LEAD = ("am", "bis", "auf", "zum", "ab", "nächsten", "naechsten", "kommenden", "on", "until", "by", "next", "this")
+DAY_TAIL = ("und", "and", "bitte", "please", "danke", "thanks")
+
+
 def _day_of(text: str, today: dt.date) -> tuple | None:
-    """(choice, until) of the words after a Later ("montag", "in einer woche", "3.12.", "2026-12-03"), else None"""
-    t = " ".join(text.lower().split())
+    """(choice, until) of the words after a Later ("montag", "am montag", "in einer woche", "3.12.", "2026-12-03"), else
+    None. A small word before the day or after it is no part of it (round 2 of the four answers: "am montag" fell
+    back to tomorrow)"""
+    words = " ".join(text.lower().replace(",", " ").split()).split()
+    while words and words[-1] in DAY_TAIL:
+        words.pop()
+    while len(words) > 1 and words[0] in DAY_LEAD:
+        words.pop(0)
+    t = " ".join(words)
     if not t:
         return None
     if t in ("morgen", "tomorrow"):
@@ -176,7 +188,9 @@ ALIASES = {
 _PHRASES = sorted(set(OWN) | set(ALIASES), key=len, reverse=True)
 # a number that starts an answer: at the start or after a space or separator, a word after it ("3 später", "1a");
 # the digits of a day ("3.12.", "2026-12-03") start none
-_START = re.compile(r"(?:^|(?<=[\s,;]))(\d+)(?=\s*[^\W\d_])")
+_START = re.compile(r"(?:^|(?<=[\s,;]))(\d+)(?!\s*(?:und|and)\s+\d)(?=\s*[:)]?\s*[^\W\d_])", re.I)
+# a number that shares the answer of the next one ("3, 5 erledigt"): digits alone between separators
+_SHARED = re.compile(r"(?:^|(?<=[\s,;]))(\d+)(?=\s*(?:,|\bund\b|\band\b)\s*\d)")
 
 
 def _one(nr: int, said: str, today: dt.date) -> dict:
@@ -186,7 +200,8 @@ def _one(nr: int, said: str, today: dt.date) -> dict:
     if len(low) == 1 and low in LETTERS:
         out["answer"] = LETTERS[low]
     else:
-        word = next((p for p in _PHRASES if low == p or low.startswith(p + " ")), None)
+        # a word ends at a blank or a mark ("erledigt, danke"), never inside a longer word
+        word = next((p for p in _PHRASES if low == p or (low.startswith(p) and not low[len(p)].isalnum())), None)
         if word is None:
             return out
         rest = low[len(word):].strip()
@@ -216,8 +231,17 @@ def parse(text: str, today: dt.date) -> list:
     out = []
     for n, m in enumerate(starts):
         end = starts[n + 1].start() if n + 1 < len(starts) else len(text)
-        said = text[m.end():end].strip(" \t\n,;")
+        said = text[m.end():end].strip(" \t\n,;:)")
+        # "3 later monday and 4 done": the joining word belongs to neither answer
+        said = re.sub(r"(?:\s+(?:und|and))+\s*$", "", said, flags=re.I)
         if said:
+            # the numbers just before it that have no word of their own share this one ("3, 5 erledigt")
+            before = text[(starts[n - 1].end() if n else 0):m.start()]
+            joined = before + m.group(1)
+            shared = [int(x.group(1)) for x in _SHARED.finditer(joined)
+                      if x.end() <= len(before) and not _START.match(joined, x.start())]
+            for nr in shared:
+                out.append(_one(nr, said, today))
             out.append(_one(int(m.group(1)), said, today))
     return out
 

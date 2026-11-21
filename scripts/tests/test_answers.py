@@ -267,3 +267,21 @@ def test_an_unknown_answer_is_refused():
     except ValueError:
         return
     raise AssertionError("park was taken as an answer")
+
+
+def test_the_parser_keeps_every_day_and_every_number_it_is_given():
+    # round 2 of the four answers: a named day after a small word fell back to tomorrow, a shared word lost a number,
+    # a word with a comma behind it answered nothing, and "3: später" answered nothing at all
+    today = dt.date(2026, 11, 21)              # a Saturday
+    monday = "2026-11-23"
+    for said in ("3 später am montag", "3 später bis montag", "3 später auf montag", "3 später nächsten montag",
+                 "3 later on monday", "3: später montag"):
+        got = ans.parse(said, today)
+        assert [(g["nr"], g["answer"], g["until"]) for g in got] == [(3, "later", monday)], said
+    got = ans.parse("3 later monday and 4 done", today)
+    assert [(g["nr"], g["answer"], g["until"]) for g in got] == [(3, "later", monday), (4, "done", None)]
+    got = ans.parse("3, 5 erledigt", today)
+    assert [(g["nr"], g["answer"]) for g in got] == [(3, "done"), (5, "done")]
+    assert [(g["nr"], g["answer"]) for g in ans.parse("3 und 5 erledigt", today)] == [(3, "done"), (5, "done")]
+    assert [g["answer"] for g in ans.parse("3 erledigt, danke", today)] == ["done"]
+    assert [g["answer"] for g in ans.parse("3 veraltet bitte", today)] == ["obsolete"]
