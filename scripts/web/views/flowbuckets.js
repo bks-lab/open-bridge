@@ -241,6 +241,12 @@ function OwnerPick({ x, s, give, busy }) {
   </section>`
 }
 
+/** The line "In the briefing: no. 21 (...)" with its number in bold, as the mockup shows it (round 3) */
+function boldNr(line, nr) {
+  const at = line.indexOf(nr)
+  return at < 0 ? line : html`${line.slice(0, at)}<strong>${nr}</strong>${line.slice(at + nr.length)}`
+}
+
 /** One point as a card: its marks, its title, what a tab asks, Next, the four answers, its number in the briefing,
  *  and under More: With …, To the tab, Ask, the fields */
 export function BucketCard({ x, bucket, s, c, onDone = null }) {
@@ -286,7 +292,7 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
     ${say ? html`<${SayLine} busy=${busy} onSend=${words => run(say, words)} onCancel=${() => setSay(null)} />` : null}
     ${note ? html`<p class="fb-note small" role="status">${note}</p>` : null}
     ${isTab(x) && tab.ask?.draft ? html`<p class="fb-note fb-draft muted small">${tab.ask.suggestion ? t.reply.draft : t.reply.typed}</p>` : null}
-    ${Number.isInteger(row?.brief_nr) ? html`<p class="fb-nr muted small">${f.inBriefing(row.brief_nr, f.say)}</p>` : null}
+    ${Number.isInteger(row?.brief_nr) ? html`<p class="fb-nr muted small">${boldNr(f.inBriefing(row.brief_nr, f.say), f.nr(row.brief_nr))}</p>` : null}
     <details class="fb-more">
       <summary>${f.more}</summary>
       <div class="fb-more-body">
@@ -391,9 +397,9 @@ export function BucketBody({ s, c }) {
             ${onwards ? html`<${Btn} size="sm" variant="primary" onClick=${() => c.flowBucket(onwards.id)}>${f.onwards(onwards.title)}<//>`
               : html`<p class="muted">${f.allDone}</p>`}</div>`}
         ${x && !runEntry ? html`<div class="fb-walk">
-          <${Btn} size="sm" variant="secondary" icon="back" disabled=${i === 0} onClick=${() => c.flowBucketGo(points[i - 1].id, i - 1)}>${f.prev}<//>
+          <${Btn} size="sm" variant="ghost" icon="back" disabled=${i === 0} onClick=${() => c.flowBucketGo(points[i - 1].id, i - 1)}>${f.prev}<//>
           <span class="fb-pos muted small">${f.pos(i + 1, points.length)}</span>
-          <${Btn} size="sm" variant="secondary" disabled=${i >= points.length - 1} onClick=${() => c.flowBucketGo(points[i + 1].id, i + 1)}>${f.next2}<//>
+          <${Btn} size="sm" variant="ghost" disabled=${i >= points.length - 1} onClick=${() => c.flowBucketGo(points[i + 1].id, i + 1)}>${f.next2}<//>
         </div>` : null}
       </section>
     </div>

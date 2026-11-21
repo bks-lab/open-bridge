@@ -179,3 +179,12 @@ test('go on is offered only where the tab asks nothing', () => {
   assert.ok(by({ ...base, ask: { text: 'Commit now?', hash: 'h3', yes_no: true, asks: true } }).includes('tab_go_on'))
   assert.ok(by({ ...base, ask: { text: 'Summary: the import ran.', hash: 'h4' } }).includes('tab_go_on'))
 })
+
+test('the card shows its briefing number in bold, as the mockup does', () => {
+  const c = new Proxy({}, { get: (_, p) => (p === 'then' || typeof p === 'symbol' ? undefined : () => Promise.resolve({ ok: true })) })
+  const t = task('n21', { bucket: 'plan', brief_nr: 21 })
+  const el = mount(html`<${views.flowbuckets.BucketCard} x=${{ group: 'row', id: t.key, kind: 'row', row: t, bucket: 'plan' }}
+    bucket="plan" s=${state({ work: [t] })} c=${c} />`)
+  assert.equal(el.$('.fb-nr strong').text(), 'no. 21')
+  assert.match(el.$('.fb-nr').text(), /"21 do"/)
+})
