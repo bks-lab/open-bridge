@@ -2754,8 +2754,11 @@ def main(argv=None) -> int:
         # a dashboard that pages itself wants every row of a section, not the first `max:` of them:
         # a cut row would vanish from its page without a trace (an inbox item set to later, 14.10.)
         # `_print_max`: the printed briefing's own cap, by which the rows still get the number they have there
-        profile = {**profile, "view": {**view_cfg, "max_items": max(1, args.max_items)}, "_whole": True,
-                   **({"_print_max": view_cfg["max_items"]} if "max_items" in view_cfg else {})}
+        # a longer print (render) numbers what it prints, each row once (round 1: it numbered as the cockpit's pass
+        # and printed the place of every other row as its number); only the cockpit's pass (collect) is `_whole`
+        whole = {"_whole": True, **({"_print_max": view_cfg["max_items"]} if "max_items" in view_cfg else {})} \
+            if args.cmd == "collect" else {}
+        profile = {**profile, "view": {**view_cfg, "max_items": max(1, args.max_items)}, **whole}
     if getattr(args, "setup", False):
         profile = with_setup(profile, root, cfg)
     # what one machine switched off (the cockpit's views.json): the catalog still lists it, so it can come back on

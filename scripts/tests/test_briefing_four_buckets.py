@@ -356,3 +356,20 @@ def test_the_chat_hides_and_settles_a_row_as_the_cockpit_does(tmp_path):
         except SystemExit as e:          # argparse refuses an outcome it does not know
             code = e.code
         assert code != 0, bad
+
+
+def test_a_longer_print_numbers_every_row_once_in_order(tmp_path, capsys):
+    # round 1 (words): `render --max-items 300` printed 17 numbers twice: it numbered as the cockpit's pass does (the
+    # 12 of the short print) and gave every other row its place as a number. A print numbers what it prints, once
+    import re
+    root = _root(tmp_path)
+    (root / "bridge-config.yaml").write_text("{}\n", encoding="utf-8")
+    box = inbox.Inbox(root / "work" / "inbox", actor="t", clock=lambda: NOW)
+    for n in range(20):
+        box.add(source="t", kind="decision", summary=f"Ask {n}", urgency=("now", "later")[n % 2])
+    path = root / "workflow" / "briefings" / "morning.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(yaml.safe_dump(profile({"style": "triage", "max_items": 4}, sections=[{"kind": "inbox", "max": 3}])), encoding="utf-8")
+    assert bf.main(["--root", str(root), "render", "--no-save", "--color", "never", "--max-items", "300"]) == 0
+    nums = [int(m.group(1)) for m in re.finditer(r"^\s{0,3}(\d+)  ", capsys.readouterr().out, re.M)]
+    assert nums == list(range(1, 21))

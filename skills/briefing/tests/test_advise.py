@@ -175,7 +175,7 @@ def test_a_finding_speaks_the_configured_language(repo):
     for i in range(4):
         task(repo, f"t{i}", last_updated="2026-10-05")
     wip = next(f for f in advise.advise(repo, now=NOW) if f["check"] == "wip")
-    assert wip["summary"] == "4 Aufgaben aktiv, Grenze 3: eine schließen oder parken"
+    assert wip["summary"] == "4 Aufgaben aktiv, Grenze 3: eine schließen oder auf die Merkliste setzen"
 
 
 def test_a_task_that_runs_on_is_quiet_until_its_day(repo):
