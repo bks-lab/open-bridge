@@ -38,6 +38,13 @@ class LaunchSteps:
         # It runs on the machine that is the inbox runner, at the next pass; never `inbox.py run` from here.
         # Until then the yes can be taken back from the history (inbox reopen clears it).
         ctx.history.append(history_item(row["key"], row["title"], "inbox", "approved", item))
+        if self.buckets_on():
+            # the point stays: a yes given is the Bridge's to run, it stands in I'll do (round 1 of the four answers:
+            # settled, it left every bucket while the briefing listed it there, and By source offered Do it again)
+            ctx.note(f"{self.tx['approved_note']}: {m.short(row['title'], 60)}")
+            ctx.delta()
+            self.app.collector.request("both")
+            return True
         self.settle(ctx, row, self.tx["approved_note"])
         return True
 

@@ -90,6 +90,7 @@ export function asideCounts(s) {
 /** The bucket of a point: an agent tab that asks (or finished, or got lost) Do, a check-in whose day came Waiting
  *  on others (its answers are nudge and wait), any other by its row */
 export function pointBucket(x) {
+  if (x?.running) return 'delegate'
   if (TAB_GROUPS.includes(x?.group) || (x?.kind === 'tab' && x?.group !== 'doing')) return 'do'
   if (x?.group === 'checkin') return 'waiting'
   return rowBucket(x?.row)
@@ -115,6 +116,12 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
   for (const x of flowQueue(parts, 'all')) {
     if (x.kind === 'reports') for (const r of x.rows) push({ group: 'reports', id: r.key, kind: 'row', row: r })
     else push(x)
+  }
+  // what an agent works on since Do it (a start of the return channel, at work or starting) is the Bridge's: it
+  // stands in I'll do, marked as running (round 1 of the four answers: it stood only under Running now and left
+  // every bucket); a finished one asks you to read it and stands in Do (TAB_GROUPS)
+  for (const e of parts?.lane ?? []) {
+    if (e?.kind === 'start' && e.row?.key) push({ group: 'running', id: e.row.key, kind: 'row', row: e.row, running: true, start: e.start })
   }
   // a question about a task stands for that task on the classic page (flow.js R8); the briefing numbers both, so
   // here the task is a point of its own too, in its own bucket
@@ -251,7 +258,7 @@ export function nextSentence(x, bucket, s, lang = 'en') {
   if (x?.row?.inbox_id && x.row.inbox_state === 'approved') return f.nextApproved
   const a = bucketAnswers(x, bucket, s, lang)
   if (!a.length) return f.nextNone
-  if (!a.some(z => z.meaning === 'do')) return x?.row?.tab?.live ? f.nextWorking : f.nextNone
+  if (!a.some(z => z.meaning === 'do')) return x?.row?.tab?.live || x?.running ? f.nextWorking : f.nextNone
   if (bucket === 'waiting') return f.nextWaiting(who ?? f.someone)
   const step = x?.row ? pointStep(x.row, s) : null
   if (own(step?.what)) return short(own(step.what), 240)
@@ -338,7 +345,7 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
       // the briefing's yes (control.md: inbox.py approve, then run): the server starts on it only where no action of
       // its own runs and no tab works on it
       add('do', act({ verb: 'do_it', args: { keys: [key], yes: true } }), f.answers.do)
-    } else if (!row.tab?.live) {
+    } else if (!row.tab?.live && !x.running) {
       // a row an agent tab already works on is never started a second time (do_it would launch another)
       add('do', act({ verb: 'do_it', args: { keys: [key] } }), f.answers.do)
     }

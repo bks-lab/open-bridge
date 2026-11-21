@@ -222,3 +222,15 @@ def test_a_start_is_named_do_it_while_the_buckets_are_on(tmp_path):
         assert "Let AI do it" not in res["note"] and "Do it" in res["note"]
     finally:
         w.close()
+
+
+def test_a_yes_given_keeps_the_point_so_it_stands_in_ill_do(tmp_path):
+    # round 1 of the four answers: after Do it an approved item left every bucket of the cockpit (it stayed settled while
+    # the next collection still listed it, in I'll do), Due by source then offered Do it again and the server said 409
+    from test_bridge_cockpit import World
+    w = World(tmp_path, config="cockpit:\n  enabled: true\n  language: en\n  flow:\n    enabled: true\n")
+    try:
+        res = w.act("do_it", keys=[f"inbox:{YES_ID}"], yes=True)
+        assert res["ok"] and f"inbox:{YES_ID}" not in w.app.collector.settled
+    finally:
+        w.close()

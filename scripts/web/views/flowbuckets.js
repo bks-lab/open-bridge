@@ -239,7 +239,7 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
   })
   const rest = row ? restingOf(row) : null
   const who = bucket === 'waiting' ? x.checkin?.who ?? row?.checkin?.who ?? null : null
-  const marks = [[pointKindWord(x, lang)], [pointArea(x)], [row?.due ? f.due(formatDay(String(row.due).slice(0, 10), lang)) : null],
+  const marks = [[pointKindWord(x, lang)], [x.running ? f.runningMark : null, 'fb-mark-run'], [pointArea(x)], [row?.due ? f.due(formatDay(String(row.due).slice(0, 10), lang)) : null],
     [row?.gate === 'only-you' ? f.onlyYou : null], [who ? f.with(who) : null], [rest ? f.resting(rest) : null, 'fb-mark-quiet', f.restingTip]]
     .filter(m => m[0])
   // a tab that asks is named by its tab (the way it reads in the terminal), the task it works on under it

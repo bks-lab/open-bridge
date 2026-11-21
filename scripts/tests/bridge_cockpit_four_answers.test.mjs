@@ -321,3 +321,19 @@ test('a tab that asks about an inbox item offers Later, Done and Obsolete in the
   const got = logic.bucketAnswers(p, 'do', s, 'en').map(a => a.meaning)
   assert.ok(got.includes('later') && got.includes('done') && got.includes('obsolete'), got.join())
 })
+
+test('after Do it a started point stands in I\'ll do, marked as running, never only under Running now', () => {
+  // round 1 of the four answers: Plan 72 > 71 and Do 36 > 35, but I'll do stayed 8; the point showed only below the
+  // buckets. The model moves it to I'll do with the mark "running, started by you"
+  const t = task('started', { bucket: 'plan' })
+  const s = state({ work: [t, task('other')] })
+  s.model.returns = [{ key: t.key, item: 'started', title: t.title, stage: 'started', at_ms: NOW - 60000 }]
+  const { all } = logic.bucketPoints(s, 'en')
+  const p = all.find(x => x.row?.key === t.key)
+  assert.ok(p, 'the started task is a point')
+  assert.equal(p.bucket, 'delegate')
+  assert.equal(p.running, true)
+  // an agent works on it: no second start, the card says it runs
+  assert.ok(!logic.bucketAnswers(p, 'delegate', s, 'en').some(a => a.meaning === 'do'))
+  assert.equal(logic.nextSentence(p, 'delegate', s, 'en'), en.nextWorking)
+})
