@@ -404,3 +404,9 @@ test('a tab whose question needs a number or a choice is answered in words first
 test('the files page is named in words on the start page, never by its id', () => {
   assert.equal(views.home.pageTitleOf({ model: { pages: [] }, ui: {} }, '@files'), text.TABLES.en.filesTab)
 })
+
+test('a toast says a day the way the page says days, never as an ISO date', () => {
+  assert.equal(logic.noteDays('Später, zurück am 2026-11-22', 'de'), `Später, zurück am ${logic.formatDay('2026-11-22', 'de')}`)
+  // an inbox id with its digits stays as it is
+  assert.equal(logic.noteDays('20261121-1443-check-the-release', 'de'), '20261121-1443-check-the-release')
+})

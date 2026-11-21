@@ -811,6 +811,12 @@ export function isTypingTarget(el) {
 }
 
 /** Display a YYYY-MM-DD date with Intl in the page language; the raw text if unparsable */
+/** A note's text with every ISO day (2026-11-22) said the way the page says days (formatDay): the server words
+ *  its notes with the day as it writes it down */
+export function noteDays(text, lang) {
+  return String(text ?? '').replace(/(?<![\w-])(\d{4}-\d{2}-\d{2})(?![\w-])/g, iso => formatDay(iso, lang))
+}
+
 export function formatDay(iso, lang, withYear = false) {
   if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso ?? ''
   const d = new Date(`${iso.slice(0, 10)}T12:00:00`)

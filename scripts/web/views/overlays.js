@@ -6,7 +6,7 @@ import { html, useEffect, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DAY, attentionTabs, clockTime, detailNeedsLoad, formatDay, isoDate, nextFocusIndex, nextMonday, noteToken, short,
   toneToken, actionRow, serious, detailText, linkParts, probeText, newestFirst, upcomingEvents, muteScope, rowActionKey, nextInQueue, itemRow,
-  workKindOf, noteGo, personOf, ghWalkAt,
+  workKindOf, noteGo, noteDays, personOf, ghWalkAt,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { TriageGist } from '../triage.js'
@@ -39,8 +39,8 @@ export function Toasts({ s, c }) {
       <${Dot} token=${noteToken(x.tone)} />
       ${go ? html`<button type="button" class="toast-text toast-go" title=${t.noteGo}
           onClick=${e => { c.dismissToast(x.id); goTo(s, c, go, e.currentTarget) }}>
-          <span>${x.text}</span><${Icon} name="chevronRight" size=${14} /></button>`
-        : html`<span class="toast-text">${x.text}</span>`}
+          <span>${noteDays(x.text, language())}</span><${Icon} name="chevronRight" size=${14} /></button>`
+        : html`<span class="toast-text">${noteDays(x.text, language())}</span>`}
       ${x.action === 'undo' && x.undo?.length ? html`<${Btn} size="xs" variant="primary"
           onClick=${() => { c.dismissToast(x.id); x.undo.forEach(u => c.undo(u.undo)) }}>${t.undoToast}<//>` : null}
       ${x.action === 'copy' && x.copy ? html`<${Btn} size="xs" variant="primary" onClick=${() => c.copy(x.copy)}>${t.copyCommand}<//>` : null}
