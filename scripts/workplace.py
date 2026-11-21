@@ -1187,7 +1187,7 @@ def render(plan: dict) -> str:
     if plan["blocked"]:
         out.append("Blocked: " + ", ".join(f"{t['slug']} ({str(t['blocked_by'])[:50]})" for t in plan["blocked"]))
     if plan["stale"]:
-        out.append("Resting (park?): " + ", ".join(f"{t['slug']} ({t['age']} d)" for t in plan["stale"]))
+        out.append("Resting: " + ", ".join(f"{t['slug']} ({t['age']} d)" for t in plan["stale"]))
     return "\n".join(out)
 
 

@@ -77,14 +77,14 @@ def _load_inbox_locked():
 # a language not here reads English
 TEXTS = {
     "en": {"collides": "“{item}” at {start} collides with “{event}” {e_start} to {e_end}",
-           "blocked": "{slug} blocked for {idle} days: nudge? ({why})",
-           "quiet": "{slug} untouched for {idle} days", "quiet_customer": " (customer: push or park?)",
-           "quiet_park": " (park?)", "wip": "{n} tasks active, cap {cap}: close or park one",
+           "blocked": "{slug} blocked for {idle} days ({why})",
+           "quiet": "{slug} untouched for {idle} days", "quiet_customer": " (customer)",
+           "wip": "{n} tasks active, cap {cap}: close one or put one on the watch list",
            "waiting": "waits on you since {day}: {item}", "due": "due {day}: {item}"},
     "de": {"collides": "„{item}“ am {start} überschneidet sich mit „{event}“ {e_start} bis {e_end}",
-           "blocked": "{slug} seit {idle} Tagen blockiert: nachhaken? ({why})",
-           "quiet": "{slug} seit {idle} Tagen unberührt", "quiet_customer": " (Kunde: anschieben oder parken?)",
-           "quiet_park": " (parken?)", "wip": "{n} Aufgaben aktiv, Grenze {cap}: eine schließen oder parken",
+           "blocked": "{slug} seit {idle} Tagen blockiert ({why})",
+           "quiet": "{slug} seit {idle} Tagen unberührt", "quiet_customer": " (Kunde)",
+           "wip": "{n} Aufgaben aktiv, Grenze {cap}: eine schließen oder auf die Merkliste setzen",
            "waiting": "wartet seit {day} auf dich: {item}", "due": "fällig {day}: {item}"},
 }
 
@@ -198,7 +198,7 @@ def advise(root: Path, *, now: dt.datetime | None = None, calendar: list | None 
             customer = t["context"] in (cfg["customer_contexts"] or [])
             found.append(_finding("quiet", t["slug"],
                                   w["quiet"].format(slug=t["title"], idle=idle)
-                                  + (w["quiet_customer"] if customer else w["quiet_park"]),
+                                  + (w["quiet_customer"] if customer else ""),
                                   "today" if customer else "later", t["slug"], days=idle))
     if max_active and len(tasks) > int(max_active):
         found.append(_finding("wip", "cap", w["wip"].format(n=len(tasks), cap=max_active),

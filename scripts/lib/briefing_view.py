@@ -96,7 +96,6 @@ LABELS = {
     "task": "task {slug}",
     "next_step": "next: {what}",
     "waiting_for": "Waiting for: {title}",
-    "nudge": "nudge?",
     "new": "new",
     "housekeeping": "Housekeeping",
     "no_next": "{n} task(s) without a next step: {slugs}",
@@ -326,7 +325,6 @@ LABELS_DE = {
     "task": "Aufgabe {slug}",
     "next_step": "nächster Schritt: {what}",
     "waiting_for": "Wartet auf: {title}",
-    "nudge": "nachfassen?",
     "new": "neu",
     "housekeeping": "Pflege",
     "no_next": "{n} Aufgaben ohne nächsten Schritt: {slugs}",
@@ -2001,8 +1999,6 @@ def draw(view: dict, color: bool = False, width: int | None = None) -> str:
                 extras = list(r["why"])
                 if len(r["sources"]) > 1:
                     extras.append("+".join(r["sources"]))
-                if r.get("nudge"):
-                    extras.append(labels["nudge"])
                 if r["new"]:
                     extras.append(labels["new"])
                 text = _marked(r) + r["title"] + (f"  ({' · '.join(extras)})" if extras else "")
@@ -2137,8 +2133,6 @@ def _why(r: dict, labels: dict) -> str:
                 extras.append(f"[{ref}]({url})" if url.startswith(("https://", "http://")) else ref)
             continue
         extras.append(w)
-    if r.get("nudge"):
-        extras.append(labels["nudge"])
     if r["new"]:
         extras.append(labels["new"])
     # one date per row: a due date says it, "back on" and "look again" beside it only contradict (07.11.)

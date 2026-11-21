@@ -286,3 +286,25 @@ def test_the_settled_record_says_the_day_of_each_dismissal(tmp_path):
     SettledStore(root / "work" / "cockpit" / "settled", lambda: 0).dismiss("ref:o/r#1", "done", "An issue")
     rec = bf.settled_record(root, NOW)
     assert rec["dismissed"] == ["ref:o/r#1"] and set(rec["dismissed_on"]) == {"ref:o/r#1"}
+
+
+# ---------------------------------------------------------------- no answer that is gone
+
+def test_no_row_asks_a_question_of_the_answers_that_are_gone():
+    # round 1 of the four answers: 26 rows read "(untouched for 55 days · park? · resting for 55 days)" and waiting
+    # rows ended in "nudge?" / "nachfassen?". Park and Nudge are no answers any more: a resting task says only how
+    # long it rests, a waiting row only how long it waits (Do it writes the nudge)
+    adv = _load("briefing_advise_words", ROOT / "skills" / "briefing" / "scripts" / "advise.py")
+    for lang, words in adv.TEXTS.items():
+        for key, text in words.items():
+            assert not any(w in text for w in ("park", "nudge", "nachfassen", "nachhaken", "anschieben")), (lang, key, text)
+    for labels in (bv.LABELS, bv.LABELS_DE):
+        assert "nudge" not in labels
+    waiting = task("w", {"what": "reply", "who": "Robin"}, changed_at="2026-09-01")
+    for lang in ("en", "de"):
+        v = bv.build(result(sec("tasks", "tasks", [waiting, task("q", None)]), sec("advise", "advise", [quiet("q", 55)])),
+                     {**profile(), "_language": lang})
+        text = bv.draw(v)
+        for word in ("nudge?", "nachfassen?", "park?", "parken?", "untouched", "unberührt"):
+            assert word not in text, (lang, word, text)
+        assert ("resting for 55 days" if lang == "en" else "ruht seit 55 Tagen") in text
