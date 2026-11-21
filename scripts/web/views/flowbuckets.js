@@ -187,6 +187,13 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
   </article>`
 }
 
+/** On a narrow screen the card stands under the list: a point picked there brings its card into view */
+function cardIntoView() {
+  if (typeof window === 'undefined' || !window.matchMedia?.('(max-width: 960px)')?.matches) return
+  const calm = window.matchMedia('(prefers-reduced-motion: reduce)')?.matches
+  window.requestAnimationFrame?.(() => document.querySelector?.('.fb-main')?.scrollIntoView?.({ block: 'start', behavior: calm ? 'auto' : 'smooth' }))
+}
+
 /** The page by buckets: the buckets on the left, the open one's head, one card, the walk under it */
 export function BucketBody({ s, c }) {
   const lang = language()
@@ -222,7 +229,7 @@ export function BucketBody({ s, c }) {
           </button>
           ${b.id === open?.id && b.points.length ? html`<ul class="fb-points">${b.points.map((p, k) => html`<li key=${p.id}>
             <button type="button" class=${`fb-point${p.id === x?.id ? ' is-current' : ''}`} aria-current=${p.id === x?.id ? 'true' : undefined}
-              title=${pointTitleOf(p)} onClick=${() => c.flowBucketGo(p.id, k)}>${short(pointTitleOf(p), 70)}</button>
+              title=${pointTitleOf(p)} onClick=${() => { c.flowBucketGo(p.id, k); cardIntoView() }}>${short(pointTitleOf(p), 70)}</button>
           </li>`)}</ul>` : null}
         </li>`)}</ul>
       </nav>

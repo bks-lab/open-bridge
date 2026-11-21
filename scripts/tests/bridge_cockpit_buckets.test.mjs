@@ -315,3 +315,48 @@ test('a number typed with the buckets on names the printed briefing\'s row', () 
   assert.equal(by.get(4), a)
   assert.equal(logic.rowByNumber({ numbers: { [b.key]: 4 } }, byKey).get(4), b)
 })
+
+test('Next is a sentence that fits the bucket, a stream is named a stream, Obsolete asks with its own words', () => {
+  const s = state()
+  // an inbox card's generic one-word step ("entscheiden", "dein Ja geben") gives way to the bucket's sentence
+  const q = ask('20261009-0900-q1', { card: { next: { what: 'entscheiden' } } })
+  assert.equal(logic.nextSentence(row(q), 'do', s, 'de'), text.TABLES.de.flow.buckets.next.do)
+  const d = ask('20261009-0901-q2', { bucket: 'delegate', card: { next: { what: 'dein Ja geben' } } })
+  assert.equal(logic.nextSentence(row(d), 'delegate', s, 'de'), text.TABLES.de.flow.buckets.next.delegate)
+  // a task's own step stays, however short
+  assert.equal(logic.nextSentence(row(task('t', { card: { next: { what: 'Merge it' } } })), 'plan', s, 'de'), 'Merge it')
+  const river = task('river', { stream: true, work_kind: 'stream', bucket: 'drop' })
+  assert.equal(logic.pointKindWord(row(river), 'de'), 'Stream')
+  assert.doesNotMatch(logic.nextSentence(row(river), 'drop', s, 'de'), /Parken/)
+  // the confirm of Obsolete never says a bare "Ja" beside the bucket's Ja
+  assert.notEqual(text.TABLES.de.flow.buckets.obsoleteYes, 'Ja')
+})
+
+test('a German page says the German default words where the profile names none, though the server fills the English', () => {
+  // the server sends its defaults (briefing_view DEFAULT_BUCKETS) for what the profile leaves out
+  const served = [{ id: 'do', title: 'Tun (du, heute)', options: ['yes', 'later', 'drop'] }, { id: 'plan', title: 'Plan', options: ['schedule', 'later'] }]
+  const defs = logic.bucketDefs(state({ buckets: served }), 'de')
+  assert.deepEqual(defs[0], { id: 'do', title: 'Tun (du, heute)', options: ['ja', 'später', 'streichen'] })
+  assert.deepEqual(defs[1], { id: 'plan', title: 'Planen', options: ['einplanen', 'später'] })
+  // a profile's own words stay, also English ones on an English page
+  assert.deepEqual(logic.bucketDefs(state({ buckets: served }), 'en')[0].options, ['yes', 'later', 'drop'])
+  assert.deepEqual(logic.bucketDefs(state({ buckets: [{ id: 'do', title: 'Heute', options: ['klar', 'morgen', 'weg'] }] }), 'de')[0].options, ['klar', 'morgen', 'weg'])
+})
+
+test('a point whose inbox id the server refuses offers no answer it would refuse', () => {
+  const bad = ask('20260929-1900-keep-or-cancel-the-power-contract-(deadl')
+  assert.deepEqual(answersOf(row(bad), 'do', state()), [])
+})
+
+test('a task a question about it stands for is a point of its own too, as the briefing numbers both', () => {
+  const t = task('power', { bucket: 'drop', brief_nr: 8 })
+  const q = ask('20261009-0900-power', { task: 'power', brief_nr: 2 })
+  const { all } = logic.bucketPoints(state({ now: [q], work: [t] }), 'de')
+  assert.deepEqual(all.map(x => x.id).sort(), [q.key, t.key].sort())
+  assert.equal(all.find(x => x.id === t.key).bucket, 'drop')
+})
+
+test('the taskboard says what a task waits on once, never "wartet auf waiting for"', () => {
+  assert.equal(text.TABLES.de.taskboard.tag.waitingOn('waiting for Noa to reply'), 'waiting for Noa to reply')
+  assert.equal(text.TABLES.de.taskboard.tag.waitingOn('Noa'), 'wartet auf Noa')
+})

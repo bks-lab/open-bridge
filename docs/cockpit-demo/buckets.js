@@ -25,6 +25,9 @@ export const BUCKET_MEANINGS = {
 // the person, so they stand in Do
 const TAB_GROUPS = ['asks', 'back', 'result', 'lost']
 
+// the inbox ids the server takes (actions_base.py INBOX_ID_RE)
+const INBOX_ID = /^[0-9]{8}-[0-9]{4}-[a-z0-9][a-z0-9-]{0,119}$/
+
 // how long a park keeps a point that is no task out of sight (a task goes to the backlog instead)
 const PARK_DAYS = 30
 
@@ -36,9 +39,14 @@ export const flowBucketsOn = s => flowOn(s) && s?.work?.flow?.buckets?.enabled =
  *  view.buckets), else the defaults in the page's language; a bucket without answers takes the defaults' */
 export function bucketDefs(s, lang = 'en') {
   const d = (TABLES[lang] ?? TABLES.en).flow.buckets.defaults
+  const en = TABLES.en.flow.buckets.defaults
   const given = (s?.model?.buckets ?? []).filter(b => BUCKET_IDS.includes(b?.id))
   const list = given.length ? given : BUCKET_IDS.map(id => ({ id }))
-  return list.map(b => ({ id: b.id, title: b.title || d[b.id].title, options: b.options?.length ? b.options : d[b.id].options }))
+  // the server fills what a profile leaves out with its English defaults (briefing_view DEFAULT_BUCKETS): those are
+  // no words of the profile, the page says its own language's defaults in their place
+  const same = (a, b) => Array.isArray(a) && a.length === b.length && a.every((w, i) => String(w).toLowerCase() === b[i])
+  return list.map(b => ({ id: b.id, title: b.title && b.title !== en[b.id].title ? b.title : d[b.id].title,
+    options: b.options?.length && !same(b.options, en[b.id].options) ? b.options : d[b.id].options }))
 }
 
 /** The bucket of a row: the one the briefing put it in; a task the briefing does not list (it has no next step, or
@@ -84,6 +92,9 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
     if (x.kind === 'reports') for (const r of x.rows) push({ group: 'reports', id: r.key, kind: 'row', row: r })
     else push(x)
   }
+  // a question about a task stands for that task on the classic page (flow.js R8); the briefing numbers both, so
+  // here the task is a point of its own too, in its own bucket
+  for (const x of flowQueue(parts, 'all')) if (x.covers && x.task?.key) push({ group: 'row', id: x.task.key, kind: 'row', row: x.task })
   // a row put off until a later day (hidden here, deferred by inbox.py or here, ahead of its lead time, with someone
   // until a check-in day) is no point until that day, however it was put off: an answer that puts it off moves on
   const today = isoDate(s?.now || Date.now())
@@ -162,10 +173,14 @@ export function nextSentence(x, bucket, s, lang = 'en') {
     if (q) return short(q, 240)
   }
   if (x?.group === 'checkin') return f.checkin(x.checkin?.who ?? x.row?.checkin?.who ?? f.someone)
+  // an inbox card's generic step is a verb or two ("decide", "give your yes"), no sentence, and in Plan or I'll do it
+  // even names an answer the bucket does not offer: the bucket's own sentence says it whole. A task's step is the
+  // person's own words and stays, however short
+  const own = s2 => typeof s2 === 'string' && s2.trim() && !(x?.row?.inbox_id && s2.trim().split(/\s+/).length < 4) ? s2.trim() : null
   const step = x?.row ? pointStep(x.row, s) : null
-  if (step?.what) return short(step.what, 240)
-  const nxt = x?.row?.next?.what
-  if (typeof nxt === 'string' && nxt.trim()) return short(nxt.trim(), 240)
+  if (own(step?.what)) return short(own(step.what), 240)
+  if (own(x?.row?.next?.what)) return short(own(x.row.next.what), 240)
+  if (bucket === 'drop' && isStream(x?.row)) return f.nextStream
   return f.next[bucket] ?? ''
 }
 
@@ -208,7 +223,8 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
   const def = bucketDefs(s, lang).find(b => b.id === bucket) ?? { options: [] }
   const words = def.options
   const meanings = BUCKET_MEANINGS[bucket] ?? []
-  const row = x?.row?.key && !x.readOnly ? x.row : null
+  // an inbox id the server refuses (actions_base.py INBOX_ID_RE) takes no answer: none is offered
+  const row = x?.row?.key && !x.readOnly && (!x.row.inbox_id || INBOX_ID.test(x.row.inbox_id)) ? x.row : null
   const key = row?.key
   const now = s?.now || Date.now()
   const out = []
@@ -269,12 +285,13 @@ function obsoleteRun(row, own, f) {
     ...(row.inbox_id ? { reason: 'outdated' } : {}), ...(isStream(row) ? { stream: true } : {}) } }
 }
 
-/** The kind of a point in a word (Agent tab, Inbox, Task, Issue or PR, Point) */
+/** The kind of a point in a word (Agent tab, Inbox, Stream, Task, Issue or PR, Point) */
 export function pointKindWord(x, lang = 'en') {
   const k = (TABLES[lang] ?? TABLES.en).flow.buckets.kind
   if (x?.tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) return k.tab
   const row = x?.row
   if (row?.inbox_id) return k.inbox
+  if (isStream(row)) return k.stream
   if (row?.task) return k.task
   if (row?.ref) return k.issue
   return k.other

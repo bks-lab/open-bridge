@@ -532,6 +532,9 @@
 .fb-bucket-sub { font-weight: 400; }
 .fb-bucket-n { flex: none; }
 .fb-points { padding: 2px 0 6px 10px; }
+/* the open bucket's points scroll in a box of their own: every bucket stays in sight above and below them */
+.fb-buckets > li > .fb-points { max-height: min(42vh, 420px); overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-gutter: stable; border-left: 2px solid var(--border); margin-left: 10px; padding-left: 6px; }
 .fb-point {
   display: block; width: 100%; padding: 6px 8px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--on-surface-muted);
   font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; overflow-wrap: anywhere;
@@ -588,5 +591,7 @@
 @media (max-width: 960px) {
   .fb-grid { grid-template-columns: minmax(0, 1fr); }
   .fb-side { position: static; max-height: none; }
+  /* on a phone the card follows the buckets closely: a short list of the open bucket's points */
+  .fb-buckets > li > .fb-points { max-height: 30vh; }
   .fb-card { padding: var(--space-md); }
 }
