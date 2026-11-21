@@ -132,3 +132,18 @@ def test_the_cockpit_records_what_runs_and_the_briefing_reads_it_while_fresh(tmp
     assert br.running_record(tmp_path, now + dt.timedelta(hours=1)) == [], "a closed cockpit runs nothing"
     (state / "running.json").write_text("{", encoding="utf-8")
     assert br.running_record(tmp_path, now) == []
+
+
+# ---------------------------------------------------------------- only you: Do, a report too
+
+def test_an_only_you_report_without_a_day_stands_in_do():
+    # round 3: a finding with gate only-you and urgency later ("sign the audit letter") stood in Plan
+    items = [{"id": "20261001-0900-sign", "title": "Sign the audit letter", "state": "open", "kind": "finding",
+              "gate": "only-you", "urgency": "later"},
+             {"id": "20261001-0901-idea", "title": "An idea", "state": "open", "kind": "idea", "gate": "only-you",
+              "urgency": "later"}]
+    result = {"profile": "m", "title": "M", "collected_at": "2026-11-21T08:00", "sections": [_sec("inbox", "inbox", items)]}
+    built = bv.build(result, {"id": "m", "sections": [{"kind": "inbox"}], "view": {"style": "triage"}})
+    got = {r["title"]: b["id"] for b in built["buckets"] for r in b["items"]}
+    assert got["Sign the audit letter"] == "do"
+    assert got["An idea"] != "do"

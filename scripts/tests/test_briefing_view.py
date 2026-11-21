@@ -1328,7 +1328,8 @@ def test_a_report_only_you_can_act_on_stays_yours():
     item = inbox_item("i1", "Check the incoming payment, file the receipt", urgency="later", kind="finding",
                       gate="only-you", due="2026-12-03")
     v = bv.build(result(sec("inbox", "inbox", [item])), profile(view={"style": "triage"}, sections=[{"kind": "inbox"}]))
-    assert [b["id"] for b in v["buckets"] if b["items"]] == ["plan"]
+    # round 3 of the four answers: an only-you gate is Do (you, today), a report as an ask
+    assert [b["id"] for b in v["buckets"] if b["items"]] == ["do"]
 
 
 def test_report_puts_a_rows_facts_on_a_line_of_their_own():
