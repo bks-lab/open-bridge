@@ -1143,6 +1143,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
 
     # First pass: what the advice says about tasks (a quiet task is shown once, under drop).
     quiet, blocked = set(), set()
+    quiet_titles: dict = {}     # a quiet task's own title, from its tasks section (the advice names it in a sentence)
     for s in result.get("sections") or []:
         if s.get("kind") != "advise" or not usable(s):
             continue
@@ -1350,6 +1351,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                     add(f"advise:{iid}", row(sid, item, forced or "plan", item.get("title")))
             elif kind == "tasks":
                 if iid in quiet:
+                    quiet_titles[iid] = str(item.get("title") or "").strip()
                     continue
                 nxt = _task_next(item)
                 lane = task_who(item, you)["lane"]
@@ -1423,6 +1425,17 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
         told.add(carrier)
         bucket = {"blocked": "waiting", "due": "do", "waiting": "plan"}[check]
         add(f"advise:{item.get('id')}", row(sid, item, forced or bucket, item.get("title"), (), 2))
+    # the advice named a quiet task by its title and said how long it rested ("X untouched for 54 days (park?)"): the
+    # point keeps the task's own title, the advice stands beside it (round 2 of the cockpit simulation: the advice was
+    # the title on the card, the list and the toast)
+    for slug, own in quiet_titles.items():
+        have = out["rows"].get(f"task:{slug}")
+        said = str((have or {}).get("title") or "")
+        if have and own and said.startswith(own) and said != own:
+            rest = said[len(own):].strip()
+            hint = re.match(r"^(.*?)\s*\((.+)\)$", rest)
+            have["title"] = own
+            have["why"] = [w for w in ([hint.group(1), hint.group(2)] if hint else [rest]) if w] + list(have.get("why") or [])
     _drop_settled(out, result.get("settled"), now)
     _fold(out, view, labels)
     return out

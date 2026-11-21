@@ -219,3 +219,16 @@ def test_obsolete_is_an_answer_of_every_numbered_row_with_the_cockpits_act():
     for doc in ("briefings.md", "bridge-cockpit.md"):
         text = (ROOT / "docs" / doc).read_text(encoding="utf-8")
         assert re.search(r"veraltet", text) and re.search(r"[Oo]bsolete", text), doc
+
+
+def test_a_quiet_task_is_named_by_its_title_and_the_advice_stands_beside_it():
+    # Round 2: the advice "Check the dashboard untouched for 54 days (park?)" was the point's title, on the card, the
+    # list and the toast ("Ins Backlog geparkt: Check the … untouched for…"). The task keeps its own title; how long it
+    # rested and the question stand beside it
+    advice = {"id": "advise:quiet:dash", "title": "Check the dashboard untouched for 54 days (park?)", "check": "quiet",
+              "urgency": "later", "task": "dash"}
+    v = bv.build(result(sec("advise", "advise", [advice]), sec("tasks", "tasks", [task("dash", None, title="Check the dashboard")])),
+                 profile(sections=[{"kind": "advise"}, {"kind": "tasks"}]))
+    row = next(r for b in v["buckets"] for r in b["items"] if r.get("task") == "dash" or r["title"].startswith("Check the dashboard"))
+    assert row["title"] == "Check the dashboard"
+    assert "untouched for 54 days" in " ".join(row["why"]) and "park?" in " ".join(row["why"])
