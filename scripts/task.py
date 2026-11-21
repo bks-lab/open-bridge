@@ -391,6 +391,49 @@ def drop_last_note(text: str, note: str) -> str:
     return "".join(lines)
 
 
+NOTE_LINE = re.compile(r"^- \d{4}-\d{2}-\d{2}: .*$")
+
+
+def _status_text(root: Path, slug: str) -> str:
+    """STATUS.md of an open task or stream, else of its latest close; '' when there is none"""
+    try:
+        return find_status(root, slug).read_bytes().decode("utf-8")
+    except ValueError:
+        closed = sorted((root / "work" / "done").glob(f"*/{slug}/STATUS.md"))
+        return closed[-1].read_bytes().decode("utf-8") if closed else ""
+
+
+def undo_trace(root: Path, slug: str, before: str, last_updated: str | None, drop: list | tuple = ()) -> None:
+    """An undo leaves no trace (round 2 of the four answers): after reopen, wait or next given `--last-updated`, the
+    notes that command added go, the notes `drop` names (the step it takes back wrote them) go too, and last_updated is
+    as it was, so a resting task keeps its quiet days"""
+    if last_updated:
+        dt.date.fromisoformat(last_updated)
+    path = find_status(root, slug)
+    text = path.read_bytes().decode("utf-8")
+    had: dict = {}
+    for line in before.splitlines():
+        if NOTE_LINE.match(line):
+            had[line] = had.get(line, 0) + 1
+    keep = []
+    for line in text.splitlines(keepends=True):
+        bare = line.rstrip("\r\n")
+        if NOTE_LINE.match(bare):
+            if had.get(bare):
+                had[bare] -= 1
+            else:
+                continue                     # a note the undo itself wrote
+        keep.append(line)
+    text = "".join(keep)
+    for note in drop or ():
+        text = drop_last_note(text, note)
+    if last_updated:
+        text = set_fields(text, [("last_updated", last_updated, None)])
+    path.write_bytes(text.encode("utf-8"))
+    with contextlib.redirect_stdout(sys.stderr):
+        regenerate_board(root)
+
+
 def status_task(root: Path, slug: str, status: str, *, note: str | None = None, today: str | None = None,
                 back: bool = False, last_updated: str | None = None, drop_note: str | None = None) -> dict:
     """An open task's status moves, the task stays where it is: the briefing's "park" (status: backlog, control.md)
@@ -463,7 +506,15 @@ def wait_task(root: Path, slug: str, *, until: str | None = None, on: str | None
         # without --on an existing reason stays: it says more than "runs on"
         fields = ([] if kept else [("blocked_by", json.dumps(on, ensure_ascii=False), "status")]) + [("quiet_until", until, "blocked_by")]
         if not re.search(r"^blocked_since:", text, re.M):
-            fields.append(("blocked_since", today, "blocked_by"))
+            # it waits since it last moved, not since today: a step with someone else waited before it was put off
+            # (round 2 of the four answers: Later on a point waiting 52 days said "waiting 0 days")
+            fm_, _ = _front_and_body(text)
+            nxt = fm_.get("next") if isinstance(fm_.get("next"), dict) else {}
+            other = str(nxt.get("who") or "").strip().lower() not in ("", "me", "you", "self", "ich", "du", "bridge",
+                                                                        "bridge_then_me")
+            since = str(fm_.get("last_updated") or "")[:10] if other else ""
+            fields.append(("blocked_since", since if re.fullmatch(r"\d{4}-\d{2}-\d{2}", since) and since <= today else today,
+                           "blocked_by"))
         text = add_note(set_fields(text, fields), f"Runs on until {until}" + ("" if kept else f": {on}"), today)
     path.write_bytes(text.encode("utf-8"))
     with contextlib.redirect_stdout(sys.stderr):
@@ -1940,6 +1991,7 @@ def main(argv=None) -> int:
     ro.add_argument("--as", dest="as_status", choices=REOPEN_STATUSES, default="doing")
     ro.add_argument("--note", default="")
     ro.add_argument("--json", action="store_true")
+
     mg = sub.add_parser("merge", help="close a task as merged into another, its notes, open steps and documents "
                                       "linked in a section of the one that stays")
     mg.add_argument("keep")
@@ -1987,6 +2039,12 @@ def main(argv=None) -> int:
     nx.add_argument("--check", help="YYYY-MM-DD: the day the cockpit asks how the step stands (next.check)")
     nx.add_argument("--clear-check", dest="clear_check", action="store_true", help="take the check-in day back")
     nx.add_argument("--json", action="store_true")
+    for undo_p in (ro, wt, nx):
+        # an undo that leaves no trace (undo_trace): last_updated as it was, its own note and the step's note gone
+        undo_p.add_argument("--last-updated", dest="undo_date", default=None,
+                            help="the undo of a step: YYYY-MM-DD, last_updated as it was; the notes this run writes go")
+        undo_p.add_argument("--drop-note", dest="undo_drop", action="append", default=[],
+                            help="with --last-updated: a note the step taken back wrote, taken out again (repeatable)")
     nw = sub.add_parser("new", help="a new task in work/tasks/, also from an inbox item (which then closes)")
     nw.add_argument("slug", nargs="?")
     nw.add_argument("--headline")
@@ -2027,8 +2085,13 @@ def main(argv=None) -> int:
             for warning in out["warnings"]:
                 print(f"task: warning: {warning}", file=sys.stderr)
             return 0
+        if args.cmd in ("reopen", "wait", "next") and args.undo_drop and not args.undo_date:
+            raise ValueError("--drop-note goes with --last-updated")
+        before = _status_text(root, args.slug) if args.cmd in ("reopen", "wait", "next") and args.undo_date else None
         if args.cmd == "reopen":
             out = reopen_task(root, args.slug, status=args.as_status, note=args.note)
+            if before is not None:
+                undo_trace(root, args.slug, before, args.undo_date, args.undo_drop)
             print(json.dumps(out, ensure_ascii=False) if args.json else f"reopened {out['slug']} <- {out['moved_from']}")
             for warning in out["warnings"]:
                 print(f"task: warning: {warning}", file=sys.stderr)
@@ -2055,6 +2118,8 @@ def main(argv=None) -> int:
             return 0
         if args.cmd == "wait":
             out = wait_task(root, args.slug, until=args.until, on=args.on, clear=args.clear, back=args.back, since=args.since)
+            if before is not None:
+                undo_trace(root, args.slug, before, args.undo_date, args.undo_drop)
             print(json.dumps(out, ensure_ascii=False) if args.json else
                   (f"{out['slug']} running again" if args.clear else f"{out['slug']} runs on until {out['quiet_until']}"))
             return 0
@@ -2064,6 +2129,8 @@ def main(argv=None) -> int:
             if args.clear and (args.who is not None or args.check or args.clear_check):
                 raise ValueError("--clear takes the whole step away: no --who, --check or --clear-check beside it")
             out = set_next(root, args.slug, args.text, clear=args.clear, who=args.who, check=args.check, clear_check=args.clear_check)
+            if before is not None:
+                undo_trace(root, args.slug, before, args.undo_date, args.undo_drop)
             print(json.dumps(out, ensure_ascii=False) if args.json else
                   (f"{out['slug']}: next step cleared" if args.clear else f"{out['slug']}: next {out['next']}"))
             return 0

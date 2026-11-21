@@ -1477,6 +1477,9 @@ def test_runs_on_puts_off_an_item_with_what_it_waits_on_and_quiets_a_task(world)
     world.act("runs_on", keys=["task:demo-task"], until=TOMORROW)
     assert writes(world)[0] == K(world, "wait", "demo-task", "--until", TOMORROW, "--json")
     undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+    # round 2 of the four answers: the undo also gives the task its day back and takes the wait's note out
+    trace = {k: undo["args"].pop(k) for k in ("last_updated", "drop") if k in undo["args"]}
+    assert trace["drop"] == ["Runs on until 2026-10-10: runs on"] and trace["last_updated"]
     assert undo == {"verb": "task_running", "args": {"slug": "demo-task"}}
     # the history names a task as a task (and a stream as a stream), not only as "task"
     assert [it.get("work_kind") for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0] == "task"
@@ -1494,6 +1497,8 @@ def test_the_undo_of_runs_on_gives_a_waiting_task_back_what_it_waited_on(world):
                                    "quiet_until: 2026-10-05\n", 1) if text.startswith("---") else text, encoding="utf-8")
     world.act("runs_on", keys=["task:demo-task"], until=TOMORROW)
     undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+    for k in ("last_updated", "drop"):
+        undo["args"].pop(k, None)
     assert undo == {"verb": "task_running", "args": {"slug": "demo-task", "back": True, "on": "waiting for Robin to reply",
                                                      "since": "2026-10-01", "until": "2026-10-05"}}
     world.runner.calls.clear()

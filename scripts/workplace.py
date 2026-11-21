@@ -371,6 +371,18 @@ def log_mentions(log_text: str, slugs: list, today: dt.date, days: int) -> dict:
     return out
 
 
+def _came_back(root: Path, today: dt.date) -> dict:
+    """{slug: the day a Later of the cockpit on it came} (bridge_cockpit/settled.py came_back_days), {} without one"""
+    lib = str(Path(__file__).resolve().parent / "lib")
+    if lib not in sys.path:
+        sys.path.insert(0, lib)
+    try:
+        from bridge_cockpit.settled import came_back_days
+    except ImportError:
+        return {}
+    return came_back_days(root, today)
+
+
 def _score(task: dict, mention: dict | None, today: dt.date) -> tuple:
     last = max(d for d in (task.get("updated"), (mention or {}).get("last"), dt.date.min) if d)
     age = (today - last).days
@@ -1031,8 +1043,11 @@ def propose(tasks: list, cfg: dict, mentions: dict, sessions: dict, open_tabs: d
     """sessions and open_tabs are keyed by slug; open_tabs values are driver tab dicts."""
     limits = {**DEFAULT_LIMITS, **(cfg.get("limits") or {})}
     blocked, stale, groups = [], [], {}
+    back = _came_back(root, today)
     for task in tasks:
-        score, age = _score(task, mentions.get(task["slug"]), today)
+        # a task back from a Later of the cockpit rests from that day on, as the briefing's advice counts it
+        seen = max(d for d in (task.get("updated"), back.get(task["slug"]), dt.date.min) if d)
+        score, age = _score({**task, "updated": seen if seen != dt.date.min else None}, mentions.get(task["slug"]), today)
         entry = {**task, "score": score, "age": age, "rows": (mentions.get(task["slug"]) or {}).get("rows", 0)}
         if task.get("blocked_by"):
             blocked.append(entry)

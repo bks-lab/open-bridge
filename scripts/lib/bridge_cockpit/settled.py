@@ -114,6 +114,13 @@ class SettledStore:
                      for k, d in latest.items() if d["act"] == "dismiss"}
         return set(latest), hidden, dismissed
 
+    def came_back(self, today: str) -> dict:
+        """The hides whose day came (key -> that day, YYYY-MM-DD, today or before): a point put off with Later and back
+        again. Its day counts as the point's last activity, so a task back from a Later rests from that day on (round 2
+        of the four answers: it came back still marked "resting for 54 days")"""
+        return {k: str(d["until"])[:10] for k, d in self._decisions().items()
+                if d["act"] == "hide" and not d.get("done") and str(d["until"])[:10] <= today}
+
     def hidden(self, today: str) -> dict:
         return self.state(today)[1]
 
@@ -209,3 +216,23 @@ class SettledStore:
             if self._write(f"{LEGACY_PREFIX}{digest[:16]}-{act}.yaml", body):
                 written += 1
         return written
+
+
+def came_back_days(root: Path, today: dt.date) -> dict:
+    """{task slug: the day its Later came, as a date} of the record under work/cockpit/settled/ (SettledStore.came_back);
+    empty where there is none or it cannot be read. advise.py and workplace.py count a task's quiet days from it"""
+    folder = Path(root) / "work" / "cockpit" / "settled"
+    if not folder.is_dir():
+        return {}
+    try:
+        back = SettledStore(folder, lambda: 0).came_back(today.isoformat())
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for key, day in back.items():
+        if key.startswith("task:"):
+            try:
+                out[key[5:]] = dt.date.fromisoformat(day)
+            except ValueError:
+                continue
+    return out

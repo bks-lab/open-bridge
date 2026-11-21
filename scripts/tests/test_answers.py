@@ -214,7 +214,7 @@ def test_later_puts_off_to_a_day_or_onto_the_watch_list():
 def test_later_on_a_waiting_point_keeps_it_with_the_same_person():
     e = ans.effect("later", {"task": "a", "bucket": "waiting", "who": "Ada"}, until="2026-11-23")
     assert e["cockpit"] == {"verb": "runs_on", "args": {"until": "2026-11-23", "on": "Ada"}}
-    assert e["cli"] == ["task.py wait a --until 2026-11-23"] and e["then"] == "waiting"
+    assert e["cli"] == ["task.py wait a --until 2026-11-23"] and e["then"] == "later"
     i = ans.effect("later", {"inbox_id": "i1", "bucket": "waiting", "who": "Ada"}, until="2026-11-23")
     assert i["cli"] == ["inbox.py defer i1 --until 2026-11-23 --on Ada"]
     # the watch list is the watch list on a waiting point too, the same act as the cockpit's (round 1: the chat's

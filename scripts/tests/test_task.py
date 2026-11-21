@@ -1082,3 +1082,35 @@ def test_status_parks_a_task_in_the_backlog_and_takes_it_back(repo):
     assert "status: doing\n" in p.read_text(encoding="utf-8")
     assert run(repo, "status", "alpha", "done").returncode != 0            # closing is task.py close, never this
     assert run(repo, "status", "ghost", "backlog").returncode == 1
+
+
+def test_an_undo_with_the_old_date_leaves_no_trace_reopen_wait_and_next(repo):
+    # round 2 of the four answers: the undo of Done, of Later on a waiting task and of With … moved last_updated to today
+    # and left "Closed", "Reopened", "Wait taken back" notes, so a resting task lost its quiet days
+    p = repo / "work/tasks/alpha/STATUS.md"
+    before = p.read_text(encoding="utf-8")
+    assert run(repo, "close", "alpha", "--reason", "Erledigt").returncode == 0
+    r = run(repo, "reopen", "alpha", "--last-updated", "2026-09-01", "--drop-note", "Closed: Erledigt", "--json")
+    assert r.returncode == 0, r.stderr
+    text = p.read_text(encoding="utf-8")
+    assert "last_updated: 2026-09-01" in text and "Closed" not in text and "Reopened" not in text
+    assert "status: doing" in text and "closed:" not in text
+    # a wait and its undo
+    assert run(repo, "wait", "alpha", "--until", "2026-12-01", "--on", "Robin").returncode == 0
+    r = run(repo, "wait", "alpha", "--clear", "--last-updated", "2026-09-01", "--drop-note", "Runs on until 2026-12-01: Robin")
+    assert r.returncode == 0, r.stderr
+    text = p.read_text(encoding="utf-8")
+    assert "last_updated: 2026-09-01" in text and "Runs on" not in text and "Running again" not in text
+    assert "blocked_by" not in text
+    # --drop-note alone is refused
+    assert run(repo, "next", "alpha", "--clear", "--drop-note", "x").returncode != 0
+    body = lambda t: [ln for ln in t.split("---", 2)[2].splitlines() if ln.strip() and ln.strip() != "## Notes"]
+    assert body(text) == body(before)
+
+
+def test_a_wait_on_a_task_that_waited_without_a_blocker_counts_from_its_last_move(repo):
+    # round 2: Later on a point waiting 52 days (a step with someone else) said "waiting 0 days" afterwards
+    p = repo / "work/tasks/alpha/STATUS.md"
+    p.write_text(STATUS.replace("status: doing\n", "status: doing\nnext: {what: \"Send the numbers\", who: Robin}\n"), encoding="utf-8")
+    assert run(repo, "wait", "alpha", "--until", "2026-12-01", "--on", "Robin").returncode == 0
+    assert "blocked_since: 2026-09-01" in (repo / "work/tasks/alpha/STATUS.md").read_text(encoding="utf-8")

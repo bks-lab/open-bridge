@@ -81,6 +81,7 @@ def test_task_owner_on_a_task_without_a_step_names_the_task_as_its_step(world):
     assert writes(world)[0] == K(world, "next", "demo-task", world.row("task:demo-task")["title"], "--who", "bridge", "--json")
     assert res["ok"]
     undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+    assert undo["args"].pop("drop") == ["Next step with bridge, no check-in"] and undo["args"].pop("last_updated")
     assert undo == {"verb": "task_next", "args": {"slug": "demo-task", "clear": True}}
     world.runner.calls.clear()
     world.act(undo["verb"], **undo["args"])

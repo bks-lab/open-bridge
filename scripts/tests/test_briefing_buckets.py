@@ -79,7 +79,7 @@ def deferred(iid, title, on, **kw):
 
 def test_an_item_put_off_waiting_on_the_bridge_is_the_bridges_to_do():
     rows = [deferred("i1", "Fix the probe", "Bridge"), deferred("i2", "Read the log", "the Bridge"),
-            deferred("i3", "Agency answers", "Agency")]
+            deferred("i3", "Agency answers", "Agency", check=True)]
     v = bv.build(result(sec("inbox", "inbox", rows)), profile())
     assert bucket_of(v, "Fix the probe") == "delegate"
     assert bucket_of(v, "Read the log") == "delegate"
@@ -99,13 +99,16 @@ def test_an_item_you_said_yes_to_is_the_bridges_to_do_never_asked_again():
 
 def test_a_section_of_what_waits_on_others_holds_no_row_that_waits_on_the_bridge():
     # a section of what runs on (deferred: runs, bucket: waiting) put 8 rows on the Bridge under Waiting (21.11.2026)
-    rows = [deferred("i1", "Fix the probe", "Bridge"), deferred("i2", "Agency answers", "Agency"),
-            deferred("i3", "Sign in", "Bridge", gate="only-you")]
+    # round 2 of the four answers: with someone until a check-in (check) waits on them in sight; a plain Later that
+    # keeps the person is out of sight until its day
+    rows = [deferred("i1", "Fix the probe", "Bridge"), deferred("i2", "Agency answers", "Agency", check=True),
+            deferred("i3", "Sign in", "Bridge", gate="only-you"), deferred("i4", "Later with Agency", "Agency")]
     p = profile(sections=[{"kind": "inbox", "id": "runs", "deferred": "runs", "bucket": "waiting"}])
     v = bv.build(result(sec("runs", "inbox", rows)), p)
     assert bucket_of(v, "Fix the probe") == "delegate"
     assert bucket_of(v, "Sign in") == "do"
     assert bucket_of(v, "Agency answers") == "waiting"
+    assert {"key": "inbox:i4", "until": "2026-10-23"} in v["away"]
 
 
 def test_an_item_on_the_bridge_that_only_you_can_take_on_is_yours():
@@ -141,7 +144,7 @@ def test_without_buckets_in_the_profile_the_defaults_stand_in_their_order():
 
 def _rows():
     return [sec("inbox", "inbox", [item("i1", "Sign the contract"), item("i2", "Object", urgency="later"),
-                                   deferred("i3", "Agency answers", "Agency"), deferred("i4", "Fix the probe", "Bridge")])]
+                                   deferred("i3", "Agency answers", "Agency", check=True), deferred("i4", "Fix the probe", "Bridge")])]
 
 
 def _printed_numbers(text):

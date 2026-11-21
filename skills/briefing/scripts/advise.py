@@ -142,6 +142,19 @@ def _tasks(root: Path) -> list:
     return out
 
 
+def _came_back(root: Path, today: dt.date) -> dict:
+    """{slug: the day a Later on it came} from the cockpit's record (bridge_cockpit/settled.py came_back_days); a task
+    back from a Later rests from that day on. Empty when the record cannot be read: advice never fails for it"""
+    lib = str(REPO / "scripts" / "lib")
+    if lib not in sys.path:
+        sys.path.insert(0, lib)
+    try:
+        from bridge_cockpit.settled import came_back_days
+    except ImportError:
+        return {}
+    return came_back_days(root, today)
+
+
 def _finding(check, subject, summary, urgency, task=None, file=True, days=None) -> dict:
     out = {"check": check, "key": f"{KEY_PREFIX}{check}:{subject}", "summary": summary,
            "urgency": urgency, "task": task, "file": file}
@@ -183,9 +196,12 @@ def advise(root: Path, *, now: dt.datetime | None = None, calendar: list | None 
                     "now" if start.date() == today else "today", item.task))
 
     tasks = _tasks(root)
+    back = _came_back(root, today)
     for t in tasks:
         if not t["updated"]:
             continue
+        if back.get(t["slug"]) and back[t["slug"]] > t["updated"]:
+            t = {**t, "updated": back[t["slug"]]}      # back from a Later: it rests from that day on
         if t["quiet_until"] and t["quiet_until"] >= today:    # "runs on": nobody asks before the day it names
             continue
         idle = (today - t["updated"]).days

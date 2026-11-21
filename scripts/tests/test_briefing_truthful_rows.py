@@ -137,7 +137,7 @@ def test_a_row_whose_day_came_stands_in_its_bucket_again():
 
 def test_a_row_put_off_on_someone_waits_for_them():
     r = result(sec("inbox", "inbox", [ask("i1", "The agent's answer", state="deferred", until="2026-10-06",
-                                          gate="only-you", due="2026-10-20", waiting_on="Alex")]))
+                                          gate="only-you", due="2026-10-20", waiting_on="Alex", check=True)]))
     view = bv.build(r, profile())
     row = next(b for b in view["buckets"] if b["id"] == "waiting")["items"][0]
     assert any("Alex" in w for w in row["why"])

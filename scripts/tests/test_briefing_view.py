@@ -403,8 +403,9 @@ def test_waiting_counts_from_blocked_since_and_shortens_the_reason_at_a_word():
 def test_a_task_that_runs_on_says_when_to_look_again_and_asks_only_from_that_day():
     t = task_item("austria", "Austria onboarding", changed_at="2026-09-01", blocked_by="Antwort vom Kunden")
     t["blocked_since"], t["quiet_until"] = "2026-09-18", "2099-01-05"
-    row = bv.build(result(sec("tasks", "tasks", [t])), profile(view={"style": "triage"}))["buckets"][0]["items"][0]
-    assert any(w.startswith("look again") for w in row["why"]) and row.get("nudge") is False
+    # round 2 of the four answers: put off to a day it is out of sight until then, counted as later
+    v = bv.build(result(sec("tasks", "tasks", [t])), profile(view={"style": "triage"}))
+    assert not v["buckets"] and v["away"] == [{"key": "task:austria", "until": "2099-01-05"}]
     t["quiet_until"] = "2020-01-05"                                   # the day has come: it asks again
     row = bv.build(result(sec("tasks", "tasks", [t])), profile(view={"style": "triage"}))["buckets"][0]["items"][0]
     assert row.get("nudge") is True
@@ -1342,7 +1343,7 @@ def test_report_puts_a_rows_facts_on_a_line_of_their_own():
 
 def test_a_row_names_one_date_not_three():
     item = inbox_item("i1", "Chase the vendor", urgency="later", due="2026-10-06", state="deferred",
-                      until="2026-10-06", waiting_on="Vendor")
+                      until="2026-10-06", waiting_on="Vendor", check=True)
     v = _report(None, [{"kind": "inbox"}], sec("inbox", "inbox", [item]))
     why = next(r["why"] for b in v["buckets"] for r in b["items"])
     text = bv._why({**next(r for b in v["buckets"] for r in b["items"]), "why": why + ["look again 07.10"]},
@@ -1404,7 +1405,7 @@ def test_calm_reads_as_a_few_plain_lines():
 def test_calm_numbers_each_waiting_row_with_its_name_and_date():
     # 21.11.2026: every visible row has a number, waiting too, so "2 nudge" names it as the cockpit's card does
     deferred = inbox_item("i3", "Answer from the agency", urgency="later", state="deferred", until="2026-10-12",
-                          waiting_on="Agency")
+                          waiting_on="Agency", check=True)
     text = _calm([sec("inbox", "inbox", [deferred]),
                   sec("tasks", "tasks", [task_item("t1", "Portal relaunch", nxt={"what": "review", "who": "Bob"})])],
                  CALM_SECTIONS)

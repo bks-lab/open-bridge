@@ -1146,11 +1146,12 @@ def task_who(item: dict, you) -> dict:
     return {"lane": "waiting", "who": _text(nxt.get("who")) or None, "until": _text(nxt.get("check")) or None}
 
 
-def in_sight_deferred(on) -> bool:
-    """Whether an inbox item put off stays in sight in a bucket: one that waits on someone or something (inbox.py defer
-    --on: runs on, With … until a check-in day) waits on them, or on the Bridge. A plain Later is out of sight until its
-    day, tomorrow too, and counted as later (briefing.py aside_counts)"""
-    return bool(on)
+def in_sight_deferred(on, check=False) -> bool:
+    """Whether an inbox item put off stays in sight in a bucket: one with someone until a check-in day (With …, inbox.py
+    defer --on --check) waits on them, one put off to the Bridge is the Bridge's. Any other Later is out of sight until
+    its day, tomorrow too, also one that keeps the person it waits on (Later on a waiting point, defer --on without
+    --check), and counted as later (briefing.py aside_counts; round 2 of the four answers: it stood on in Waiting)"""
+    return bool(on) and (check is True or _is_bridge(on))
 
 
 def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetime) -> dict:
@@ -1325,7 +1326,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             if kind == "inbox":
                 back = _when(item.get("until")) if item.get("state") == "deferred" else None
                 if back is not None and back.date() > now.date() and cfg.get("deferred") != "all" \
-                        and not in_sight_deferred(item.get("waiting_on")):
+                        and not in_sight_deferred(item.get("waiting_on"), item.get("check")):
                     # put off to a day is out of sight until that day, also within the lookahead: counted as later
                     # (round 1 of the four answers: the cockpit hid it, the printed briefing kept it in Do)
                     out["away"].append({"key": f"inbox:{iid}", "until": str(item.get("until"))[:10]})
@@ -1417,6 +1418,11 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 age = _days_since(item.get("changed_at"), now)
                 if lane == "none":
                     out["no_next"].append(iid)
+                elif item.get("blocked_by") and (_when(item.get("quiet_until")) or now).date() > now.date():
+                    # put off to a day while it waits (Later on a waiting task, task.py wait --until): out of sight
+                    # until that day and counted as later, as an inbox item put off is (round 2 of the four answers)
+                    out["away"].append({"key": f"task:{iid}", "until": str(item.get("quiet_until"))[:10]})
+                    continue
                 elif item.get("blocked_by"):
                     age = _days_since(item.get("blocked_since"), now) if item.get("blocked_since") else age
                     why = [labels["waiting_days"].format(n=age) if age is not None else "",

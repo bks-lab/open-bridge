@@ -94,3 +94,58 @@ def test_a_short_and_a_long_print_name_a_row_by_one_number():
     assert all(lg[t] == n for t, n in s.items())
     assert sorted(lg.values()) == list(range(1, len(lg) + 1))
     assert s["Waiting for: Wait for Robin"] == len(lg)
+
+
+# ---------------------------------------------------------------- Later on a waiting point
+
+def test_later_on_a_waiting_point_is_out_of_sight_until_its_day():
+    # round 2: Later > in a week on a waiting point kept it under Waiting on others, in the briefing and the cockpit
+    items = [{"id": "20261101-0900-kept", "title": "Kept with Robin", "state": "deferred", "until": "2026-11-28T00:00",
+              "waiting_on": "Robin", "kind": "decision"},
+             {"id": "20261101-0901-handed", "title": "Handed to Jordan", "state": "deferred", "until": "2026-11-28T00:00",
+              "waiting_on": "Jordan Lee", "check": True, "kind": "decision"}]
+    tasks = [{"id": "rota", "title": "Plan the support rota", "state": "doing", "blocked_by": "Robin",
+              "blocked_since": "2026-09-30", "quiet_until": "2026-11-28", "changed_at": "2026-11-21"},
+             {"id": "tax", "title": "Migrate the tax return", "state": "doing", "blocked_by": "Robin",
+              "blocked_since": "2026-09-30", "quiet_until": "2026-11-20", "changed_at": "2026-11-21"}]
+    built = _build(items, tasks)
+    got = _buckets(built)
+    away = {a["key"] for a in built["away"]}
+    assert "inbox:20261101-0900-kept" in away and "task:rota" in away
+    assert any("Handed to Jordan" in t for t in got.get("waiting", [])), "with someone until a check-in stays in Waiting"
+    assert any("tax return" in t for t in got.get("waiting", [])), "its day came: back in Waiting"
+
+
+def test_a_task_back_from_a_later_rests_from_that_day(tmp_path):
+    # round 2: a task put off with Later came back on its day still marked "resting for 54 days"
+    import datetime as dt
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+    from bridge_cockpit.settled import SettledStore, came_back_days
+    folder = tmp_path / "work" / "cockpit" / "settled"
+    folder.mkdir(parents=True)
+    store = SettledStore(folder, lambda: 0)
+    store.hide("task:quiet", "2026-11-20", "Quiet one")
+    store.hide("task:later", "2026-12-01", "Still away")
+    store.hide("task:stream", "2026-11-20", "Done for this time", done=True)
+    assert came_back_days(tmp_path, dt.date(2026, 11, 21)) == {"quiet": dt.date(2026, 11, 20)}
+
+
+def test_an_undo_gives_a_task_its_day_back(tmp_path):
+    # round 2: Undo of Done, Obsolete, With … and Later on a waiting task left last_updated at today and its notes
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_bridge_cockpit import World
+    w = World(tmp_path, config=BUCKETS_ON)
+    try:
+        status = w.root / "work" / "tasks" / "demo-task" / "STATUS.md"
+        day = next(ln.split(":", 1)[1].strip().strip('"') for ln in status.read_text(encoding="utf-8").splitlines()
+                   if ln.startswith("last_updated:"))[:10]
+        undo = lambda: [it["undo"] for e in w.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+        w.act("task_owner", key="task:demo-task", who="bridge")
+        u = undo()
+        assert u["verb"] == "task_next" and u["args"]["last_updated"] == day
+        assert u["args"]["drop"] == ["Next step with bridge, no check-in"]
+        w.runner.calls.clear()
+        w.act(u["verb"], **u["args"])
+        assert any("--last-updated" in c and day in c for c in w.runner.calls)
+    finally:
+        w.close()

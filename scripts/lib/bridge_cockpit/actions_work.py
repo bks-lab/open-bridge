@@ -314,6 +314,8 @@ class WorkVerbs:
                 slug = self.slug(row)
                 # what it waited on before, so the undo gives that back instead of clearing it (task.py wait --back)
                 was = self.task_fields(slug, ("blocked_by", "blocked_since", "quiet_until"))
+                kept = bool(was.get("blocked_by")) and not on
+                trace = self.trace_of(slug, f"Runs on until {until}" + ("" if kept else f": {on or 'runs on'}"))
                 run = ctx.call("task.wait", slug, self.task_cmd("wait", slug, "--until", until,
                                                               *(["--on", on] if on else []), "--json"), SHORT_TIMEOUT)
                 if not run.ok:
@@ -322,8 +324,8 @@ class WorkVerbs:
                 ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task",
                                     "did": f"runs on until {until}", "ident": slug, "undone_ms": None,
                                     "work_kind": "stream" if row.get("stream") else "task",
-                                    "undo": {"verb": "task_running", "args": self.wait_back(slug, was)}})
-                ctx.note(self.tx["runs_on_note"].format(until=until) + f": {title}")
+                                    "undo": {"verb": "task_running", "args": {**self.wait_back(slug, was), **trace}}})
+                ctx.note(self.tx["later_back" if self.buckets_on() else "runs_on_note"].format(until=until) + f": {title}")
                 ctx.delta()
             else:
                 self.write_note(ctx, row, self.tx["runs_on_note"].format(until=until) + (f": {on}" if on else ""))
@@ -366,6 +368,7 @@ class WorkVerbs:
         if row.get("task"):
             slug = self.slug(row)
             step, cleared = self.step_for(slug, row)
+            trace = self.trace_of(slug, f"In progress with {who}, check-in {until}", *([words] if text else []))
             run = ctx.call("task.next", slug, self.task_cmd("next", slug, *step, "--who", who, "--check", until, "--json"),
                            SHORT_TIMEOUT)
             if not run.ok:
@@ -378,8 +381,8 @@ class WorkVerbs:
             ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task",
                                 "did": did, "ident": slug, "undone_ms": None,
                                 "work_kind": "stream" if row.get("stream") else "task",
-                                "undo": {"verb": "task_next", "args": cleared or {"slug": slug, "who": old_who or "me",
-                                                                                  "clear_check": True}}})
+                                "undo": {"verb": "task_next", "args": {**(cleared or {"slug": slug, "who": old_who or "me",
+                                                                                     "clear_check": True}), **trace}}})
             ctx.note(self.tx[back_w].format(who=who, until=until) + f": {m.short(row['title'], 60)}")
             ctx.delta()
             self.app.collector.request("both")
@@ -388,15 +391,17 @@ class WorkVerbs:
         self.hide_until(ctx, row, until)
 
     def v_task_next(self, ctx: Ctx, slug: str, who: str | None = None, check: str | None = None,
-                    clear_check: bool = False, clear: bool = False) -> None:
+                    clear_check: bool = False, clear: bool = False, last_updated: str | None = None,
+                    drop: list | None = None) -> None:
         """Who takes a task's step and its check-in day (task.py next --who --check / --clear-check), the step kept:
         the undo of In progress, and the check-in's answers on a task. `clear` takes the step away (task.py next
         --clear): the undo of a hand-over that named the task itself as its step"""
         if who is None and check is None and not clear_check and not clear:
             raise bad_arg("who", "give who, a check-in day, clear_check or clear")
-        argv = (self.task_cmd("next", slug, "--clear", "--json") if clear else
+        trace = self.trace_argv(last_updated, drop)
+        argv = (self.task_cmd("next", slug, "--clear", *trace, "--json") if clear else
                 self.task_cmd("next", slug, *(["--who", who] if who else []), *(["--check", check] if check else []),
-                              *(["--clear-check"] if clear_check else []), "--json"))
+                              *(["--clear-check"] if clear_check else []), *trace, "--json"))
         run = ctx.call("task.next", slug, argv, SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
@@ -420,6 +425,7 @@ class WorkVerbs:
         slug = self.slug(row)
         old_who = (((found.get("out") or {}).get("card") or {}).get("next") or {}).get("who")
         step, cleared = self.step_for(slug, row)
+        trace = self.trace_of(slug, f"Next step with {who}, no check-in")
         run = ctx.call("task.next", slug, self.task_cmd("next", slug, *step, "--who", who, "--json"), SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["owner_failed"].format(err=m.short(run.err, 100)), bad=True)
@@ -427,7 +433,7 @@ class WorkVerbs:
         said = self.tx.get(f"owner_{who.lower()}", who)
         ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task", "did": f"next step with {who}",
                             "ident": slug, "undone_ms": None, "work_kind": "stream" if row.get("stream") else "task",
-                            "undo": {"verb": "task_next", "args": cleared or {"slug": slug, "who": old_who or "me"}}})
+                            "undo": {"verb": "task_next", "args": {**(cleared or {"slug": slug, "who": old_who or "me"}), **trace}}})
         ctx.note(self.tx["owner_set"].format(who=said, title=m.short(row["title"], 60)))
         ctx.delta()
         self.app.collector.request("both")
@@ -489,6 +495,23 @@ class WorkVerbs:
         title = " ".join(str(row.get("title") or slug).split())[:300]
         return (title,), {"slug": slug, "clear": True}
 
+    def trace_of(self, slug: str, *notes: str) -> dict:
+        """What an undo needs to leave no trace (task.py undo_trace): the task's last_updated as it is now, before the
+        step, and the notes the step writes. {} where the task has no day (an older STATUS.md)"""
+        day = str(self.task_fields(slug, ("last_updated",)).get("last_updated") or "")[:10]
+        if not DATE_RE.match(day):
+            return {}
+        drop = [" ".join(n.split()) for n in notes if n and n.strip()][:4]
+        return {"last_updated": day, **({"drop": drop} if drop else {})}
+
+    @staticmethod
+    def trace_argv(last_updated: str | None, drop: list | None) -> list:
+        """The task.py flags of an undo that leaves no trace (round 2 of the four answers: an undo moved last_updated to
+        today and left its notes, so a resting task lost its quiet days)"""
+        if not last_updated:
+            return []
+        return ["--last-updated", last_updated, *[a for n in (drop or []) for a in ("--drop-note", n)]]
+
     def task_fields(self, slug: str, keys: tuple) -> dict:
         """Plain values of these frontmatter fields of an open task or stream ({} where it has none): a blocker as
         its text, a day as YYYY-MM-DD"""
@@ -511,12 +534,13 @@ class WorkVerbs:
         return out
 
     def v_task_running(self, ctx: Ctx, slug: str, back: bool = False, on: str | None = None, since: str | None = None,
-                       until: str | None = None) -> None:
+                       until: str | None = None, last_updated: str | None = None, drop: list | None = None) -> None:
         """A task that ran on is worked on again: blocked_by and quiet_until go (task.py wait --clear). With `back`
         (the undo of a wait on a task that waited already) it waits on what it waited on before (task.py wait --back)."""
+        trace = self.trace_argv(last_updated, drop)
         argv = (self.task_cmd("wait", slug, "--back", *(["--on", on] if on else []), *(["--since", since] if since else []),
-                              *(["--until", until] if until else []), "--json") if back
-                else self.task_cmd("wait", slug, "--clear", "--json"))
+                              *(["--until", until] if until else []), *trace, "--json") if back
+                else self.task_cmd("wait", slug, "--clear", *trace, "--json"))
         run = ctx.call("task.wait", slug, argv, SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
@@ -966,6 +990,10 @@ class WorkVerbs:
             argv = self.task_cmd("close", slug, *(["--stream"] if out.get("stream") else []),
                                  *(["--declined"] if why in DECLINED_REASONS else []), "--reason", words)
             before = self.task_status(slug)     # read before the close moves the folder: the undo restores it
+            ended = out.get("stream") or row.get("stream")
+            said = (("Stream ended, declined" if why in DECLINED_REASONS else "Stream ended") if ended
+                    else "Declined" if why in DECLINED_REASONS else "Closed")
+            trace = self.trace_of(slug, f"{said}: {words}")
             closed, err = self.run_close(ctx, slug, argv)
             if not closed:
                 failed += 1
@@ -977,6 +1005,8 @@ class WorkVerbs:
                                                "declined" if why in DECLINED_REASONS else "done", slug, before,
                                                work_kind="stream" if out.get("stream") or row.get("stream") else "task"),
                                 **({"reason": text} if text else {})})
+            if trace and (ctx.history[-1].get("undo") or {}).get("verb") == "task_reopen":
+                ctx.history[-1]["undo"]["args"].update(trace)
             if len(rows) == 1:
                 word = ("task_obsolete" if self.buckets_on() else "task_declined") if why in DECLINED_REASONS else "task_closed"
                 self.settle(ctx, row, self.tx[word])
@@ -1055,11 +1085,14 @@ class WorkVerbs:
         ctx.note(word.format(title=m.short(title, 60)), go={"kind": "item", "key": keys[0]})
         self.app.collector.request("both")   # the quick pass brings the row back in seconds, the full one follows
 
-    def v_task_reopen(self, ctx: Ctx, slug: str, note: str | None = None, **kw) -> None:
+    def v_task_reopen(self, ctx: Ctx, slug: str, note: str | None = None, last_updated: str | None = None,
+                      drop: list | None = None, **kw) -> None:
         """A closed task back to work/tasks/: doing, backlog when it only should still be done, or review
-        when an undo restores a task closed while in review."""
+        when an undo restores a task closed while in review. With `last_updated` (an undo) it leaves no trace: the
+        day as it was, the close's note (`drop`) and its own gone"""
         status = kw.get("as") or "doing"
-        argv = self.task_cmd("reopen", slug, "--as", status, *(["--note", note] if note else []), "--json")
+        argv = self.task_cmd("reopen", slug, "--as", status, *(["--note", note] if note else []),
+                             *self.trace_argv(last_updated, drop), "--json")
         run = ctx.call("task.reopen", slug, argv, SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)

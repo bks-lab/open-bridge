@@ -2315,7 +2315,7 @@ def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | N
             state = item.state
             if state == "deferred":
                 deferral = item.deferral or {}
-                if _view().in_sight_deferred(deferral.get("on")):
+                if _view().in_sight_deferred(deferral.get("on"), deferral.get("check")):
                     continue                    # waits on someone or the Bridge: in its bucket, theirs
                 if answers.is_list_day(deferral.get("until")):
                     out["list"] += 1
@@ -2336,8 +2336,11 @@ def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | N
     for status in (root / "work" / "tasks").glob("*/STATUS.md"):
         if status.parent.name.startswith("_"):
             continue
-        if _frontmatter(status.read_text(encoding="utf-8")).get("status") == "backlog":
+        fm = _frontmatter(status.read_text(encoding="utf-8"))
+        if fm.get("status") == "backlog":
             out["list"] += 1
+        elif fm.get("blocked_by") and str(fm.get("quiet_until") or "")[:10] > today.isoformat():
+            out["later"] += 1                   # put off to a day while it waits: out of sight until then
     for status in (root / "work" / "done" / f"{today:%Y-%m}").glob("*/STATUS.md"):
         if str(_frontmatter(status.read_text(encoding="utf-8")).get("closed") or "")[:10] == today.isoformat():
             out["done_today"] += 1

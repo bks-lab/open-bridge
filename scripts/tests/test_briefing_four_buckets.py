@@ -251,7 +251,8 @@ def test_aside_counts_later_the_watch_list_and_done_today(tmp_path):
     shelf = box.add(source="t", kind="idea", summary="Some day")
     box.event(shelf, "defer", until="9999-12-31")
     runs = box.add(source="t", kind="decision", summary="Ada answers")
-    box.event(runs, "defer", until="2026-11-27", waits_on="Ada")   # waits on someone: in Waiting, theirs
+    # round 2 of the four answers: put off to a day, the person kept: out of sight all the same, counted as later
+    box.event(runs, "defer", until="2026-11-27", waits_on="Ada")
     handed = box.add(source="t", kind="decision", summary="With Ada")
     box.event(handed, "defer", until="2026-11-27", waits_on="Ada", check=True)
     done = box.add(source="t", kind="finding", summary="Closed today")
@@ -265,7 +266,7 @@ def test_aside_counts_later_the_watch_list_and_done_today(tmp_path):
     settled = {"dismissed": ["ref:o/r#1"], "dismissed_on": {"ref:o/r#1": "2026-11-20"},
                "hidden": {"ref:o/r#2": "2026-11-30", "ref:o/r#3": "9999-12-31"}}
     got = bf.aside_counts(root, NOW, 1, settled)
-    assert got == {"later": 3, "list": 3, "done_today": 4}
+    assert got == {"later": 4, "list": 3, "done_today": 4}
 
 
 def test_collect_json_carries_the_counts_in_the_view(tmp_path, capsys):
@@ -325,10 +326,12 @@ def test_a_point_put_off_to_a_day_is_out_of_sight_also_within_the_lookahead():
              item("20261120-0903-open", "Open")]
     v = bv.build(result(sec("inbox", "inbox", items)), profile({"style": "triage", "lookahead_days": 1}))
     rows = rows_of(v)
-    assert set(rows) == {"Ada answers", "With Ada", "Open"}
-    assert rows["With Ada"][0] == "waiting" and rows["Ada answers"][0] == "waiting"
+    # round 2: a Later that keeps the person is out of sight too, only With … until a check-in stays in Waiting
+    assert set(rows) == {"With Ada", "Open"}
+    assert rows["With Ada"][0] == "waiting"
     # the cockpit hides what is out of sight by the same rule: the view names it
-    assert v["away"] == [{"key": "inbox:20261120-0900-back", "until": "2026-11-21"}]
+    assert v["away"] == [{"key": "inbox:20261120-0900-back", "until": "2026-11-21"},
+                         {"key": "inbox:20261120-0901-runs", "until": "2026-11-21"}]
 
 
 # ---------------------------------------------------------------- the chat's answers on rows the cockpit records

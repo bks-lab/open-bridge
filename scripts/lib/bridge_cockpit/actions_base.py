@@ -225,7 +225,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "a2a_ask": {"peer": ("peer", True), "text": ("text", True), "conv": ("agent_conv", False), "mode": ("a2a_mode", False)},
     "a2a_poll": {"conv": ("agent_conv", True)},
     "a2a_forget": {"conv": ("agent_conv", True)},
-    "task_reopen": {"slug": ("slug", True), "as": ("restore_as", False), "note": ("text", False)},
+    # last_updated and drop: an undo that leaves no trace, the task's date as it was and the notes of the step gone
+    "task_reopen": {"slug": ("slug", True), "as": ("restore_as", False), "note": ("text", False), "last_updated": ("day", False),
+                    "drop": ("notes", False)},
     "row_action": {"page": ("page_id", True), "section": ("page_id", True), "index": ("index", True),
                    "action": ("row_step", True)},
     "row_undo": {"section": ("page_id", True), "row": ("row_ref", True), "action": ("undo_token", True)},
@@ -235,11 +237,11 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "runs_on": {"keys": ("keys", True), "until": ("date", True), "on": ("text", False)},
     # back: the undo of a wait on a task that waited already, its blocker (on), the day it began and its quiet day
     "task_running": {"slug": ("slug", True), "back": ("bool", False), "on": ("text", False), "since": ("day", False),
-                     "until": ("day", False)},
+                     "until": ("day", False), "last_updated": ("day", False), "drop": ("notes", False)},
     # stage 4 of the one point view: In progress with someone until a check-in day, its undo and Stuck on the check-in
     "work_on": {"key": ("key", True), "who": ("line", True), "until": ("date", True), "text": ("text", False)},
     "task_next": {"slug": ("slug", True), "who": ("line", False), "check": ("date", False), "clear_check": ("bool", False),
-                  "clear": ("bool", False)},
+                  "clear": ("bool", False), "last_updated": ("day", False), "drop": ("notes", False)},
     # With … under More of a bucket card: who takes a task's next step (you, the Bridge), undone by task_next
     "task_owner": {"key": ("key", True), "who": ("line", True)},
     "checkin_stuck": {"key": ("key", True), "text": ("text", False)},

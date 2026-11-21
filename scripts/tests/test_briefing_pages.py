@@ -1105,7 +1105,9 @@ def test_a_task_row_on_a_page_carries_its_board_by_the_rule_work_keeps():
     # the same rule places Work's rows: Bridge's step to delegate, someone else's to waiting, none to no_next
     rows = bv.build(result, {"id": "morning", "for": "michael", "view": {}})
     by_task = {r.get("task"): r["bucket"] for b in rows["buckets"] for r in b["items"] if r.get("task")}
-    assert by_task["bot"] == "delegate" and by_task["ana"] == "waiting" and by_task["held"] == "waiting"
+    # round 2 of the four answers: held is put off to a day while it waits, out of sight until then
+    assert by_task["bot"] == "delegate" and by_task["ana"] == "waiting" and "held" not in by_task
+    assert {"key": "task:held", "until": "2026-10-15"} in rows["away"]
     assert by_task["named"] in ("do", "plan") and by_task["mine"] in ("do", "plan")
     assert "bare" not in by_task
 

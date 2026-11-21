@@ -298,14 +298,14 @@ def effect(answer: str, row: dict, until: str | None = None, today: str | None =
         if parked and kind == "waiting" and item:
             return be("later", "list", [f"inbox.py defer {item} --until {until}"], until=until)
         if kind == "waiting":
-            # stays with the same person until the day
+            # out of sight until the day and counted as later, still with the same person when it is back (round 2)
             if item:
-                return be("runs_on", "waiting", [f"inbox.py defer {item} --until {until}" + (f" --on {who}" if who else "")],
+                return be("runs_on", "later", [f"inbox.py defer {item} --until {until}" + (f" --on {who}" if who else "")],
                           until=until, **({"on": who} if who else {}))
             if slug:
-                return be("runs_on", "waiting", [f"task.py wait {slug} --until {until}"], until=until,
+                return be("runs_on", "later", [f"task.py wait {slug} --until {until}"], until=until,
                           **({"on": who} if who else {}))
-            return be("hide", "waiting", hide, until=until)
+            return be("hide", "later", hide, until=until)
         if item:
             return be("later", "list" if parked else "later", [f"inbox.py defer {item} --until {until}"], until=until)
         if kind == "task" and parked:

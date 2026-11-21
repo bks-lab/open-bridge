@@ -270,7 +270,18 @@ def _brief(actions: "Actions", value: Any, name: str, today: dt.date) -> dict:
     return clean
 
 
+def _notes(actions: "Actions", value: Any, name: str, today: dt.date) -> list[str]:
+    # the notes an undo takes out again (task.py --drop-note): up to four lines of text, each one line
+    if not isinstance(value, list) or len(value) > 4 or not all(isinstance(x, str) for x in value):
+        raise bad_arg(name, "must be a list of up to 4 notes")
+    out = [" ".join(check_text(x, name, 600).split()) for x in value]
+    if any(not x for x in out):
+        raise bad_arg(name, "a note must not be empty")
+    return out
+
+
 SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
+    "notes": _notes,
     "keys": _keys,
     "key": lambda actions, value, name, today: check_key(value, name),
     "launch_settings": _settings,

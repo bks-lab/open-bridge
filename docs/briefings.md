@@ -247,7 +247,8 @@ which agent renders it, and the cockpit's Work through sorts its points by the s
 | inbox item, urgency `now`/`today`, due within the lookahead, or an ask only you can answer (`only-you`) | do |
 | inbox report (`finding`, `result`) that is not `now`/`today`, not due within the lookahead and not `only-you` | delegate: the Bridge looks at it first |
 | inbox item otherwise | plan |
-| inbox item deferred to a day after today (Later), tomorrow too | none: out of sight until that day, counted as later (one deferred waiting on someone or on the Bridge stands in its bucket, below) |
+| inbox item deferred to a day after today (Later), tomorrow too, also one that keeps whom it waits on (`defer --on` without `--check`) | none: out of sight until that day, counted as later (one with someone until a check-in, `--check`, or put off to the Bridge stands in its bucket, below) |
+| task waiting (`blocked_by`) and put off to a day after today (`quiet_until`, task.py wait) | none: out of sight until that day, counted as later |
 | inbox item you said yes to (`inbox.py approve`, the cockpit's Yes), not `only-you` | delegate: the Bridge runs it, it is not asked again |
 | inbox item deferred waiting on the Bridge (`inbox.py defer --on Bridge`) | delegate, or do when only you can take its next click (`only-you`: a login, a send); never waiting, also in a section forced to `bucket: waiting` |
 | inbox item the briefing filed from a tracker row (`to_inbox`) | the same row as that tracker row, not a second one |
