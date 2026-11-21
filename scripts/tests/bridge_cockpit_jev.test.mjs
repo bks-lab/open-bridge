@@ -366,4 +366,8 @@ test('the Jev page uses the calm helpers: its own words, no reading flash, word 
   assert.match(page, /layoutMatrix\(/)
   assert.doesNotMatch(page, /const short = /, 'no cut of its own mid-word')
   assert.doesNotMatch(page, /cursorOn\(/)
+  // round 3: on a first visit nothing fades from nothing, types in late or counts up from 0 % sure
+  assert.match(page, /el\.style\.opacity = \(1 - 0\.3 \* read\)/)
+  assert.match(page, /const typeAt = P\.firstChanged && glide \? 0\.3 : null/)
+  assert.doesNotMatch(page, /countTo\(Ti, base/)
 })

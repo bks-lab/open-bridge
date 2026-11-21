@@ -532,7 +532,9 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
     if (head && plan) {
       const line = head.querySelector('[data-k=line]')
       const text = first ? tx().first(cutWords(trimCut(first.title, TITLE_CAP), 70)) : ''
-      const typeAt = intro ? 2.7 : P.firstChanged && glide ? 0.3 : null
+      // on a first visit the line stands whole at once: typed in late it pushed the matrix down twice at phone width
+      // (round 3 of the four answers: a layout shift of 0.21); a new first task still types on a glide
+      const typeAt = P.firstChanged && glide ? 0.3 : null
       if (line) line.textContent = typeAt == null || calm ? text : typed(intro ? Ti : T, text, typeAt, 1.1)
       const cur = head.querySelector('[data-k=cursor]')
       // the cursor stands only while the line types (logic.js cursorShown), then it is gone
@@ -577,7 +579,9 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
         const f = m.flip.get(key)
         const dy = f ? trackAt(f, now, { w: 11, zeta: 0.95 }) : 0
         busy = busy || tracking(f)
-        el.style.opacity = (Math.min(1, k * 1.2) * (1 - 0.3 * read)).toFixed(3)
+        // seen at once, they only slide in: a fade from nothing left the plan empty for a frame between the waiting
+        // list and Jev's (round 3 of the four answers)
+        el.style.opacity = (1 - 0.3 * read).toFixed(3)
         el.style.transform = `translate(${((1 - k) * -22).toFixed(1)}px, ${dy.toFixed(1)}px)`
         const it = items[i]
         // the rank badge pops in after its row, the confidence counts up with the bar
@@ -590,7 +594,8 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
           m.pcts.set(key, track(m.pcts.get(key), to, now, calm || intro))
           const base = trackAt(m.pcts.get(key), now, { w: 7, zeta: 0.95 })
           busy = busy || tracking(m.pcts.get(key))
-          pct.textContent = String(Math.round(intro && !calm ? countTo(Ti, base, 2.25 + i * 0.11, 0.9) : base))
+          // its value at once: counted up from 0 it read "0 % sure" for two seconds (round 3 of the four answers)
+          pct.textContent = String(Math.round(base))
         }
         const bar = el.querySelector('[data-bar]')
         if (bar && it) {
