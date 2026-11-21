@@ -247,15 +247,30 @@ OBSOLETE_NOTE = "veraltet"
 OBSOLETE_REASON = "Wird nicht gemacht: veraltet"
 
 
-def effect(answer: str, row: dict, until: str | None = None) -> dict:
+NUDGE_NOTE = ("Write a short, friendly follow-up to the person this waits on, as a DRAFT only with the mail-draft "
+              "skill. Never send it: the person sends it.")
+
+
+def settled_key(row: dict) -> str | None:
+    """The key the cockpit records a decision under (briefing_view._settled_key): an inbox item, a task, an issue"""
+    if row.get("inbox_id"):
+        return f"inbox:{row['inbox_id']}"
+    if row.get("task"):
+        return f"task:{row['task']}"
+    return f"ref:{row['ref']}" if row.get("ref") else None
+
+
+def effect(answer: str, row: dict, until: str | None = None, today: str | None = None) -> dict:
     """What `answer` does to `row`: {answer, kind, cockpit: {verb, args}, cli: [briefing commands], then: the
     bucket or place the point stands in afterwards} and the facts a page says beside it (running, draft_only,
-    own_answers, stream_continues, github). `until` is a Later's day (later_until), LIST_DAY for the watch list."""
+    own_answers, stream_continues, github). `until` is a Later's day (later_until), LIST_DAY for the watch list;
+    `today` the day a stream's "done for this time" counts on (it is back tomorrow)."""
     if answer not in ANSWERS:
         raise ValueError(f"no such answer: {answer!r}")
     kind = row_kind(row)
     item, slug = row.get("inbox_id"), row.get("task")
     who = row.get("who")
+    key = settled_key(row)
     out: dict = {"answer": answer, "kind": kind, "cli": []}
 
     def be(verb, then, cli=(), **args):
@@ -268,7 +283,7 @@ def effect(answer: str, row: dict, until: str | None = None) -> dict:
             return be("tab_answer", "delegate")
         if kind == "waiting":
             out["draft_only"] = True            # never sent: the draft stands in Do for the person
-            return be("nudge", "do")
+            return be("do_it", "do", note=NUDGE_NOTE)
         if item:
             return be("do_it", "delegate", [f"inbox.py approve {item}", "inbox.py run"], yes=True)
         out["running"] = True
@@ -276,6 +291,12 @@ def effect(answer: str, row: dict, until: str | None = None) -> dict:
     if answer == "later":
         until = until or ""
         parked = is_list_day(until)
+        hide = [f"briefing.py hide {key} --until {until}"] if key else []
+        if parked and kind == "waiting" and slug and not item and not row.get("stream"):
+            # the watch list is the watch list on a waiting task too: parked, as the cockpit parks it
+            return be("task_park", "list", [f'task.py status {slug} backlog --note "Parked: on the watch list"'])
+        if parked and kind == "waiting" and item:
+            return be("later", "list", [f"inbox.py defer {item} --until {until}"], until=until)
         if kind == "waiting":
             # stays with the same person until the day
             if item:
@@ -284,25 +305,28 @@ def effect(answer: str, row: dict, until: str | None = None) -> dict:
             if slug:
                 return be("runs_on", "waiting", [f"task.py wait {slug} --until {until}"], until=until,
                           **({"on": who} if who else {}))
-            return be("hide", "waiting", until=until)
+            return be("hide", "waiting", hide, until=until)
         if item:
             return be("later", "list" if parked else "later", [f"inbox.py defer {item} --until {until}"], until=until)
         if kind == "task" and parked:
             return be("task_park", "list", [f'task.py status {slug} backlog --note "Parked: on the watch list"'])
         if kind in ("task", "stream"):
-            return be("later", "list" if parked else "later", until=until)
-        return be("hide", "list" if parked else "later", until=until)
+            return be("later", "list" if parked else "later", hide, until=until)
+        return be("hide", "list" if parked else "later", hide, until=until)
     if answer == "done":
         if kind == "stream":
+            # done for this time: out of sight until tomorrow and counted as done today; the stream runs on
             out["stream_continues"] = True
-            return be("note", "done", [f'task.py note {slug} "done for this time"'])
+            day = (dt.date.fromisoformat(today) if today else dt.date.today()) + dt.timedelta(days=1)
+            return be("later", "done", [f"briefing.py hide {key} --until {day.isoformat()} --done"], until=day.isoformat(),
+                      done=True)
         if item:
             return be("settle", "done", [f'inbox.py close {item} --note "done"'], outcome="done")
         if slug:
             return be("settle", "done", [f"task.py close {slug}"], outcome="done")
         if kind == "issue":
             out["github"] = "untouched"         # hidden here, never closed on GitHub
-        return be("settle", "done", outcome="done")
+        return be("settle", "done", [f"briefing.py dismiss {key} --outcome done"] if key else [], outcome="done")
     # obsolete: closed as not done, with a note
     if item:
         return be("settle", "done", [f'inbox.py drop {item} --note "{OBSOLETE_NOTE}" --reason outdated'],
@@ -314,4 +338,4 @@ def effect(answer: str, row: dict, until: str | None = None) -> dict:
         return be("settle", "done", [f'task.py close {slug} --declined --reason "{OBSOLETE_REASON}"'], outcome="not_doing")
     if kind == "issue":
         out["github"] = "untouched"
-    return be("settle", "done", outcome="not_doing")
+    return be("settle", "done", [f"briefing.py dismiss {key} --outcome not_doing"] if key else [], outcome="not_doing")

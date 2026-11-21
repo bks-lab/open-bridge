@@ -149,3 +149,20 @@ def test_a_task_put_off_to_a_day_is_no_point_until_then():
     # a quick pass that left the tasks out keeps what the full pass put away
     quick = m.parse_view({"view": {"buckets": [], "away": []}, "sections": []}, False, 0)
     assert m.merge_view(v, {**quick, "skipped": ["tasks"]})["away"] == v["away"]
+
+
+def test_later_on_a_task_writes_nothing_where_the_task_lives_so_its_undo_leaves_no_trace(world):
+    # round 1 of the four answers: after Later > tomorrow and Undo, STATUS.md kept "## Notes - Später bis ..." and a
+    # new last_updated. A plain Later is only the cockpit's record; with a sentence the sentence is a note
+    world.runner.calls.clear()
+    world.act("later", key="task:demo-task", until="2026-12-01")
+    assert writes(world) == [] and world.app.store.hidden() == {"task:demo-task": "2026-12-01"}
+
+
+def test_a_stream_done_for_this_time_is_out_of_sight_until_tomorrow_and_done_today(world):
+    world.runner.calls.clear()
+    res = world.act("later", key="task:demo-task", until="2026-12-01", done=True)
+    assert writes(world) == []
+    assert world.app.store.hidden() == {"task:demo-task": "2026-12-01"}
+    assert set(world.app.store.settled.hidden_done("2026-11-30")) == {"task:demo-task"}
+    assert "until" not in res["note"].lower() and "2026" not in res["note"]

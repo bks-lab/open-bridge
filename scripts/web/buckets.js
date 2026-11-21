@@ -359,7 +359,8 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
   }
   add('later', { kind: 'later', choices: LATER_CHOICES.filter(c => c !== 'list' || !backlog), then }, f.answers.later)
   // ---- Done
-  if (stream) add('done', act({ verb: 'later', args: { key, until: isoDate(now + DAY), text: f.doneStreamText } }), f.answers.doneStream)
+  // a stream done for this time: out of sight until tomorrow and counted as done today, the stream runs on
+  if (stream) add('done', act({ verb: 'later', args: { key, until: isoDate(now + DAY), done: true } }), f.answers.doneStream)
   else if (!Array.isArray(row.settle) || row.settle.includes('done')) add('done', act({ verb: 'settle', args: { keys: [key], outcome: 'done' } }), f.answers.done)
   // ---- Obsolete
   const gone = obsoleteRun(row, f)

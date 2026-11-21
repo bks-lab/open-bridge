@@ -35,7 +35,7 @@ export const FLOW = {
       checkin: who => `It is with ${who}. Do it writes a draft that asks how it stands, never sent.`,
       // the four answers every point takes (lib/answers.py), the same on every card and in the briefing
       answers: { do: 'Do it', later: 'Later ▾', laterPlain: 'Later', done: 'Done', doneStream: 'done for this time' },
-      doneStreamSub: 'the stream runs on', doneStreamText: 'done for this time, the stream runs on',
+      doneStreamSub: 'the stream runs on',
       later: { tomorrow: 'tomorrow', monday: 'Monday', week: 'in a week', pick: 'pick a day', pickSub: 'calendar', list: 'watch list',
         listSub: 'some day', set: 'Set', label: 'Later until' },
       // under More only: who has it, the tab, the fields, a free question
@@ -429,7 +429,7 @@ export const FLOW = {
       nextLabel: 'Als Nächstes', asks: 'Der Tab fragt',
       checkin: who => `Es liegt bei ${who}. Mach das schreibt einen Entwurf, der nach dem Stand fragt, nie gesendet.`,
       answers: { do: 'Mach das', later: 'Später ▾', laterPlain: 'Später', done: 'Erledigt', doneStream: 'für diesmal erledigt' },
-      doneStreamSub: 'der Stream läuft weiter', doneStreamText: 'für diesmal erledigt, der Stream läuft weiter',
+      doneStreamSub: 'der Stream läuft weiter',
       later: { tomorrow: 'morgen', monday: 'Montag', week: 'in einer Woche', pick: 'Tag wählen', pickSub: 'Kalender', list: 'Merkliste',
         listSub: 'irgendwann', set: 'Übernehmen', label: 'Später bis' },
       owner: { head: 'Liegt bei …', me: 'du', bridge: 'Bridge', name: 'Name', give: 'Übergeben' },

@@ -185,7 +185,9 @@ def test_do_it_on_an_inbox_item_is_its_yes_and_the_run():
 
 def test_do_it_on_a_waiting_point_writes_a_nudge_as_a_draft_never_sent():
     e = ans.effect("do", {"task": "a", "bucket": "waiting", "who": "Ada"})
-    assert e["cockpit"]["verb"] == "nudge" and e["draft_only"] is True and e["then"] == "do"
+    # a verb the server has (round 1: "nudge" was none, the page sent do_it): an agent writes the draft, never sends
+    assert e["cockpit"]["verb"] == "do_it" and e["draft_only"] is True and e["then"] == "do"
+    assert "draft" in e["cockpit"]["args"]["note"].lower()
 
 
 def test_a_tab_that_asks_answers_with_its_own_words():
@@ -197,6 +199,9 @@ def test_later_puts_off_to_a_day_or_onto_the_watch_list():
     assert ans.effect("later", {"inbox_id": "i1"}, until="2026-11-23")["cli"] == ["inbox.py defer i1 --until 2026-11-23"]
     task = ans.effect("later", {"task": "a"}, until="2026-11-23")
     assert task["cockpit"] == {"verb": "later", "args": {"until": "2026-11-23"}} and task["then"] == "later"
+    # round 1: "72 später" did nothing durable from the chat; it hides the task as the cockpit's Later does
+    assert task["cli"] == ["briefing.py hide task:a --until 2026-11-23"]
+    assert ans.effect("later", {"ref": "o/r#1"}, until="2026-11-23")["cli"] == ["briefing.py hide ref:o/r#1 --until 2026-11-23"]
     park = ans.effect("later", {"task": "a"}, until=ans.LIST_DAY)
     assert park["cockpit"]["verb"] == "task_park" and park["then"] == "list"
     assert park["cli"][0].startswith("task.py status a backlog")
@@ -212,13 +217,22 @@ def test_later_on_a_waiting_point_keeps_it_with_the_same_person():
     assert e["cli"] == ["task.py wait a --until 2026-11-23"] and e["then"] == "waiting"
     i = ans.effect("later", {"inbox_id": "i1", "bucket": "waiting", "who": "Ada"}, until="2026-11-23")
     assert i["cli"] == ["inbox.py defer i1 --until 2026-11-23 --on Ada"]
+    # the watch list is the watch list on a waiting point too, the same act as the cockpit's (round 1: the chat's
+    # "parken" waited until 9999, the cockpit parked the task)
+    park = ans.effect("later", {"task": "a", "bucket": "waiting", "who": "Ada"}, until=ans.LIST_DAY)
+    assert park["cockpit"]["verb"] == "task_park" and park["then"] == "list"
+    assert park["cli"][0].startswith("task.py status a backlog")
+    shelf = ans.effect("later", {"inbox_id": "i1", "bucket": "waiting", "who": "Ada"}, until=ans.LIST_DAY)
+    assert shelf["cli"] == [f"inbox.py defer i1 --until {ans.LIST_DAY}"] and shelf["then"] == "list"
 
 
 def test_done_closes_and_a_stream_is_done_for_now():
     assert ans.effect("done", {"inbox_id": "i1"})["cli"][0].startswith("inbox.py close i1")
     assert ans.effect("done", {"task": "a"})["cockpit"] == {"verb": "settle", "args": {"outcome": "done"}}
-    s = ans.effect("done", {"task": "a", "stream": True})
-    assert s["cockpit"]["verb"] == "note" and s["stream_continues"] is True
+    s = ans.effect("done", {"task": "a", "stream": True}, today="2026-11-21")
+    # done for this time: out of sight until tomorrow and counted as done today, the same from the chat
+    assert s["cockpit"] == {"verb": "later", "args": {"until": "2026-11-22", "done": True}} and s["then"] == "done"
+    assert s["cli"] == ["briefing.py hide task:a --until 2026-11-22 --done"] and s["stream_continues"] is True
     issue = ans.effect("done", {"ref": "o/r#1"})
     assert issue["cockpit"] == {"verb": "settle", "args": {"outcome": "done"}} and issue["github"] == "untouched"
 
@@ -233,7 +247,8 @@ def test_obsolete_closes_as_not_done_with_a_note():
     assert s["cli"] == ['task.py close a --stream --declined --reason "Wird nicht gemacht: veraltet"']
     assert s["cockpit"]["args"] == {"outcome": "not_doing", "stream": True}
     issue = ans.effect("obsolete", {"ref": "o/r#1"})
-    assert issue["github"] == "untouched" and issue["cli"] == []
+    assert issue["github"] == "untouched" and issue["cli"] == ["briefing.py dismiss ref:o/r#1 --outcome not_doing"]
+    assert ans.effect("done", {"ref": "o/r#1"})["cli"] == ["briefing.py dismiss ref:o/r#1 --outcome done"]
 
 
 def test_every_answer_has_an_effect_on_every_kind():

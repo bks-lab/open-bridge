@@ -187,7 +187,9 @@ test('Done settles as done; on a stream it is done for this time and the stream 
   assert.equal(d.label, 'für diesmal erledigt')
   assert.equal(d.run.verb, 'later')
   assert.equal(d.run.args.until, TOMORROW)
-  assert.equal(d.run.args.text, de.doneStreamText)
+  // round 1: counted as done today, not as later; nothing written where the stream lives (lib/answers.py, done)
+  assert.equal(d.run.args.done, true)
+  assert.equal(d.run.args.text, undefined)
   // a row that cannot be settled as done offers no Done
   assert.ok(!answers(task('x', { settle: ['not_doing'] }), 'plan').some(a => a.meaning === 'done'))
 })

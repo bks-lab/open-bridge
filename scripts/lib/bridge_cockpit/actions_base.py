@@ -97,7 +97,7 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # plan: Schedule of Plan (the same defer), whose note says it is planned, never "later"
     # until: a day within a year, or the watch list's day (lib/answers.py LIST_DAY): Later to the watch list
     "later": {"key": ("key", True), "until": ("later_day", True), "text": ("text", False), "by": ("by", False),
-              "revisit": ("bool", False), "plan": ("bool", False)},
+              "revisit": ("bool", False), "plan": ("bool", False), "done": ("bool", False)},
     "hide": {"key": ("key", True), "until": ("date", True)},
     # the Work through page's "Drop because" on a task: parked as an idea with its reason (task.py shelve);
     # until: the day the idea may surface again, else task.py's own default

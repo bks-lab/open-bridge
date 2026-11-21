@@ -2243,7 +2243,7 @@ def settled_record(root: Path, now: dt.datetime) -> dict:
     """What the person decided in the cockpit (work/cockpit/settled/): the keys marked done or not doing and the
     rows put off, with the day they show again. Read for the printed briefing, so a row closed there does not
     come back here. Empty when the record cannot be read: a briefing never fails for it."""
-    empty: dict = {"dismissed": [], "dismissed_on": {}, "hidden": {}}
+    empty: dict = {"dismissed": [], "dismissed_on": {}, "hidden": {}, "hidden_done": {}}
     folder = root / "work" / "cockpit" / "settled"
     if not folder.is_dir():
         return empty
@@ -2252,11 +2252,45 @@ def settled_record(root: Path, now: dt.datetime) -> dict:
         sys.path.insert(0, lib)
     try:
         from bridge_cockpit.settled import SettledStore
-        _keys, hidden, dismissed = SettledStore(folder, lambda: 0).state(f"{now:%Y-%m-%d}")
+        store = SettledStore(folder, lambda: 0)
+        _keys, hidden, dismissed = store.state(f"{now:%Y-%m-%d}")
+        done = store.hidden_done(f"{now:%Y-%m-%d}")
     except (ImportError, OSError, ValueError):
         return empty
     return {"dismissed": sorted(dismissed), "dismissed_on": {k: v.get("at") or "" for k, v in dismissed.items()},
-            "hidden": hidden}
+            "hidden": hidden, "hidden_done": done}
+
+
+SETTLE_KEY = re.compile(r"^(?:task:[a-z0-9][a-z0-9._-]{0,119}|ref:[\w.-]+/[\w.-]+#\d+)\Z")
+
+
+def settle_row(root: Path, args) -> int:
+    """`hide` and `dismiss`: the chat's Later, Done and Obsolete on a row the cockpit records (a task, a stream, an
+    issue or pull request), written to the same record (work/cockpit/settled/), so "3 später" from the chat does
+    what the cockpit's Later does. An inbox item is answered in the inbox (inbox.py defer, close, drop)."""
+    if not SETTLE_KEY.match(args.key):
+        print(f"briefing: {args.key!r} is no task:<slug> or ref:<owner/repo#n>", file=sys.stderr)
+        return 2
+    lib = str(ROOT / "scripts" / "lib")
+    if lib not in sys.path:
+        sys.path.insert(0, lib)
+    from bridge_cockpit.settled import SettledStore
+    store = SettledStore(root / "work" / "cockpit" / "settled", lambda: dt.datetime.now().timestamp() * 1000)
+    if args.cmd == "dismiss":
+        store.dismiss(args.key, args.outcome, args.key.split(":", 1)[1])
+        print(f"{args.key}: {args.outcome}")
+        return 0
+    try:
+        until = dt.date.fromisoformat(args.until)
+    except ValueError:
+        print(f"briefing: --until {args.until!r} is no day YYYY-MM-DD", file=sys.stderr)
+        return 2
+    if until <= dt.date.today() or (until.year > dt.date.today().year + 1 and not _view().answers.is_list_day(args.until)):
+        print(f"briefing: --until {args.until} is not after today (or past a year, but the watch list)", file=sys.stderr)
+        return 2
+    store.hide(args.key, until.isoformat(), args.key.split(":", 1)[1], done=args.done)
+    print(f"{args.key}: until {until.isoformat()}" + (" (done for this time)" if args.done else ""))
+    return 0
 
 
 def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | None) -> dict:
@@ -2308,9 +2342,14 @@ def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | N
         if str(_frontmatter(status.read_text(encoding="utf-8")).get("closed") or "")[:10] == today.isoformat():
             out["done_today"] += 1
     record = settled if isinstance(settled, dict) else {}
+    done_on = record.get("hidden_done") or {}
     for key, until in (record.get("hidden") or {}).items():
         if str(key).startswith("inbox:"):
             continue                            # an inbox item is put off in the inbox, counted above
+        if key in done_on:
+            # a stream done for this time: out of sight until tomorrow, done the day it was done
+            out["done_today"] += str(done_on[key])[:10] == today.isoformat()
+            continue
         if answers.is_list_day(until):
             out["list"] += 1
         elif str(until) > today.isoformat():
@@ -2616,9 +2655,21 @@ def main(argv=None) -> int:
     p_detail = sub.add_parser("detail", help="the detail of one GitHub issue or pull request (owner/repo#n), as JSON")
     p_detail.add_argument("ref")
     p_detail.add_argument("--fresh", action="store_true", help="ask GitHub now, whatever was kept")
+    p_hide = sub.add_parser("hide", help="put a task, stream or issue row off until a day, as the cockpit's Later does "
+                                         "(work/cockpit/settled/); an inbox item is put off with inbox.py defer")
+    p_hide.add_argument("key", help="task:<slug> or ref:<owner/repo#n>")
+    p_hide.add_argument("--until", required=True, help="YYYY-MM-DD, after today (9999-12-31: the watch list)")
+    p_hide.add_argument("--done", action="store_true", help="a stream done for this time: counted as done today")
+    p_dismiss = sub.add_parser("dismiss", help="settle a task or issue row as the cockpit's Done or Obsolete does "
+                                               "(work/cockpit/settled/), never on GitHub")
+    p_dismiss.add_argument("key", help="task:<slug> or ref:<owner/repo#n>")
+    p_dismiss.add_argument("--outcome", required=True, choices=("done", "not_doing"))
     args = ap.parse_args(argv)
     root = args.root.resolve()
     cfg = read_config(root)
+
+    if args.cmd in ("hide", "dismiss"):
+        return settle_row(root, args)
 
     if args.cmd == "validate":
         problems = validate(root)

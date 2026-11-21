@@ -329,3 +329,30 @@ def test_a_point_put_off_to_a_day_is_out_of_sight_also_within_the_lookahead():
     assert rows["With Ada"][0] == "waiting" and rows["Ada answers"][0] == "waiting"
     # the cockpit hides what is out of sight by the same rule: the view names it
     assert v["away"] == [{"key": "inbox:20261120-0900-back", "until": "2026-11-21"}]
+
+
+# ---------------------------------------------------------------- the chat's answers on rows the cockpit records
+
+def test_the_chat_hides_and_settles_a_row_as_the_cockpit_does(tmp_path):
+    # round 1 of the four answers: "72 später" on a task gave the briefing agent no command; the cockpit hid it. Both
+    # now write the same record (work/cockpit/settled/), and a stream done for this time counts as done today
+    root = _root(tmp_path)
+    (root / "bridge-config.yaml").write_text("{}\n", encoding="utf-8")
+    real = dt.date.today()                 # the CLI refuses a day that is not after the real today
+    day1, day3 = (real + dt.timedelta(days=1)).isoformat(), (real + dt.timedelta(days=3)).isoformat()
+    assert bf.main(["--root", str(root), "hide", "task:a", "--until", day3]) == 0
+    assert bf.main(["--root", str(root), "hide", "task:stream-s", "--until", day1, "--done"]) == 0
+    assert bf.main(["--root", str(root), "dismiss", "ref:o/r#1", "--outcome", "done"]) == 0
+    now = dt.datetime.combine(real, dt.time(8, 0))
+    rec = bf.settled_record(root, now)
+    assert rec["hidden"] == {"task:a": day3, "task:stream-s": day1}
+    assert rec["dismissed"] == ["ref:o/r#1"] and rec["hidden_done"] == {"task:stream-s": real.isoformat()}
+    got = bf.aside_counts(root, now, 1, {**rec, "dismissed_on": {"ref:o/r#1": real.isoformat()}})
+    assert got == {"later": 1, "list": 0, "done_today": 2}
+    for bad in (["hide", "inbox:20261120-0900-x", "--until", day3], ["hide", "task:a", "--until", "tomorrow"],
+                ["hide", "task:a", "--until", real.isoformat()], ["dismiss", "task:a", "--outcome", "maybe"]):
+        try:
+            code = bf.main(["--root", str(root), *bad])
+        except SystemExit as e:          # argparse refuses an outcome it does not know
+            code = e.code
+        assert code != 0, bad

@@ -197,7 +197,7 @@ class WorkVerbs:
         self.launch(ctx, [row], "context", self.app.cfg.target)
 
     def v_later(self, ctx: Ctx, key: str, until: str, text: str | None = None, revisit: bool = False,
-                plan: bool = False) -> None:
+                plan: bool = False, done: bool = False) -> None:
         """Put off until a day. An inbox item records its defer itself and keeps the sentence as a note; a task, a
         stream and any other row are only hidden here, so the decision is written where the row lives
         (write_note), with the sentence when there is one. With `revisit` (Work through's Revisit ▾ while the read
@@ -223,7 +223,18 @@ class WorkVerbs:
             ctx.history.append(history_item(row["key"], row["title"], "inbox", "on the watch list" if listed else f"later until {until}", item))
             self.settle(ctx, row, self.tx["list_back" if listed else "planned_back" if plan else "later_back"].format(until=until))
             return
-        self.write_note(ctx, row, words)
+        if done:
+            # a stream done for this time (its Done): out of sight until `until`, counted as done today, the stream
+            # runs on; nothing is written where it lives, so the undo leaves no trace
+            self.clear_twins(row["key"])
+            self.app.store.hide(row["key"], until, str(row["title"]), done=True)
+            ctx.history.append(history_item(row["key"], row["title"], "other", "done for this time"))
+            ctx.note(self.tx["done_stream_note"].format(title=m.short(row["title"], 60)))
+            return
+        # a plain Later on a task is the cockpit's record only (round 1: its undo left a note and last_updated in
+        # STATUS.md); a sentence the person wrote is kept where the row lives, any other row keeps its log line
+        if text or not row.get("task"):
+            self.write_note(ctx, row, words)
         self.hide_until(ctx, row, until)
 
     def revisit_on(self, ctx: Ctx, row: dict, until: str, text: str | None) -> None:

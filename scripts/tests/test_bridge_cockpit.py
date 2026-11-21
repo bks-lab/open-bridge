@@ -1614,7 +1614,8 @@ def test_later_defers_inbox_and_hides_the_rest(world):
     assert res["settled"] == [f"inbox:{YES_ID}"] and "Later, back on 2026-10-10" in res["note"]
     world.runner.calls.clear()
     res = world.act("later", key="task:other-task", until=TOMORROW)
-    assert writes(world) == [K(world, "note", "other-task", "--", "Later until 2026-10-10")]
+    # a plain Later on a task is the cockpit's record only: nothing in STATUS.md that its undo would leave behind
+    assert writes(world) == []
     assert world.app.store.hidden() == {"task:other-task": TOMORROW}
     model = world.app.collector.model
     assert [r["key"] for r in model["hidden"]] == ["task:other-task"] and model["hidden"][0]["hidden_until"] == TOMORROW
