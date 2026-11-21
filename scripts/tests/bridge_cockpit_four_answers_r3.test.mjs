@@ -144,6 +144,17 @@ test('the record of a task in Files offers the four answers while the buckets ar
   assert.ok(!words.some(w => /Give it to the AI|In progress|Drop/.test(w)), words.join())
 })
 
+// ---------------------------------------------------------------- By source: one matter, one row
+
+test('By source lists a task folded into its inbox line once, as that line', () => {
+  const line = ask('20261009-0900-robin', { folded_tasks: ['backup-red'] })
+  const t = task('backup-red', { title: 'Fabrikam backup red for three days', bucket: 'waiting' })
+  const s = state({ now: [line], work: [t] })
+  const byKey = new Map([[line.key, line], [t.key, t]])
+  assert.equal(logic.workShows({ key: t.key, task: 'backup-red', title: t.title }, s, byKey, 'all'), false)
+  assert.equal(logic.workShows({ key: line.key, inbox: line.inbox_id, title: line.title }, s, byKey, 'all'), true)
+})
+
 // ---------------------------------------------------------------- go on
 
 test('go on is offered only where the tab asks nothing', () => {

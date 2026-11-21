@@ -571,7 +571,13 @@ function noPoint(row, s) {
  *  all */
 export function workShows(it, s, byKey, f) {
   const bucket = typeof f === 'string' && f.startsWith('b:') ? f.slice(2) : null
-  if (flowBucketsOn(s)) return !bucket || itemBucket(it, s, byKey) === bucket
+  if (flowBucketsOn(s)) {
+    // a task the briefing folded into its inbox line is that line, one matter one row (round 3: By source listed it
+    // beside its line, unnumbered, in another bucket); one put off to a later day is out of sight here too
+    const row = actionRow(it, byKey)
+    if (row && noPoint(row, s) && !(row.stream || row.work_kind === 'stream')) return false
+    return !bucket || itemBucket(it, s, byKey) === bucket
+  }
   return bucket ? true : triageShows(it, s?.triage?.items, f)
 }
 
