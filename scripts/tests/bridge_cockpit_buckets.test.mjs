@@ -360,3 +360,43 @@ test('the taskboard says what a task waits on once, never "wartet auf waiting fo
   assert.equal(text.TABLES.de.taskboard.tag.waitingOn('waiting for Noa to reply'), 'waiting for Noa to reply')
   assert.equal(text.TABLES.de.taskboard.tag.waitingOn('Noa'), 'wartet auf Noa')
 })
+
+test('what runs stands quiet under the buckets, no decision and never lost from the page', async () => {
+  const c = recorder()
+  const working = { ref: 'surface:5', name: 'fabrikam-backup', state: 'working', slug: 'backup', since_ms: NOW - 5 * MIN, workspace: 'Home' }
+  const s = state({ work: [task('backup'), task('other')], tabs: [working], driver: { caps: ['tabs', 'launch', 'focus', 'screen'] } })
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  await rounds()
+  const run = el.$('.fb-running')
+  assert.ok(run, 'a quiet list of what runs')
+  assert.match(run.text(), /Task backup/)
+  // it is no point of a bucket
+  assert.ok(!logic.bucketPoints(s, 'de').all.some(x => x.id === 'task:backup'))
+  run.$$('button')[0].click()
+  assert.equal(c.calls.at(-1)[0], 'flowRun')
+})
+
+test('a tab whose question needs a number or a choice is answered in words first, never only with Go on', async () => {
+  const q = { ref: 'surface:2', name: 'estimate-sync', state: 'waiting', since_ms: NOW - 5 * MIN, workspace: 'Home',
+    ask: { text: 'Wie viele Datensätze, grob 10.000 oder eher 1 Million? Davon hängt es ab.', hash: 'h2', yes_no: false, asks: true, draft: false } }
+  const s = state({ tabs: [q], driver: { caps: ['tabs', 'launch', 'focus', 'screen', 'send', 'key'] } })
+  const x = { group: 'asks', id: 'tab:surface:2', kind: 'tab', tab: q, row: null }
+  const a = logic.bucketAnswers(x, 'do', s, 'de')
+  assert.equal(a[0].run.kind, 'say')
+  assert.ok(a.some(b => b.run.verb === 'tab_go_on'))
+  const calls = []
+  const c = new Proxy({}, { get: (_, p) => (p === 'then' || typeof p === 'symbol' ? undefined
+    : (...args) => { calls.push([p, ...args]); return p === 'reply' ? Promise.resolve({ ok: true }) : undefined }) })
+  const el = mount(html`<${views.flowbuckets.BucketCard} x=${x} bucket="do" s=${s} c=${c} />`)
+  el.$$('.fb-answers button')[0].click()
+  await rounds()
+  const box = el.$('.fb-say input')
+  assert.ok(box, 'a line to answer in')
+  box.value = 'eher 1 Million'
+  box.dispatch('input')
+  await rounds()
+  el.$('.fb-say form').dispatch('submit')
+  await rounds()
+  assert.deepEqual(calls.find(x2 => x2[0] === 'reply').slice(1), ['tab_send', logic.replySend(q, 'eher 1 Million').args])
+  assert.equal(logic.replySend(q, 'x').args.seen, 'h2')
+})

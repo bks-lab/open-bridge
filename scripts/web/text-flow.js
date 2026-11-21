@@ -40,6 +40,7 @@ export const FLOW = {
       prev: 'Previous', next2: 'Next', pos: (i, n) => `${i} of ${n}`,
       pick: { title: 'Which day?', tomorrow: 'Tomorrow', monday: 'Monday', week: 'In a week', month: 'In a month', own: 'Another day', set: 'Set', cancel: 'Cancel' },
       dropText: 'Dropped in Work through', parkText: 'Parked in Work through', someone: 'them',
+      say: 'Answer…', sayLabel: 'Your answer to the tab', saySend: 'Send', sayCancel: 'Cancel',
       // the fixed, quiet last answer of every point (buckets.js bucketAnswers): settled as out of date, asked first in place
       obsolete: 'Obsolete', obsoleteText: 'obsolete', obsoleteAsk: 'Really obsolete?', obsoleteYes: 'Yes, obsolete', obsoleteNo: 'Cancel',
       obsoleteTip: 'Gone because it is out of date: a task is settled as not done, an inbox item dropped, an issue hidden here and left open on GitHub',
@@ -419,6 +420,7 @@ export const FLOW = {
       prev: 'Vorheriger', next2: 'Nächster', pos: (i, n) => `${i} von ${n}`,
       pick: { title: 'Welcher Tag?', tomorrow: 'Morgen', monday: 'Montag', week: 'In einer Woche', month: 'In einem Monat', own: 'Anderer Tag', set: 'Setzen', cancel: 'Abbrechen' },
       dropText: 'Beim Abarbeiten gestrichen', parkText: 'Beim Abarbeiten geparkt', someone: 'die andere Seite',
+      say: 'Antworten…', sayLabel: 'Deine Antwort an den Tab', saySend: 'Senden', sayCancel: 'Abbrechen',
       obsolete: 'Veraltet', obsoleteText: 'veraltet', obsoleteAsk: 'Wirklich veraltet?', obsoleteYes: 'Ja, veraltet', obsoleteNo: 'Abbrechen',
       obsoleteTip: 'Weg, weil überholt: eine Aufgabe wird als nicht gemacht abgeschlossen, ein Eintrag im Posteingang gestrichen, ein Issue hier ausgeblendet und auf GitHub offen gelassen',
       obsoleteLegend: o => `${o}: weg, weil überholt.`,

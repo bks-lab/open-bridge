@@ -10,7 +10,7 @@
 // runs_on, the tab's own answers). No DOM, no network. logic.js passes every name on.
 import { TABLES } from './text.js'
 import { DAY, actionRow, flowAction, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
-  short, triageShows } from './logic.js'
+  replySend, short, triageShows } from './logic.js'
 
 // the briefing's buckets, in its default order (briefing_view BUCKETS)
 export const BUCKET_IDS = ['do', 'plan', 'delegate', 'waiting', 'drop']
@@ -239,10 +239,18 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
   const doIt = key && row.inbox_state !== 'approved' && !row.tab?.live ? act({ verb: 'do_it', args: { keys: [key] } }) : null
   const tab = x?.tab ?? null
   if (bucket === 'do' && tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) {
-    // the tab's own answers win: what it asks is answered in the tab, never by a new start
-    const own = replyOptions(tab, s, t).buttons.filter(b => b.verb !== 'tab_jump')
-    for (const b of own) add('yes', { kind: 'reply', verb: b.verb, args: b.args }, b.label)
-    if (!own.length) add('yes', doIt)
+    // the tab's own answers win: what it asks is answered in the tab, never by a new start. Where it takes words
+    // (textBox), an answer in words stands among them: first where the question is no yes or no (a number, a
+    // choice, "reply by number"), so Go on is never the only way to answer it
+    const opts = replyOptions(tab, s, t)
+    const own = opts.buttons.filter(b => b.verb !== 'tab_jump')
+    const say = opts.textBox ? { kind: 'say', tab } : null
+    if (say && !tab.ask?.yes_no) add('yes', say, f.say)
+    for (const b of own) {
+      if (say && tab.ask?.yes_no && b.verb === 'tab_go_on') add('yes', say, f.say)
+      add('yes', { kind: 'reply', verb: b.verb, args: b.args }, b.label)
+    }
+    if (!own.length && !say) add('yes', doIt)
   } else if (bucket === 'do') add('yes', doIt)
   if (bucket === 'delegate') add('go', doIt)
   if (bucket === 'plan') add('schedule', key ? { kind: 'pick', then: day => ({ verb: 'later', args: { key, until: day } }) } : null)

@@ -532,6 +532,8 @@
 .fb-bucket-sub { font-weight: 400; }
 .fb-bucket-n { flex: none; }
 .fb-points { padding: 2px 0 6px 10px; }
+.fb-running { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--border); }
+.fb-running h3 { margin: 0; color: var(--on-surface-muted); }
 /* the open bucket's points scroll in a box of their own: every bucket stays in sight above and below them */
 .fb-buckets > li > .fb-points { max-height: min(42vh, 420px); overflow-y: auto; overscroll-behavior: contain;
   scrollbar-gutter: stable; border-left: 2px solid var(--border); margin-left: 10px; padding-left: 6px; }
@@ -567,6 +569,9 @@
 .fb-pick { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); }
 .fb-pick .label-caps { margin: 0; }
 .fb-pick-own { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fb-say { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.fb-say form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0; }
+.fb-say .input { flex: 1 1 16em; min-width: 0; }
 .fb-note { margin: 0; white-space: pre-wrap; }
 .fb-nr { margin: 0; }
 .fb-bar { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
@@ -574,7 +579,7 @@
 .fb-chip { font-weight: 600; }
 .fb-chip-nr { color: var(--on-surface-muted); }
 .fb-bar-rest { display: inline-flex; flex-wrap: wrap; gap: 6px; }
-.fb-bar > .fb-pick { flex-basis: 100%; }
+.fb-bar > .fb-pick, .fb-bar > .fb-say { flex-basis: 100%; }
 .fb-bar > .fb-note { flex-basis: 100%; }
 .fb-more { border-top: 1px solid var(--border); padding-top: 10px; }
 .fb-more > summary { cursor: pointer; font-weight: 600; color: var(--on-surface-muted); }

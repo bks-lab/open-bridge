@@ -17,8 +17,8 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  answerMark, bucketAnswers, bucketDefs, bucketPoints, detailNeedsLoad, errorText, focusIndex, formatDay, instructScope, nextSentence, openBucket, parseDate,
-  pickDays, pointArea, pointKindWord, pointName, short, viewBucket,
+  answerMark, bucketAnswers, bucketDefs, bucketPoints, detailNeedsLoad, errorText, flowParts, focusIndex, formatDay, instructScope, nextSentence, openBucket, parseDate,
+  pickDays, pointArea, pointKindWord, pointName, replySend, runningOf, short, viewBucket,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { WorkSwitch } from './day.js'
@@ -61,6 +61,22 @@ function DayPick({ s, onPick, onCancel, busy, uid = 'fb-pick-day' }) {
   </div>`
 }
 
+/** The line an answer in words opens (a tab that asks for a number or a choice): the words go to the tab as the
+ *  tab's own answer (tab_send, guarded by the question it answers), Cancel closes it */
+function SayLine({ onSend, onCancel, busy, uid = 'fb-say-text' }) {
+  const f = T().flow.buckets
+  const [text, setText] = useState('')
+  const words = text.trim()
+  return html`<div class="fb-say" role="group" aria-label=${f.sayLabel}>
+    <form class="field-row" onSubmit=${e => { e.preventDefault?.(); if (words) onSend(words) }}>
+      <label class="sr-only" for=${uid}>${f.sayLabel}</label>
+      <input id=${uid} class="input" type="text" value=${text} placeholder=${f.sayLabel} onInput=${e => setText(e.currentTarget.value)} />
+      <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!words} onClick=${() => words && onSend(words)}>${f.saySend}<//>
+      <${Btn} size="sm" variant="ghost" onClick=${onCancel}>${f.sayCancel}<//>
+    </form>
+  </div>`
+}
+
 /** The answers of a point in its bucket and what a click on one does, the one place every view sends an answer
  *  from (the card here, the bar of a row on Due, By source, By Jev and the tabs column): a tab's own answer goes
  *  to the tab (c.reply) and is marked answered, a verb of the server goes out as c.act, an answer that needs a
@@ -72,20 +88,25 @@ export function useBucketAnswer(x, bucket, s, c, onDone = null) {
   const [pick, setPick] = useState(null)
   const [confirm, setConfirm] = useState(null)
   const [note, setNote] = useState(null)
+  const [say, setSay] = useState(null)
   const row = x?.row ?? null
   const tab = x?.tab ?? null
   const answers = x ? bucketAnswers(x, bucket, s, lang) : []
   const busy = !!(s.ui?.busy?.[row?.key] || (tab && s.ui?.busy?.[tab.ref]))
   const run = async (a, day = null, sure = false) => {
     setNote(null)
-    if (a.confirm && !sure) { setPick(null); setConfirm(a); return }
+    if (a.confirm && !sure) { setPick(null); setSay(null); setConfirm(a); return }
     setConfirm(null)
-    if (a.run.kind === 'pick' && !day) { setPick(a); return }
-    if (a.run.kind === 'reply') {
-      const r = await c.reply(a.run.verb, a.run.args)
+    if (a.run.kind === 'pick' && !day) { setSay(null); setPick(a); return }
+    // an answer in words: the line opens first, `day` carries the words once they are sent (SayLine)
+    if (a.run.kind === 'say' && !day) { setPick(null); setSay(a); return }
+    if (a.run.kind === 'reply' || a.run.kind === 'say') {
+      const go = a.run.kind === 'say' ? replySend(a.run.tab, day) : a.run
+      const r = await c.reply(go.verb, go.args)
       if (r?.refused) { setNote(errorText(r.error, t)); return }
       if (!r?.ok) { if (r?.note) setNote(r.note); return }
-      c.markAnswered?.(tab.ref, answerMark(tab, a.label, Date.now()))
+      setSay(null)
+      c.markAnswered?.(tab.ref, answerMark(tab, a.run.kind === 'say' ? day : a.label, Date.now()))
       onDone?.()
       return
     }
@@ -96,7 +117,7 @@ export function useBucketAnswer(x, bucket, s, c, onDone = null) {
     if (r?.ok) onDone?.()
     else if (r?.note) setNote(r.note)
   }
-  return { answers, run, pick, setPick, confirm, setConfirm, note, busy }
+  return { answers, run, pick, setPick, confirm, setConfirm, note, busy, say, setSay }
 }
 
 /** The answers as buttons, in their order: the strong one where `strong` says so, a quiet one (Obsolete) a ghost,
@@ -130,7 +151,7 @@ export function BucketChip({ x, bucket, s, nr: withNr = true }) {
 export function BucketBar({ x, s, c, size = 'xs', bucket = null, chip = true, nr = true }) {
   const f = T().flow.buckets
   const b = bucket ?? viewBucket(x)
-  const { answers, run, pick, setPick, confirm, setConfirm, note, busy } = useBucketAnswer(x, b, s, c)
+  const { answers, run, pick, setPick, confirm, setConfirm, note, busy, say, setSay } = useBucketAnswer(x, b, s, c)
   const [more, setMore] = useState(false)
   // the strong one is the first the bucket offers, never the quiet Obsolete, which stands last under More
   const first = answers[0] && !answers[0].quiet ? answers[0] : null
@@ -144,6 +165,7 @@ export function BucketBar({ x, s, c, size = 'xs', bucket = null, chip = true, nr
     ${rest.length ? html`<${Btn} size=${size} variant="ghost" pressed=${more} cls="fb-bar-more" onClick=${() => setMore(!more)}>${f.more}<//>` : null}
     ${more ? html`<span class="fb-bar-rest">${btns(rest, false)}</span>` : null}
     ${pick ? html`<${DayPick} s=${s} busy=${busy} uid=${uid} onPick=${day => run(pick, day)} onCancel=${() => setPick(null)} />` : null}
+    ${say ? html`<${SayLine} busy=${busy} uid=${`${uid}-say`} onSend=${words => run(say, words)} onCancel=${() => setSay(null)} />` : null}
     ${note ? html`<span class="fb-note small" role="status">${note}</span>` : null}
   </span>`
 }
@@ -156,7 +178,7 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
   useItemDetail(x, s, c)
   const row = x.row ?? null
   const tab = x.tab ?? null
-  const { answers, run, pick, setPick, confirm, setConfirm, note, busy } = useBucketAnswer(x, bucket, s, c, () => { c.flowDecided?.(); onDone?.() })
+  const { answers, run, pick, setPick, confirm, setConfirm, note, busy, say, setSay } = useBucketAnswer(x, bucket, s, c, () => { c.flowDecided?.(); onDone?.() })
   const marks = [pointKindWord(x, lang), pointArea(x), row?.due ? f.due(formatDay(String(row.due).slice(0, 10), lang)) : null,
     row?.gate === 'only-you' ? f.onlyYou : null, bucket === 'waiting' && (x.checkin?.who ?? row?.checkin?.who) ? f.with(x.checkin?.who ?? row.checkin.who) : null]
     .filter(Boolean)
@@ -174,6 +196,7 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
         run=${run} setConfirm=${setConfirm} max=${60} />
     </div>` : null}
     ${pick ? html`<${DayPick} s=${s} busy=${busy} onPick=${day => run(pick, day)} onCancel=${() => setPick(null)} />` : null}
+    ${say ? html`<${SayLine} busy=${busy} onSend=${words => run(say, words)} onCancel=${() => setSay(null)} />` : null}
     ${note ? html`<p class="fb-note small" role="status">${note}</p>` : null}
     ${Number.isInteger(row?.brief_nr) ? html`<p class="fb-nr muted small">${f.inBriefing(row.brief_nr, first && !tab ? first.toLowerCase() : null)}</p>` : null}
     <details class="fb-more">
@@ -199,7 +222,14 @@ export function BucketBody({ s, c }) {
   const lang = language()
   const t = T()
   const f = t.flow.buckets
-  const { buckets, all } = bucketPoints(s, lang)
+  const parts = flowParts(s)
+  const { buckets, all } = bucketPoints(s, lang, parts)
+  // what runs (an agent at work) and what an agent finished to read are no decision: they stand quiet under the
+  // buckets, each a way to its entry, so nothing that runs is lost from the page
+  const runs = runningOf(parts)
+  const running = [...runs.sessions.map(v => ({ id: v.entry?.id ?? v.id, title: v.entry?.title ?? v.tab?.name ?? v.session?.title ?? '', open: v.entry ? () => c.flowRun(v.entry.id) : () => c.flowRunning() })),
+    ...runs.loose.map(e => ({ id: e.id, title: e.title ?? e.tab?.name ?? '', open: () => c.flowRun(e.id) }))]
+  const reads = (parts.read ?? []).map((r, k) => ({ id: r.id, title: r.title ?? r.row?.title ?? '', open: () => c.flowReadOpen(r.id, k) }))
   const open = openBucket(buckets, s.ui?.flowBucket)
   const points = open?.points ?? []
   const i = focusIndex(points, s.ui?.flowBucketAt)
@@ -232,6 +262,12 @@ export function BucketBody({ s, c }) {
               title=${pointTitleOf(p)} onClick=${() => { c.flowBucketGo(p.id, k); cardIntoView() }}>${short(pointTitleOf(p), 70)}</button>
           </li>`)}</ul>` : null}
         </li>`)}</ul>
+        ${running.length || reads.length ? html`<div class="fb-running">
+          ${running.length ? html`<h3 class="label-caps">${t.flow.lane.label}</h3>
+            <ul class="fb-points">${running.map(e => html`<li key=${e.id}><button type="button" class="fb-point" title=${e.title} onClick=${e.open}>${short(e.title, 70)}</button></li>`)}</ul>` : null}
+          ${reads.length ? html`<h3 class="label-caps">${t.flow.kind.done}</h3>
+            <ul class="fb-points">${reads.map(e => html`<li key=${e.id}><button type="button" class="fb-point" title=${e.title} onClick=${e.open}>${short(e.title, 70)}</button></li>`)}</ul>` : null}
+        </div>` : null}
       </nav>
       <section class="fb-main" aria-label=${open?.title ?? f.label}>
         ${open ? html`<header class="fb-head">
