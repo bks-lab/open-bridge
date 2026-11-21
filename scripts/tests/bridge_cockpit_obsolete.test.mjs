@@ -115,9 +115,9 @@ test('a tab\'s question keeps its own answers first: Obsolete last where the tab
   const s = state({ tabs: [asking] })
   const alone = logic.bucketAnswers({ group: 'asks', id: 'tab:surface:9', kind: 'tab', tab: asking, row: null }, 'do', s, 'en')
   assert.ok(alone.every(x => x.meaning !== 'obsolete'))
-  // round 1 of the four answers: a tab about a task takes the four too, Obsolete closes that task as not done
+  // round 2: on a tab about a task Obsolete would close the whole task, not the question: the tab's answers stand alone
   const onTask = logic.bucketAnswers({ group: 'asks', id: 'tab:surface:9', kind: 'tab', tab: asking, row: task('t') }, 'do', s, 'en')
-  assert.equal(onTask.at(-1).meaning, 'obsolete')
+  assert.ok(onTask.every(x => x.meaning === 'do'))
   const item = ask('20261009-0900-q1')
   const onItem = logic.bucketAnswers({ group: 'asks', id: 'tab:surface:9', kind: 'tab', tab: asking, row: item }, 'do', s, 'en')
   assert.equal(onItem.at(-1).meaning, 'obsolete')

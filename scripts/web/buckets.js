@@ -108,10 +108,17 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
   // put off to a day and out of sight until it (the briefing's `away`): a tab that asks about such an item waits with
   // it (round 1 of the four answers: Later on a tab card put the item off, the tab's point stayed in Do)
   const away = new Set((s?.model?.away ?? []).map(a => a?.key))
+  // what is hidden here until a day, or settled: a tab that asks about it waits with it too (round 2: after Later on
+  // the item, or done for this time on the stream, its tab stood on in Do and was counted out of sight as well)
+  const today0 = isoDate(s?.now || Date.now())
+  for (const r of s?.model?.hidden ?? []) {
+    if (r?.key && (r.settled_as != null || String(r.hidden_until ?? '').slice(0, 10) > today0)) away.add(r.key)
+  }
+  const tabRowGone = tab => (tab?.item && away.has(`inbox:${tab.item}`)) || (tab?.slug && away.has(`task:${tab.slug}`))
   const push = x => {
     const id = x.id
     if (!id || seen.has(id) || gone.has(id)) return
-    if (x.tab?.item && away.has(`inbox:${x.tab.item}`)) return
+    if (x.tab && tabRowGone(x.tab)) return
     const bucket = pointBucket(x)
     if (!bucket) return
     seen.add(id)
@@ -124,8 +131,11 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
   // what an agent works on since Do it (a start of the return channel, at work or starting) is the Bridge's: it
   // stands in I'll do, marked as running (round 1 of the four answers: it stood only under Running now and left
   // every bucket); a finished one asks you to read it and stands in Do (TAB_GROUPS)
+  // the same for a task's own tab at work and a session on a task (round 2: after Yes in an asking tab its task went
+  // back to Plan while the agent ran)
   for (const e of parts?.lane ?? []) {
     if (e?.kind === 'start' && e.row?.key) push({ group: 'running', id: e.row.key, kind: 'row', row: e.row, running: true, start: e.start })
+    else if ((e?.kind === 'tab' || e?.kind === 'session') && e.row?.key) push({ group: 'running', id: e.row.key, kind: 'row', row: e.row, running: true, tab: e.tab })
   }
   // a question about a task stands for that task on the classic page (flow.js R8); the briefing numbers both, so
   // here the task is a point of its own too, in its own bucket
@@ -274,7 +284,12 @@ export function tabWords(tab) {
 export function nextSentence(x, bucket, s, lang = 'en') {
   const f = (TABLES[lang] ?? TABLES.en).flow.buckets
   const tab = x?.tab ?? null
-  if (tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) return f.nextTab
+  if (tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) {
+    // where nothing can be sent from here (a "#" in its input line, a dialog without keys) the first answer is the way
+    // to the tab, and Next says so (round 2: it promised to send an answer)
+    const first = bucketAnswers(x, bucket, s, lang)[0]
+    return first?.run?.verb === 'tab_jump' ? f.nextOpenTab : f.nextTab
+  }
   const who = waitsOn(x)
   if (x?.group === 'checkin') return f.checkin(who ?? f.someone)
   // an inbox card's generic step is a verb or two ("decide", "give your yes"), no sentence: the bucket's own sentence
@@ -290,6 +305,9 @@ export function nextSentence(x, bucket, s, lang = 'en') {
   // Bridge takes the next step"): an inbox item gets its yes, a task an agent on its step, or on the task as a whole
   const step = x?.row ? pointStep(x.row, s) : null
   const said = own(step?.what) ?? own(x?.row?.next?.what)
+  // only you can act on it (gate only-you): Do it prepares it and you take the last step, it never gives a yes (round
+  // 2: Next promised a yes and a run, the server started an agent)
+  if (x?.row?.inbox_id && x.row.gate === 'only-you') return f.nextPrepare(short(pointName(x.row), 120))
   if (x?.row?.inbox_id) return said ? short(said, 240) : f.nextYes(short(pointName(x.row), 120))
   if (said) return f.nextStep(short(said.replace(/[.!]+$/, ''), 200))
   if (x?.row?.task) return f.nextNoStep
@@ -349,7 +367,9 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
   // a tab that asks takes the four like every card (round 1 of the four answers): its own answers in the place of Do
   // it, Later, Done and Obsolete on the point it asks about (its inbox item, or its task); a tab without a row has
   // only its own
-  const own = !isTabPoint || !!row
+  // round 2: on a tab of a task or a stream they closed or put off the whole task, never the question; there the tab's
+  // own answers stand alone, as in the tabs column (docs/bridge-cockpit.md, Buckets)
+  const own = !isTabPoint || (!!row?.inbox_id && (!tab.item || tab.item === row.inbox_id))
   // ---- Do it
   if (isTabPoint) {
     // the tab's own answers win: what it asks is answered in the tab, never by a new start. Where it takes words
@@ -488,7 +508,11 @@ const ASKING = new Set(['needs-you', 'waiting'])
  *  stands as that tab, answered in the tab as on the card of Work through; any other row as itself */
 export function rowPoint(row, s) {
   const ref = row?.tab?.ref ?? null
-  const tab = ref ? (s?.tabs?.tabs ?? []).find(x => x.ref === ref) ?? null : null
+  const all = s?.tabs?.tabs ?? []
+  // an inbox item's own tab (its item) before the tab its task has (round 2: a stream's tab stood for an item whose
+  // own tab asked yes or no, and Do it reached nothing)
+  const own = row?.inbox_id ? all.find(x => x.item === row.inbox_id && !x.is_control && ASKING.has(x.state)) ?? null : null
+  const tab = own ?? (ref ? all.find(x => x.ref === ref) ?? null : null)
   // only the row the tab works on: an inbox item about its task is no answer to its dialog (round 2: "Reply to
   // Jordan" offered the deploy dialog's Yes and approved the deploy)
   const about = row?.inbox_id ? tab?.item === row.inbox_id : !!row?.task && (tab?.slug == null || tab.slug === row.task)

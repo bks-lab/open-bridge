@@ -244,7 +244,7 @@ which agent renders it, and the cockpit's Work through sorts its points by the s
 
 | Source | Bucket |
 |---|---|
-| inbox item, urgency `now`/`today`, or due within the lookahead | do |
+| inbox item, urgency `now`/`today`, due within the lookahead, or an ask only you can answer (`only-you`) | do |
 | inbox report (`finding`, `result`) that is not `now`/`today`, not due within the lookahead and not `only-you` | delegate: the Bridge looks at it first |
 | inbox item otherwise | plan |
 | inbox item deferred to a day after today (Later), tomorrow too | none: out of sight until that day, counted as later (one deferred waiting on someone or on the Bridge stands in its bucket, below) |

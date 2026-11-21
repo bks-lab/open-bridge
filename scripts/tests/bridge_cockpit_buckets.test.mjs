@@ -126,11 +126,11 @@ test('do: a tab\'s own answers win, its ready answer first and strong (tab_accep
   assert.match(a[0].label, /yes, try the contact again/)
   // a tab without a row has nothing to put off or close
   assert.ok(a.every(x => x.meaning === 'do'))
-  // one that works on a task takes the four like every card (round 1 of the four answers): its own answers in the
-  // place of Do it, then Later, Done and Obsolete of the task
+  // one that asks about a task keeps its own answers alone (round 2: Later, Done and Obsolete there put off or closed
+  // the whole task, never the question; docs/bridge-cockpit.md, Buckets)
   const onTask = answersOf({ group: 'asks', id: 'tab:surface:9', kind: 'tab', tab: asking, row: task('applications') }, 'do', s)
   assert.equal(onTask[0].run.verb, 'tab_accept')
-  assert.deepEqual(onTask.filter(x => x.meaning !== 'do').map(x => x.meaning), ['later', 'done', 'obsolete'])
+  assert.deepEqual(onTask.filter(x => x.meaning !== 'do').map(x => x.meaning), [])
 })
 
 test('delegate, plan, waiting: Do it starts, a day picked, a nudge that only drafts, the watch list parks', () => {
@@ -374,8 +374,8 @@ test('what runs stands quiet under the buckets, no decision and never lost from 
   const run = el.$('.fb-running')
   assert.ok(run, 'a quiet list of what runs')
   assert.match(run.text(), /Task backup/)
-  // it is no point of a bucket
-  assert.ok(!logic.bucketPoints(s, 'de').all.some(x => x.id === 'task:backup'))
+  // round 2: its task is the Bridge's while the agent works, in I'll do marked as running, never a decision of yours
+  assert.deepEqual(logic.bucketPoints(s, 'de').all.filter(x => x.id === 'task:backup').map(x => [x.bucket, x.running]), [['delegate', true]])
   run.$$('button')[0].click()
   assert.equal(c.calls.at(-1)[0], 'flowRun')
 })

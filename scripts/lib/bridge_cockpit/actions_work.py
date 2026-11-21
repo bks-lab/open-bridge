@@ -354,6 +354,13 @@ class WorkVerbs:
                 ctx.note(self.tx["later_failed"].format(err=m.short(run.err, 100)), bad=True)
                 return
             ctx.history.append(history_item(row["key"], row["title"], "inbox", did, item))
+            if self.buckets_on():
+                # the point stays: with someone it waits on them, where the briefing lists it (round 2 of the four
+                # answers: settled, it left every bucket while the briefing had it under Waiting on others)
+                ctx.note(self.tx[back_w].format(who=who, until=until) + f": {m.short(row['title'], 60)}")
+                ctx.delta()
+                self.app.collector.request("both")
+                return
             self.settle(ctx, row, self.tx[back_w].format(who=who, until=until))
             return
         if row.get("task"):

@@ -1371,7 +1371,10 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                     # a report asks nobody: what can wait is the Bridge's to look at first, not your plan (07.11.)
                     bucket = "delegate"
                 else:
-                    bucket = "do" if item.get("urgency") in ("now", "today") or soon else "plan"
+                    # an ask only you can answer (gate only-you) is yours today, with a day or without one (round 2 of
+                    # the four answers: such a decision stood in Plan); an idea asks nobody
+                    mine = item.get("gate") == "only-you" and art_of_kind(item.get("kind")) == "ask"
+                    bucket = "do" if item.get("urgency") in ("now", "today") or soon or mine else "plan"
                 rank = 0 if item.get("urgency") == "now" else 1 if soon else 2
                 # An item the briefing filed from a tracker row is that row: one line, not two. So is an item filed
                 # by "ask about this row" on a tracker row (the cockpit's `ask:<owner/repo#n>`).

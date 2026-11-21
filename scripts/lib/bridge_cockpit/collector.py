@@ -262,6 +262,9 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             # titles, so the detail lists them and each opens its item; they close with the line (actions_work)
             "also_inbox": [{"id": x, "title": (card_ctx.inbox(x) or {}).get("summary") or x}
                            for x in row.get("also_inbox") or [] if INBOX_ID_RE.match(x)],
+            # the tasks the briefing folded into this line: the page shows them as this line, never beside it from the
+            # task list or the files (flow.js universeOf, round 2 of the four answers)
+            "folded_tasks": list(row.get("folded_tasks") or []),
             # the GitHub list the row also stands in ({page, section}, model.board_places): Work through folds such
             # rows of Not now into one line that leads there
             "on_board": places.get(row["key"]),

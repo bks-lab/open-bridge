@@ -135,7 +135,7 @@ ROW_FIELDS = frozenset({
 ROW_NEUTRAL: dict[str, Any] = {"url": None, "link": None, "inbox_key": None, "tab": None, "actions": [], "starting": False,
                                "adopt_candidates": [], "team": None, "team_suggestions": [], "review": None,
                                "also_inbox": [], "on_board": None, "describe": None, "selectable": False, "brief_nr": None,
-                               "resting": None}
+                               "resting": None, "folded_tasks": []}
 TASK_FIELDS = frozenset({"ok", "slug", "kind", "work_kind", "origin", "front", "sections", "brief", "files", "inbox", "card"})
 TASK_NEUTRAL: dict[str, Any] = {"related": [], "log": [], "describe": None}
 TASK_DROPPED = frozenset({"path"})       # where it lies on this machine, the page of a person needs no folder

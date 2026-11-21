@@ -185,7 +185,10 @@ function universeOf(s) {
   const model = s?.model ?? {}
   const rows = new Map()
   const from = new Map()
-  const put = (r, src) => { if (r?.key && !rows.has(r.key)) { rows.set(r.key, r); from.set(r.key, src) } }
+  // a task the briefing folded into an inbox line (briefing_view _fold, the line's folded_tasks) stands as that line,
+  // never beside it from the task list or the files (round 2: four tasks stood twice, once without a number)
+  const folded = new Set((model.sections ?? []).flatMap(x => x.rows ?? []).flatMap(r => (r?.folded_tasks ?? []).map(slug => `task:${slug}`)))
+  const put = (r, src) => { if (r?.key && !rows.has(r.key) && !folded.has(r.key)) { rows.set(r.key, r); from.set(r.key, src) } }
   for (const id of SECTIONS) for (const r of (model.sections ?? []).find(x => x.id === id)?.rows ?? []) put(r, id)
   for (const r of model.hidden ?? []) if (r && r.settled_as == null) put(r, 'hidden')
   for (const f of Array.isArray(model.files) ? model.files : []) if (f?.slug) put(fileRow(f), 'files')
@@ -320,6 +323,9 @@ export function flowParts(s) {
   // went quiet, then it is finished; only one at work runs (a finished one runs no more and its task stands as a point
   // again), one that needs you is a point (L5)
   const runs = t => t?.state === 'working'
+  // a tab answered from here works again as far as the page knows, until the next read of its screen (round 2: its
+  // task went back to Plan for those seconds instead of standing in I'll do)
+  const busy = t => runs(t) || (!!t && wantsYou(t) && !asking(t))
   const rowOfTask = slug => (slug ? uni.get(`task:${slug}`) ?? null : null)
   const used = new Set()      // row keys a card, an entry of the lane or a group already stands for
   const usedTabs = new Set()
@@ -378,7 +384,7 @@ export function flowParts(s) {
     }
     // L4 a task's own tab (its slug) at work or quiet at its prompt
     for (const t of allTabs) {
-      const row = runs(t) && t.slug && !usedTabs.has(t.ref) ? rowOfTask(t.slug) : null
+      const row = busy(t) && t.slug && !usedTabs.has(t.ref) ? rowOfTask(t.slug) : null
       if (!row || used.has(row.key)) continue
       out.lane.push({ group: 'doing', lane: true, id: `tab:${t.ref}`, kind: 'tab', row, tab: t, stage: tabStage(t), how: 'tab', title: row.title ?? t.name,
         at: t.since_ms ?? null })

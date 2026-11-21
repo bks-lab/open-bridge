@@ -1269,7 +1269,13 @@ card, every view and in the printed briefing (lib/answers.py, the briefing's
 
 On a tab Later, Done and Obsolete act only on the inbox item it asks about: on a
 task or a stream behind it they would put off or close the whole task, not the
-question. Every answer goes out through the page's verbs, so its toast offers
+question, so there the tab's own answers stand alone, on its card as in the
+tabs column. A tab whose item or stream is put off or done for this time leaves
+Do with it. A task whose own tab works (also one just answered from here, until
+the next read of its screen) stands in I'll do, marked as running. A task the
+briefing folded into its inbox line (the line's `folded_tasks`) is that line,
+never a second point. On an only-you inbox item Do it starts an agent that
+prepares it; Next says so, it gives no yes. Every answer goes out through the page's verbs, so its toast offers
 its undo. Every answer names the state the page saw its point in (`was`: an
 inbox item's state, a task's status). When another browser answered the point
 meanwhile, the server refuses the answer (409 `point_moved`), writes nothing,

@@ -1004,8 +1004,10 @@ def is_live(tab: dict) -> bool:
 
 
 def tab_for(row: dict, tabs: list[dict]) -> dict | None:
-    mine = [t for t in tabs if (row.get("task") is not None and t.get("slug") == row.get("task"))
-            or (row.get("inbox_id") is not None and t.get("item") == row.get("inbox_id"))]
+    # an inbox row's own tab (its item) before any tab of its task (round 2 of the four answers: an item about a stream
+    # got the stream's dialog, while its own tab asked yes or no)
+    own = [t for t in tabs if row.get("inbox_id") is not None and t.get("item") == row.get("inbox_id")]
+    mine = own or [t for t in tabs if row.get("task") is not None and t.get("slug") == row.get("task")]
     for t in mine:
         if t.get("state") in ATTENTION:
             return t
