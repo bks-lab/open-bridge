@@ -146,8 +146,11 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
   // others, where the briefing has it (round 1 of the four answers: a hand-over left every bucket)
   const today = isoDate(s?.now || Date.now())
   const off = e => !!e?.until && String(e.until).slice(0, 10) > today && e.kind !== 'checkin'
+  // a stream the briefing does not list (its profile reads no streams) is no point either: the briefing numbers every
+  // point the page shows, so the two never disagree (round 2: seven resting streams stood in Plan without a number)
+  const unlisted = (g, e) => g.reason === 'stream' && !BUCKET_IDS.includes(e?.row?.bucket)
   for (const g of parts?.leftOut?.groups ?? []) {
-    for (const e of g.rows ?? []) if (e?.row?.key && !off(e)) push({ group: 'left', left: g.reason, id: e.row.key, kind: 'row', row: e.row, entry: e })
+    for (const e of g.rows ?? []) if (e?.row?.key && !off(e) && !unlisted(g, e)) push({ group: 'left', left: g.reason, id: e.row.key, kind: 'row', row: e.row, entry: e })
   }
   const order = new Map(all.map((x, i) => [x.id, i]))
   const nr = x => (Number.isInteger(x.row?.brief_nr) ? x.row.brief_nr : Infinity)
@@ -537,7 +540,15 @@ export const viewBucket = x => pointBucket(x) ?? 'plan'
 /** The bucket of a page item (By source): the bucket of its row, null for an item no answer reaches */
 export function itemBucket(it, s, byKey) {
   const row = actionRow(it, byKey)
-  return row ? viewBucket(rowPoint(row, s)) : null
+  return row && !noPoint(row, s) ? viewBucket(rowPoint(row, s)) : null
+}
+
+/** Whether a row is no point of the buckets, the same rule as Work through's (bucketPoints): a task the briefing folded
+ *  into an inbox line (that line is its point), a stream the briefing does not list. By source keeps it among its
+ *  source's rows but counts it in no bucket (round 2: its chips counted Plan 62 where Work through had 55) */
+function noPoint(row, s) {
+  if (!row?.inbox_id && row?.task && (s?.model?.sections ?? []).some(x => (x.rows ?? []).some(r => (r?.folded_tasks ?? []).includes(row.task)))) return true
+  return !row?.inbox_id && !!(row?.stream || row?.work_kind === 'stream') && !BUCKET_IDS.includes(row?.bucket)
 }
 
 /** Whether a page item stays under the strip's filter: with the buckets on a filter `b:<bucket>` keeps that

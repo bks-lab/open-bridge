@@ -326,11 +326,16 @@ one runs: [control.md](../skills/briefing/references/control.md).
 style that numbers (`briefing_view.numbered`): `triage` every row of every bucket, also with
 `answer_keys: false`, `report` the first rows and then those listed per bucket, `calm` the
 rows of each bucket it shows. The numbers run in the order of the buckets as the profile
-lists them, the order the cockpit shows them in (`brevity` and `plan` number nothing). The
+lists them, the order the cockpit shows them in (`brevity` and `plan` number nothing). A row's
+number is its place in the whole list, also when `max_items` leaves it out of this print: a short
+print shows its rows with gaps between the buckets (1 to 3, then 48 to 50), a long one
+(`--max-items 300`) every number once, and both name a row by the same number. The
 built view carries it on each row as `nr`, and "3 do" answers that row. The cockpit asks for every
 row (`collect --max-items 500`) and still gets the printed number: both read the same rows, and
-such a pass numbers by the profile's own style and `max_items` and leaves out what was settled in the cockpit, so a card
-of Work through says the number the chat shows ([Buckets](bridge-cockpit.md#buckets)). The
+such a pass numbers by the profile's own style and leaves out what was settled in the cockpit, so a card
+of Work through says the number the chat shows ([Buckets](bridge-cockpit.md#buckets)). A stream
+the profile does not read (`streams: true` on its tasks section) is no point of the cockpit's
+buckets either, so every point there has a number. The
 view also names every shown bucket with its title, an empty one too (`bucket_defs`), in the
 profile's order, titled in the profile's language by default (Tun, Planen, Mache ich, Wartet
 auf andere).

@@ -126,3 +126,24 @@ test('Next says what the first button does: the way to the tab where nothing can
   assert.equal(said, en.nextPrepare('Prepare the invoice export'))
   assert.doesNotMatch(said, /yes/)
 })
+
+test('a stream the briefing does not list is no point; one it lists stands in its bucket with its number', () => {
+  const quiet = task('rota', { stream: true, work_kind: 'stream', bucket: 'resting', resting: 52 })
+  const listed = task('river', { stream: true, work_kind: 'stream', bucket: 'plan', brief_nr: 4 })
+  const s = state({ later: [quiet], work: [listed] })
+  assert.deepEqual(where(s, quiet.key), [])
+  assert.deepEqual(where(s, listed.key), ['plan'])
+})
+
+test('By source counts in each bucket what Work through holds: no folded task, no stream the briefing does not list', () => {
+  const line = ask('20261009-0900-keep', { folded_tasks: ['power'] })
+  const power = task('power', { bucket: 'tasks', closable: true })
+  const quiet = task('rota', { stream: true, work_kind: 'stream', bucket: 'resting' })
+  const plain = task('plain', { bucket: 'plan' })
+  const s = state({ now: [line], work: [plain], later: [quiet], taskRows: [power] })
+  const byKey = logic.indexRows(s.model)
+  const items = [power, quiet, plain, line].map(r => (r.inbox_id ? { inbox: r.inbox_id, title: r.title } : { task: r.task, title: r.title }))
+  const counts = logic.bucketCounts(items, s, byKey, 'en')
+  const work = logic.bucketPoints(s, 'en').buckets
+  for (const b of work) assert.equal(counts[b.id], b.points.length, b.id)
+})

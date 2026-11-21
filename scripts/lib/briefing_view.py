@@ -1796,7 +1796,11 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
             if got:
                 r["nr"] = got[0]
         return out
-    for n, r in enumerate(numbered({**out, "style": style, "buckets": out["buckets"]}), 1):
+    # every row is numbered by its place in the whole list, also one this print leaves out past max_items: a short and
+    # a long print, the cockpit's cards and the chat then name a row by one number (round 2 of the four answers: the
+    # long print named the waiting rows 92 to 96, their cards said 10 to 12). A short print shows its rows with gaps
+    whole = _capped(shown, visible, max(1, len(visible)))[0]
+    for n, r in enumerate(numbered({**out, "style": style, "buckets": whole}), 1):
         r["nr"] = n
     return out
 
@@ -1817,10 +1821,8 @@ def _printed_numbers(result: dict, profile: dict) -> dict:
     printed = {k: v for k, v in result.items() if k != "numbering_settled"}
     printed.update(settled=result.get("numbering_settled"))
     view = dict(profile.get("view") if isinstance(profile.get("view"), dict) else {})
-    if _pos_int(profile.get("_print_max")):
-        view["max_items"] = profile["_print_max"]
-    else:
-        view.pop("max_items", None)
+    # the numbers are the whole list's (build): a print as long as the list carries every one of them
+    view["max_items"] = 10 ** 6
     plain = {k: v for k, v in profile.items() if k not in ("_whole", "_print_max")}
     built = build(printed, {**plain, "view": view})
     return {_row_ident(r): (r["nr"], r.get("bucket")) for r in numbered(built) if r.get("nr")}

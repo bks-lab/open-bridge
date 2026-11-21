@@ -171,7 +171,9 @@ def test_a_cockpit_pass_numbers_as_the_printed_briefing_would():
     cockpit = bv.build(result(*rows), profile({"style": "calm", "max_items": 500}, _whole=True, _print_max=4))
     want = {r["title"]: r.get("nr") for b in printed["buckets"] for r in b["items"]}
     got = {r["title"]: r.get("nr") for b in cockpit["buckets"] for r in b["items"]}
-    assert len(got) == 7 and {t: n for t, n in got.items() if n} == want
+    # round 2 of the four answers: every row is numbered by its place in the whole list, the short print shows its own
+    # rows under the same numbers
+    assert len(got) == 7 and all(got.values()) and {t: got[t] for t in want} == want
 
 
 def test_a_cockpit_pass_numbers_as_the_printed_briefing_would_also_with_a_capped_section():
@@ -189,7 +191,7 @@ def test_a_cockpit_pass_numbers_as_the_printed_briefing_would_also_with_a_capped
     want = {r["title"]: r.get("nr") for b in printed["buckets"] for r in b["items"]}
     got = {r["title"]: r.get("nr") for b in cockpit["buckets"] for r in b["items"]}
     assert len(got) == 10 and len(want) == 6
-    assert {t: n for t, n in got.items() if n} == want
+    assert all(got.values()) and {t: got[t] for t in want} == want
     # every bucket counts the same rows in both, and every row stands in the same bucket
     total = lambda v: {b["id"]: b["total"] for b in v["buckets"]}
     assert total(printed) == total(cockpit)
@@ -205,7 +207,8 @@ def test_numbers_are_unique_and_in_order_in_a_whole_pass():
     whole = result(sec("inbox", "inbox", items), sec("tasks", "tasks", tasks))
     v = bv.build(whole, profile({"style": "triage", "max_items": 300}, cfg, _whole=True, _print_max=12))
     nrs = [r["nr"] for b in v["buckets"] for r in b["items"] if r.get("nr")]
-    assert nrs == list(range(1, 13))
+    # round 2 of the four answers: every row has its number, the short print's twelve among them
+    assert nrs == list(range(1, 41))
 
 
 def test_a_cockpit_pass_numbers_by_the_profiles_style_not_the_forced_one():

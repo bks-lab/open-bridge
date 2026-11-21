@@ -1554,8 +1554,9 @@ def test_cli_max_items_lifts_the_view_cap_for_one_run(tmp_path, capsys, monkeypa
     assert bf.main(["--root", str(root), "collect", "a", "--json", "--no-save"]) == 0
     assert bf.main(["--root", str(root), "collect", "a", "--json", "--no-save", "--max-items", "500"]) == 0
     capsys.readouterr()
-    # the pass with every row numbers by the printed briefing it builds inside, with the profile's own cap
-    assert seen == [1, 500, 1]
+    # the pass with every row numbers by the printed briefing it builds inside, as long as the whole list (round 2 of the
+    # four answers: every row has the number of its place in the whole list)
+    assert seen == [1, 500, 10 ** 6]
     assert "max_items: 1" in (root / "workflow" / "briefings" / "a.yaml").read_text(encoding="utf-8")
 
 

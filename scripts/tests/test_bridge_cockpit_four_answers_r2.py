@@ -78,3 +78,19 @@ def test_an_inbox_item_with_someone_stays_a_point_so_it_stands_in_waiting(tmp_pa
         assert "Jordan Lee" in res["note"]
     finally:
         w.close()
+
+
+# ---------------------------------------------------------------- one number per row, short print or long
+
+def test_a_short_and_a_long_print_name_a_row_by_one_number():
+    # round 2: `render --max-items 300` numbered the waiting rows 92 to 96, their cockpit cards said 10 to 12
+    items = [{"id": f"20261001-09{n:02d}-ask-{n}", "title": f"Ask {n}", "state": "open", "kind": "decision",
+              "gate": "your-yes", "urgency": ("now", "later")[n % 2]} for n in range(20)]
+    items += [{"id": "20261001-0900-wait", "title": "Wait for Robin", "state": "open", "kind": "decision", "waits_for": True}]
+    short = _build(items, view={"max_items": 9})
+    long = _build(items, view={"max_items": 300})
+    nr = lambda v: {r["title"]: r["nr"] for b in v["buckets"] for r in b["items"]}
+    s, lg = nr(short), nr(long)
+    assert all(lg[t] == n for t, n in s.items())
+    assert sorted(lg.values()) == list(range(1, len(lg) + 1))
+    assert s["Waiting for: Wait for Robin"] == len(lg)
