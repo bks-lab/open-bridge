@@ -278,6 +278,8 @@ const en = {
   btnToTab: 'Go to tab',
   cardMore: 'more',
   cardLess: 'less',
+  // the slim tab card's toggle: never a second "More" beside the answers' More
+  tabDetails: 'details', tabDetailsLess: 'fewer details',
   btnMessage: 'message',
   btnSend: 'send',
   msgPlaceholder: 'Message to the tab',
@@ -2187,6 +2189,7 @@ const de = {
   btnToTab: 'Zum Tab',
   cardMore: 'mehr',
   cardLess: 'weniger',
+  tabDetails: 'Details', tabDetailsLess: 'weniger Details',
   btnMessage: 'Nachricht',
   btnSend: 'senden',
   msgPlaceholder: 'Nachricht an den Tab',

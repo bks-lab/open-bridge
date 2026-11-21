@@ -5,7 +5,7 @@
 // again on a click (scripts/triage.py, cached per item, so a run costs cents). The dashboard's own
 // pieces stay in views/; this file only draws what the triage adds, from s.triage.
 
-import { html } from './vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect } from './vendor/htm-preact-3.1.1.module.js'
 import { TRIAGE_FILTERS, actionRow, bucketCounts, bucketDefs, centsText, checkPick, checkPickText, effortDots, flowBucketsOn, startMode, triageCounts, triageKey,
   triageRunning } from './logic.js'
 import { T, language } from './text.js'
@@ -42,7 +42,7 @@ export function TriageGist({ tri, keyRow, c, s }) {
 }
 
 /** The strip over a task or inbox page: filters with counts, close what can go, sort again */
-export function TriageBar({ s, c, items, byKey }) {
+export function TriageBar({ s, c, items, byKey, more = [] }) {
   const t = T()
   const tr = s.triage ?? {}
   const map = tr.items ?? {}
@@ -56,6 +56,13 @@ export function TriageBar({ s, c, items, byKey }) {
   const buckets = flowBucketsOn(s)
   const words = buckets ? bucketDefs(s, language()) : []
   const bc = buckets ? bucketCounts(items, s, byKey, language()) : null
+  // with the buckets on the strip counts every row of the page, never only the first ones shown: the sections with
+  // more rows load them (round 2: "Planen 3" here, 29 in Work through), and a filter shows them all
+  const pending = more.join('|')
+  useEffect(() => {
+    if (!buckets) return
+    for (const id of more) { const [p, sec] = id.split('/'); c.loadMore?.(p, sec) }
+  }, [buckets, pending])
   // with the buckets on the strip filters by the bucket words, the same as every row's chip (a filter `b:<id>`)
   const chips = buckets ? html`${['all', ...words.map(b => b.id)].map(k => {
     const v = k === 'all' ? 'all' : `b:${k}`

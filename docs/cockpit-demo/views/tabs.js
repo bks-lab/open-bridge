@@ -302,6 +302,8 @@ export function TabCard({ tab, s, c, byKey, slim = false }) {
   const age = duration(s.now - (tab.since_ms || s.now))
   const ageText = tab.long === 'waiting' ? t.waitingFor(age) : tab.long === 'running' ? t.runningFor(age) : t.sinceFor(age)
   const shell = tab.state === 'shell'
+  // a tab that asks shows its question also while slim: its answer button stands right under it (round 2)
+  const asking = tab.state === 'needs-you' || tab.state === 'waiting'
   return html`<article class=${`tabcard st-${tab.state}${shell ? ' is-shell' : ''}${tab.is_control ? ' is-control' : ''}${full ? '' : ' is-slim'}`}>
     <header class="tabcard-head">
       ${tab.is_control
@@ -313,7 +315,7 @@ export function TabCard({ tab, s, c, byKey, slim = false }) {
     <h3 class="tabcard-name">${hasRow
       ? html`<button type="button" class="btn-link" title=${t.showTab(tab.name)} onClick=${() => c.select(rowKey)}>${tab.name}</button>`
       : html`<button type="button" class="btn-link" title=${t.btnTabView} onClick=${() => c.openTabView(tab.ref)}>${tab.name}</button>`}</h3>
-    ${full && tabWords(tab) ? html`<p class="tab-last clamp2" title=${tab.ask?.text || tab.last}>${tabWords(tab)}</p>` : null}
+    ${(full || asking) && tabWords(tab) ? html`<p class="tab-last clamp2" title=${tab.ask?.text || tab.last}>${tabWords(tab)}</p>` : null}
     ${full ? html`<${GuideTree} tab=${tab} s=${s} c=${c} compact />` : html`<${GuideLine} tab=${tab} s=${s} />`}
     ${tab.settled ? html`<p class="small"><${StateLine} token="success" word=${t.tabSettled[tab.settled] ?? tab.settled} /></p>` : null}
     ${full && (tab.slug || tab.team || tab.role || tab.filed_by) ? html`<div class="chips">
@@ -324,7 +326,7 @@ export function TabCard({ tab, s, c, byKey, slim = false }) {
     </div>` : null}
     ${full ? html`<${TabControls} tab=${tab} s=${s} c=${c} />` : html`<div class="btn-row"><${TabControls} tab=${tab} s=${s} c=${c} slim /></div>`}
     ${slim ? html`<button type="button" class="btn-link tabcard-more" aria-expanded=${String(open)}
-      onClick=${() => setOpen(!open)}>${open ? t.cardLess : t.cardMore}</button>` : null}
+      onClick=${() => setOpen(!open)}>${open ? t.tabDetailsLess : t.tabDetails}</button>` : null}
   </article>`
 }
 

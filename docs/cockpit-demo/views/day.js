@@ -299,18 +299,19 @@ export function SettleMenu({ rows, s, c, size = 'xs', seed }) {
 
 /** The buttons of a row, one order on every view: start, close, pin. `tab` is an agent tab a view found for the
  *  row's task in the tab list, when the row itself names none */
-export function RowBar({ row, s, c, pin = true, size = 'xs', tab = null }) {
+export function RowBar({ row, s, c, pin = true, size = 'xs', tab = null, nr = false }) {
   const r = tab && !row.tab ? { ...row, tab: { ref: tab.ref, state: tab.state, live: tab.live ?? tab.state !== 'shell' } } : row
-  if (flowBucketsOn(s)) return html`<${BucketRowBar} row=${r} s=${s} c=${c} size=${size} pin=${pin} />`
+  if (flowBucketsOn(s)) return html`<${BucketRowBar} row=${r} s=${s} c=${c} size=${size} pin=${pin} nr=${nr} />`
   return html`<${StartMenu} row=${r} s=${s} c=${c} size=${size} /><${SettleMenu} rows=${[r]} s=${s} c=${c} size=${size} />${pin
     ? html`<${PinStar} rowKey=${r.key} s=${s} c=${c} />` : null}`
 }
 
 /** A row's bar with the briefing's buckets on (cockpit.flow.buckets): its bucket's answers, as the card of Work
  *  through offers them, so one view differs from another only in order and grouping, never in words or answers */
-function BucketRowBar({ row, s, c, size, pin }) {
-  // the row's number stands at its start (shownNumber): the bar names no second one
-  return html`<${BucketBar} x=${rowPoint(row, s)} s=${s} c=${c} size=${size} nr=${false} />${pin ? html`<${PinStar} rowKey=${row.key} s=${s} c=${c} />` : null}`
+function BucketRowBar({ row, s, c, size, pin, nr = false }) {
+  // the row's number stands at its start (shownNumber) on Due: the bar names no second one; a list whose rows start
+  // with something else (By source starts with the date) has the bar name it (`nr`)
+  return html`<${BucketBar} x=${rowPoint(row, s)} s=${s} c=${c} size=${size} nr=${nr} />${pin ? html`<${PinStar} rowKey=${row.key} s=${s} c=${c} />` : null}`
 }
 
 /** The buttons of a page row that is no inbox item or task but a person can hand on: the same bar as a work row.

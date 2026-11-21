@@ -142,6 +142,7 @@ export function PageView({ s, c }) {
       : page.overview ? html`<${OverviewBoard} page=${page} s=${s} c=${c} />` : null}
     ${kinds.length > 1 ? html`<${KindBar} kinds=${kinds} active=${kind} c=${c} />` : null}
     ${page.sections?.some(listed) ? html`<${TriageBar} s=${s} c=${c} byKey=${indexRows(s.model)}
+      more=${whole.sections.filter(listed).filter(sec => (sec.more ?? 0) > 0 && !s.more[`${whole.id}/${sec.id}`]).map(sec => `${whole.id}/${sec.id}`)}
       items=${(kind ? whole.sections.filter(sec => kind.sections.includes(sec.id)) : whole.sections)
         .filter(listed).flatMap(sec => s.more[`${whole.id}/${sec.id}`]?.items ?? sec.items ?? [])} />` : null}
     ${checkHere ? html`<${ReviewBody} s=${s} c=${c} inline />`

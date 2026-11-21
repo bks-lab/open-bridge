@@ -11,7 +11,7 @@ import {
   jevList, TASK_LANES, taskLane, noiseRows, rowActionKey,
   skipFixable, skipText,
   cardPlan, moneyText, costBoard, itemRow, ghFiltered, ghMyLogin,
-  areaLog, workShows,
+  areaLog, workShows, flowBucketsOn,
 } from '../logic.js'
 import { reducedMotion } from '../motion.js'
 import { T, language } from '../text.js'
@@ -150,6 +150,9 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
   const tri = s.triage?.items?.[triageKey(it)] ?? null
   const [open, setOpen] = useState(false)
   const tone = it.tone ?? null
+  // with the briefing's buckets on, an inbox item or a task carries its bucket's bar with its number in the briefing,
+  // and nothing beside it the other views do not offer (round 2: Seen and Ask stood beside it only here)
+  const bar = flowBucketsOn(s) && !!actionRow(it, byKey) && !!(it.inbox || it.task)
   // an inbox item or task opens its drawer: a click anywhere on the row but its controls, or Enter on the row
   const itemKey = (section === 'tasks' || section === 'inbox' || it.inbox) ? triageKey(it) : null
   // an inbox item or task opens its own drawer, every other row the general detail
@@ -187,11 +190,12 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
       ${it.link?.kind === 'web' ? html`<a class="btn btn-ghost btn-xs" href=${it.link.href} target="_blank" rel="noopener noreferrer">
         <${Icon} name="external" size=${14} /><span class="btn-label">${t.openLink}</span></a>` : null}
       ${it.link?.kind === 'file' ? html`<${Btn} size="xs" variant="ghost" icon="copy" cls="act-quiet" title=${it.link.path} onClick=${() => c.copy(it.link.path)}>${t.copyPath}<//>` : null}
-      <${PageItemActions} it=${it} s=${s} c=${c} /><${SeenBtn} k=${it.key} acked=${it.acked} loud=${tone === 'bad' || tone === 'warn'} c=${c} />
-      ${it.ask ? html`<${RowAsk} s=${s} c=${c} rowKey=${it.key} onAsk=${() => c.ask('info', { page, section, index: it.index })} />` : null}
+      <${PageItemActions} it=${it} s=${s} c=${c} />${bar ? null : html`<${SeenBtn} k=${it.key} acked=${it.acked} loud=${tone === 'bad' || tone === 'warn'} c=${c} />`}
+      ${it.ask && !bar ? html`<${RowAsk} s=${s} c=${c} rowKey=${it.key} onAsk=${() => c.ask('info', { page, section, index: it.index })} />` : null}
       ${(it.lines ?? []).length ? html`<${Btn} size="xs" variant="ghost" cls=${open ? '' : 'act-quiet'} pressed=${open} onClick=${() => setOpen(!open)}>${t.btnLines}<//>` : null}
       ${it.actions?.length && it.row_id ? html`<${RowSteps} it=${it} page=${page} section=${section} s=${s} c=${c} as=${steps} />` : null}
-      ${actionRow(it, byKey) && (it.inbox || it.task) ? html`<${RowBar} row=${actionRow(it, byKey)} s=${s} c=${c} tab=${it.tab} pin=${false} />` : null}
+      ${bar ? html`<${RowBar} row=${actionRow(it, byKey)} s=${s} c=${c} tab=${it.tab} pin=${false} nr />` : actionRow(it, byKey) && (it.inbox || it.task)
+        ? html`<${RowBar} row=${actionRow(it, byKey)} s=${s} c=${c} tab=${it.tab} pin=${false} />` : null}
     </span></td>
   </tr>`
 }

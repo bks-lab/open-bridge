@@ -7,7 +7,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { loadCockpit, mount, recorder, settle as rounds } from './cockpit_render.mjs'
 
-const { html, views, text, logic } = await loadCockpit()
+const { html, views, text, logic, triage } = await loadCockpit()
 const de = text.TABLES.de.flow.buckets
 
 const NOW = new Date(2026, 9, 9, 12, 0, 0).getTime()
@@ -251,4 +251,32 @@ test('an entry of what runs opens beside the buckets, never in the classic layou
   assert.doesNotMatch(el.$('.fb-main').text(), /accept edits/)
   // a busy session without a tab is named by its own name
   assert.equal(views.flowbuckets.runTitle({ session: { name: 'ops review', id: 's1' } }), 'ops review')
+})
+
+test('a tab card in the column shows what it asks before its answer, and one More only', async () => {
+  const s = state({ tabs: [deploy] })
+  const el = mount(html`<${views.tabs.TabCard} tab=${deploy} s=${s} c=${recorder()} byKey=${new Map()} slim />`)
+  assert.match(el.text(), /Do you want to proceed\?/, 'the question stands with its answer')
+  const words = el.$$('button').map(b => b.text().trim().toLowerCase())
+  assert.ok(words.filter(w => w === 'more' || w === 'mehr').length <= 1, words.join(' | '))
+  await rounds()
+})
+
+test('a row of By source names its number in the briefing on its bar, and offers what every other view offers', async () => {
+  const item = ask('20261009-0900-q1', { brief_nr: 3 })
+  const s = state({ now: [item] })
+  const el = mount(html`<${views.day.RowBar} row=${item} s=${s} c=${recorder()} pin=${false} nr />`)
+  assert.ok(el.$('.fb-chip-nr'), 'the number on the bar')
+  const due = mount(html`<${views.day.RowBar} row=${item} s=${s} c=${recorder()} pin=${false} />`)
+  assert.equal(due.$('.fb-chip-nr'), null, 'Due names it at the row start')
+  await rounds()
+})
+
+test('the bucket strip of By source counts every row of the page: the rows not shown yet are loaded', async () => {
+  const { TriageBar } = triage
+  const c = recorder()
+  const s = state()
+  mount(html`<${TriageBar} s=${s} c=${c} items=${[]} byKey=${new Map()} more=${['work/inbox']} />`)
+  await rounds()
+  assert.deepEqual(c.calls.find(x => x[0] === 'loadMore'), ['loadMore', 'work', 'inbox'])
 })
