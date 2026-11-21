@@ -2635,7 +2635,9 @@ def main(argv=None) -> int:
         view_cfg = profile.get("view") if isinstance(profile.get("view"), dict) else {}
         # a dashboard that pages itself wants every row of a section, not the first `max:` of them:
         # a cut row would vanish from its page without a trace (an inbox item set to later, 14.10.)
-        profile = {**profile, "view": {**view_cfg, "max_items": max(1, args.max_items)}, "_whole": True}
+        # `_print_max`: the printed briefing's own cap, by which the rows still get the number they have there
+        profile = {**profile, "view": {**view_cfg, "max_items": max(1, args.max_items)}, "_whole": True,
+                   **({"_print_max": view_cfg["max_items"]} if "max_items" in view_cfg else {})}
     if getattr(args, "setup", False):
         profile = with_setup(profile, root, cfg)
     # what one machine switched off (the cockpit's views.json): the catalog still lists it, so it can come back on
@@ -2660,6 +2662,9 @@ def main(argv=None) -> int:
                                            profile_id=profile["id"])
     if args.cmd == "render":
         result["settled"] = settled_record(root, ctx.now)     # never saved: save_snapshot keeps its own fields
+    elif profile.get("_whole"):
+        # the cockpit's pass keeps every row, but numbers them as the printed briefing does, without what was settled
+        result["numbering_settled"] = settled_record(root, ctx.now)
     if args.cmd == "render" and _view().style_of(profile, args.style) != "sources":
         view_cfg = profile.get("view") if isinstance(profile.get("view"), dict) else {}
         if view_cfg.get("overview") == "file":
@@ -2675,6 +2680,7 @@ def main(argv=None) -> int:
         save_snapshot(root, result, previous)
     if args.cmd == "collect":
         data = _public(result)
+        data.pop("numbering_settled", None)
         if _view().style_of(profile, args.style) != "sources":
             data["view"] = _view().build(result, profile, args.style)
         data["pages"] = _view().pages(result, profile, root=root)

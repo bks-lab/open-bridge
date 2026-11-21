@@ -186,7 +186,7 @@ why as "next: <step>" (the cockpit shows it as the point's step line). `who:` me
 | `brevity` | The bottom line, then the top three with why each matters, then how many more. For a phone or a busy day. |
 | `plan` | Your rows laid into today's free calendar gaps, what the Bridge does meanwhile, and when the day ends. |
 | `report` | Markdown that reads like a report, by exception: one **status** line naming only what failed (✗) or needs a look (⚠, a `report_ok` section with rows) and the green ones in one go (✓), the calendar (a table from two events on), the **first** rows in bold, then each bucket as a short numbered list. A bucket shows `view.report.per_bucket` rows (default 5): first every row with a date or from a `report_ok` section, then the rest taken in turn from each source so one source cannot fill it, and counts the rest. A bucket's count leaves out the rows already shown under first. The status line names the numbers of the rows it warns about (`⚠ Upstream (1 → 7)`). When most rows are new, "new" is said once under the status line instead of on every row. `view.report.collapse` lists sections (a board, a tracker) that are counted in one line instead of listed; an item filed from them to the inbox still stands as a row. Each row has its title on one line and its facts on the next, with one date (a due date wins over "back on" and "look again"); a Do row does not repeat "only you", and a one-word category from a producer is left out. Tables only where rows compare. Issue and PR ids are links; internal ids stay out. |
-| `calm` | The report's rows said quietly, for a person who found the report restless: a date line and one sentence ("A free day. 3 for you today, 4 waiting on others."), then **Today**, **Next days** (dated rows first, the date in front: "Until 30.11: …"), **Waiting on others** as one line of names and dates, **I'll do it if you want** (delegate), one count of the rest and how to answer ("3 yes"). Bold only for headings; no italics, no brackets of facts, no answer letters, no status line unless a section failed. A task row says its next step; a title opens its issue or PR, else its task's `STATUS.md`. Waiting items that come back later need a section `{kind: inbox, deferred: runs, bucket: waiting}`. Uses `view.report.per_bucket`, `view.report.collapse` and `view.off_days`. |
+| `calm` | The report's rows said quietly, for a person who found the report restless: a date line and one sentence ("A free day. 3 for you today, 4 waiting on others."), then **Today**, **Next days** (dated rows first, the date in front: "Until 30.11: …"), **Waiting on others** with each row numbered, its name, its topic and its date, **I'll do it if you want** (delegate), one count of the rest and how to answer ("3 yes"). Bold only for headings; no italics, no brackets of facts, no answer letters, no status line unless a section failed. A task row says its next step; a title opens its issue or PR, else its task's `STATUS.md`. Waiting items that come back later need a section `{kind: inbox, deferred: runs, bucket: waiting}`. Uses `view.report.per_bucket`, `view.report.collapse` and `view.off_days`. |
 
 ```yaml
 view:
@@ -240,7 +240,8 @@ to its page. A first run (no previous snapshot) marks nothing as new, since
 there is nothing to compare with.
 
 **Which bucket a row lands in** is a fixed rule, so the shape never depends on
-which agent renders it:
+which agent renders it, and the cockpit's Work through sorts its points by the same rule
+([Buckets](bridge-cockpit.md#buckets); there an agent tab that asks stands in do):
 
 | Source | Bucket |
 |---|---|
@@ -248,6 +249,7 @@ which agent renders it:
 | inbox report (`finding`, `result`) that is not `now`/`today`, not due within the lookahead and not `only-you` | delegate: the Bridge looks at it first |
 | inbox item otherwise | plan |
 | inbox item deferred and back within the lookahead | do if only you can or it is due within the lookahead, else plan |
+| inbox item deferred waiting on the Bridge (`inbox.py defer --on Bridge`) | delegate, or do when only you can take its next click (`only-you`: a login, a send); never waiting, also in a section forced to `bucket: waiting` |
 | inbox item the briefing filed from a tracker row (`to_inbox`) | the same row as that tracker row, not a second one |
 | inbox item waiting for a condition (`waits_for`, [inbox.md](inbox.md)) | waiting, worded "Waiting for: …" (label `waiting_for`) |
 | inbox item filed by "ask about this row" (key `ask:<inbox id>` or `ask:<owner/repo#n>`) | part of the row it asks about; a line that took in asks says so among its reasons ("+1 question", label `also_asked`), and the cockpit lists them in the line's detail and closes them with it |
@@ -284,6 +286,17 @@ least as urgent as that row, so a next step due today never hides behind an item
 put off for later. Two inbox items of one task stay two lines, since each is a
 lever of its own; of several, the most urgent takes the folded rows. A command
 row is folded only when it names its task (`task` or `about_task` on the item).
+
+**The numbers.** Every row the printed briefing shows has a number, one rule for every
+style that numbers (`briefing_view.numbered`): `triage` every row of every bucket, `report`
+the first rows and then those listed per bucket, `calm` Today, Next days, Waiting on others
+and what the Bridge offers, in that order (`brevity` and `plan` number nothing). The built
+view carries it on each row as `nr`, and "3 yes" answers that row. The cockpit asks for every
+row (`collect --max-items 500`) and still gets the printed number: such a pass numbers by the
+profile's own style and `max_items` and leaves out what was settled in the cockpit, so a card
+of Work through says the number the chat shows ([Buckets](bridge-cockpit.md#buckets)). The
+view also names every shown bucket with its title and answers, an empty one too
+(`bucket_defs`), in the profile's order.
 
 **The headline count.** "N asks for you today" counts the asks among the Do rows
 (every row that is no inbox item, and of the inbox only an ask). When Do holds
