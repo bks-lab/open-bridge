@@ -8,10 +8,12 @@ rule refinements live here, where both read them:
 
 - an inbox item put off waiting on the Bridge is the Bridge's to do (delegate), never "waiting on
   others"; one only you can take on (gate only-you: a login, a send) is yours (do)
-- every visible row has a number (`nr`), calm's waiting rows too, the same the renderers print
+- every visible row has a number (`nr`), calm's waiting rows too, the same the renderers print, in the order of
+  the buckets (do, plan, delegate, waiting) as the cockpit shows them
 - a cockpit pass (every row, `_whole`) numbers as the printed briefing would: its own style,
   its own max_items, without what was settled in the cockpit
-- the view names every shown bucket with its title and answers (`bucket_defs`), also an empty one
+- the view names every shown bucket with its title (`bucket_defs`), also an empty one; a bucket has no answers
+  of its own, every point takes the four the view carries (`answers`, scripts/lib/answers.py)
 """
 from __future__ import annotations
 
@@ -121,19 +123,18 @@ def test_a_task_whose_step_is_the_bridges_is_delegate_in_every_spelling():
 
 # ---------------------------------------------------------------- the buckets the view names
 
-def test_the_view_names_every_shown_bucket_with_its_answers_also_an_empty_one():
+def test_the_view_names_every_shown_bucket_also_an_empty_one_and_its_options_are_ignored():
     buckets = [{"id": "do", "title": "Tun", "options": ["ja", "später", "streichen"]}, {"id": "waiting"},
                {"id": "delegate", "title": "Mache ich", "options": ["los", "nicht jetzt"]}]
     v = bv.build(result(sec("inbox", "inbox", [item("i1", "Sign")])), profile({"style": "triage", "buckets": buckets}))
-    assert v["bucket_defs"] == [{"id": "do", "title": "Tun", "options": ["ja", "später", "streichen"]},
-                                {"id": "waiting", "title": "Waiting on others", "options": ["nudge", "wait"]},
-                                {"id": "delegate", "title": "Mache ich", "options": ["los", "nicht jetzt"]}]
+    assert v["bucket_defs"] == [{"id": "do", "title": "Tun"}, {"id": "waiting", "title": "Waiting on others"},
+                                {"id": "delegate", "title": "Mache ich"}]
+    assert [a["id"] for a in v["answers"]["answers"]] == ["do", "later", "done", "obsolete"]
 
 
 def test_without_buckets_in_the_profile_the_defaults_stand_in_their_order():
     v = bv.build(result(sec("inbox", "inbox", [])), profile())
-    assert [b["id"] for b in v["bucket_defs"]] == ["do", "plan", "delegate", "waiting", "drop"]
-    assert v["bucket_defs"][0]["options"] == ["yes", "later", "drop"]
+    assert [b["id"] for b in v["bucket_defs"]] == ["do", "plan", "delegate", "waiting"]
 
 
 # ---------------------------------------------------------------- the numbers
@@ -150,9 +151,9 @@ def _printed_numbers(text):
 def test_calm_numbers_every_visible_row_waiting_included_as_it_prints_them():
     v = bv.build(result(*_rows()), profile({"style": "calm"}))
     nr = {r["title"]: r.get("nr") for b in v["buckets"] for r in b["items"]}
-    assert nr == {"Sign the contract": 1, "Object": 2, "Agency answers": 3, "Fix the probe": 4}
+    assert nr == {"Sign the contract": 1, "Object": 2, "Fix the probe": 3, "Agency answers": 4}
     text = bv.draw(v)
-    assert "3. Agency (Agency answers) until 23.10" in text and "4. Fix the probe" in text
+    assert "4. Agency (Agency answers) until 23.10" in text and "3. Fix the probe" in text
 
 
 def test_triage_and_report_print_the_numbers_the_rows_carry():

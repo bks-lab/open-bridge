@@ -142,9 +142,12 @@ def _tasks(root: Path) -> list:
     return out
 
 
-def _finding(check, subject, summary, urgency, task=None, file=True) -> dict:
-    return {"check": check, "key": f"{KEY_PREFIX}{check}:{subject}", "summary": summary,
-            "urgency": urgency, "task": task, "file": file}
+def _finding(check, subject, summary, urgency, task=None, file=True, days=None) -> dict:
+    out = {"check": check, "key": f"{KEY_PREFIX}{check}:{subject}", "summary": summary,
+           "urgency": urgency, "task": task, "file": file}
+    if days is not None:
+        out["days"] = days      # how long it rests (quiet): the briefing marks the task "resting for N days"
+    return out
 
 
 def advise(root: Path, *, now: dt.datetime | None = None, calendar: list | None = None,
@@ -196,7 +199,7 @@ def advise(root: Path, *, now: dt.datetime | None = None, calendar: list | None 
             found.append(_finding("quiet", t["slug"],
                                   w["quiet"].format(slug=t["title"], idle=idle)
                                   + (w["quiet_customer"] if customer else w["quiet_park"]),
-                                  "today" if customer else "later", t["slug"]))
+                                  "today" if customer else "later", t["slug"], days=idle))
     if max_active and len(tasks) > int(max_active):
         found.append(_finding("wip", "cap", w["wip"].format(n=len(tasks), cap=max_active),
                               "later"))

@@ -119,19 +119,29 @@ Two things are yours besides:
 
 - **Why the first row is first**, in one sentence under the headline, when the
   derived reason (due, back on, waiting N days) does not already say it.
-- **The answers.** "1a 3b" picks the letter of that row's bucket. Default
-  letters: do `a yes · b later · c drop` (inbox approve, defer, drop),
-  delegate `a go · b not now` (start it, or leave it), waiting `a nudge · b wait`
-  (a nudge is a DRAFT for the person, never sent), drop `a park · b keep`
-  (park = `status: backlog`, `task.py status <slug> backlog --note "Parked: <why>"`; keep = `task.py review
-  --keep <slug>`, which dismisses the task check's recommendation or, without one, notes "Kept: stays open"
-  so its quiet days count from today). A profile may rename the options; their order
-  keeps these meanings. In `style: calm` there are no letters: "3 yes", "3 later",
-  "3 drop" (or the bucket's own words) name the row and the answer.
-- **Obsolete, on every row.** Besides its bucket's answers, any numbered row
-  takes the fixed word "obsolete" (German "veraltet"): "3 obsolete", "3 veraltet",
-  also in a style with letters. It is the cockpit's last answer Obsolete, the
-  same act for the same kind of row (table below), and it needs no letter.
+- **The answers.** Every numbered row, in every bucket and every style, takes
+  the same four answers, the cockpit's four: **do** / "mach", **later** /
+  "später" (with an optional day: "3 later monday", "3 später in einer Woche",
+  "3 später 3.12.", "3 später merkliste"; no day is tomorrow), **done** /
+  "erledigt", **obsolete** / "veraltet". A letter picks them in that order:
+  "3a" do, "3b" later, "3c" done, "3d" obsolete. Several in one line work:
+  "1 mach, 3 später montag, 5 veraltet". The words of the answers before them
+  stay accepted and mean one of the four: ja, yes, los, go, nachfassen, nudge
+  are do; einplanen, schedule, nicht jetzt, not now, warten, wait, behalten,
+  keep are later (einplanen with a day puts it on that day); parken, park are
+  later onto the watch list; streichen, drop are obsolete. Read a reply with
+  `scripts/lib/answers.py` (`answers.parse(text, today)`): it gives each
+  number its answer and, for later, the day (`9999-12-31` is the watch list).
+  What the answer does to the row is `answers.effect(answer, row, until)`, the
+  table below in code; the cockpit runs the same table, so the same word does
+  the same thing on the same row in the chat and on the page.
+- **Do is the Bridge's next step**, the one the row's next sentence names: a
+  task gets an agent on its next step and moves to "I'll do" as running; an
+  inbox item gets its yes and runs (`only-you` never runs: prepare it and say
+  "you press send"); a point waiting on someone else gets a nudge written as a
+  DRAFT for the person, never sent, which then stands in Do as a ready draft;
+  a row an agent tab asks about is answered in the tab with the tab's own
+  answer.
 
 A stream that runs every morning belongs in the profile, not in this list: a
 `command` section with `report_ok: true` turns it into rows and an all-clear
@@ -153,7 +163,7 @@ ABOVE everything else in `workflow.md` § Phase 4.
 
   {summary}
   {why it is first: urgency, due, collision, what waits on it}
-  → {proposed action}            [{gate}]   {a} yes · {b} later · {c} drop
+  → {proposed action}            [{gate}]   do · later · done · obsolete
 
 ── Waiting for you ({N}) ──────────────────────────────────────────────────
 
@@ -193,12 +203,15 @@ Answers map onto the inbox, never onto memory or a log sentence:
 
 | The person says | Do |
 |---|---|
-| yes / do it / `a` | `inbox.py approve <id>` then `inbox.py run` |
+| do / mach / `a` (ja, los, nachfassen) on an inbox item | `inbox.py approve <id>` then `inbox.py run` |
+| do / mach on a task | start an agent on its `next.what`; the task stands in "I'll do" as running |
+| do / mach on a waiting point | write the nudge as a DRAFT for the person (mail-draft), never send it |
 | yes once {condition} | `inbox.py approve <id> --when-json '<probe>'` (only `your-yes`; `run` executes it later) |
-| later / tomorrow / `b` | `inbox.py defer <id> --until <date>` |
-| drop it / `c` | `inbox.py drop <id> --note "<why>"` |
-| obsolete / veraltet, on any numbered row | the cockpit's Obsolete: an inbox item `inbox.py drop <id> --note "veraltet" --reason outdated`; a task `task.py close <slug> --declined --reason "Wird nicht gemacht: veraltet"`; a stream the same with `--stream`; an issue or PR is hidden in the cockpit (its answer Obsolete), never closed on GitHub; a row an agent tab asks about is answered in the tab, unless it asks about an inbox item |
-| done already | `inbox.py close <id> --note "<how>"` and, if the probe missed it, fix the probe |
+| later / später [day] / `b` on an inbox item | `inbox.py defer <id> --until <date>` (watch list: `--until 9999-12-31`) |
+| later on a task | a day: hide it in the cockpit until then; watch list (merkliste, parken): `task.py status <slug> backlog --note "Parked: <why>"` |
+| later on a waiting point | it stays with the same person: a task `task.py wait <slug> --until <date>`, an inbox item `inbox.py defer <id> --until <date> --on "<who>"` |
+| done / erledigt / `c` | an inbox item `inbox.py close <id> --note "<how>"` (if the probe missed it, fix the probe); a task `task.py close <slug>`; a stream gets a note "done for this time" and runs on; an issue or PR is hidden in the cockpit, never closed on GitHub |
+| obsolete / veraltet / `d` (streichen), on any numbered row | the cockpit's Obsolete: an inbox item `inbox.py drop <id> --note "veraltet" --reason outdated`; a task `task.py close <slug> --declined --reason "Wird nicht gemacht: veraltet"`; a stream the same with `--stream`; an issue or PR is hidden in the cockpit (its answer Obsolete), never closed on GitHub; a row an agent tab asks about is answered in the tab, unless it asks about an inbox item |
 | status | `workplace.py status` plus the open count per task from the inbox |
 | tell {tab}: {text} | `workplace.py send <tab> <text>`; show what goes where first unless the person named both |
 

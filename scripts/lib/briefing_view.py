@@ -6,8 +6,9 @@ reader sees. Four styles, chosen per profile (`view.style`) or once on the comma
 line (`briefing.py render --style <style>`):
 
   sources  one block per section, in profile order: the briefing as it always was
-  triage   every row sorted by what to DO with it: do, plan, delegate, waiting,
-           drop; a thing two sources carry is shown once; housekeeping goes last
+  triage   every row sorted by who is on the move and when: do (you, today), plan
+           (you, no day yet), delegate (the Bridge), waiting (anyone else); a thing
+           two sources carry is shown once; housekeeping goes last
   brevity  the bottom line, then the top three with why each matters
   plan     the day: your rows laid into the free gaps of today's calendar, what
            the Bridge does meanwhile, and when the day ends
@@ -28,17 +29,28 @@ import urllib.parse
 from pathlib import Path
 
 try:
+    from lib import answers
     from lib.inbox_verbs import art_of_kind
 except ImportError:  # loaded by path (briefing.py, the tests) with scripts/ not on the path
     import importlib.util as _ilu
-    _spec = _ilu.spec_from_file_location("inbox_verbs", Path(__file__).resolve().parent / "inbox_verbs.py")
-    assert _spec is not None and _spec.loader is not None
-    _verbs = _ilu.module_from_spec(_spec)
-    _spec.loader.exec_module(_verbs)
-    art_of_kind = _verbs.art_of_kind
+    import sys as _sys
+
+    def _sibling(name: str):
+        if name in _sys.modules:
+            return _sys.modules[name]
+        spec = _ilu.spec_from_file_location(name, Path(__file__).resolve().parent / f"{name}.py")
+        assert spec is not None and spec.loader is not None
+        module = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    art_of_kind = _sibling("inbox_verbs").art_of_kind
+    answers = _sibling("answers")
 
 STYLES = ("sources", "triage", "brevity", "plan", "report", "calm")
-BUCKETS = ("do", "plan", "delegate", "waiting", "drop")
+BUCKETS = ("do", "plan", "delegate", "waiting")
+# a bucket an older profile may still list: accepted, and its rows stand in the four (a long-resting task in its own
+# bucket, marked "resting for N days")
+LEGACY_BUCKETS = ("drop",)
 VIEW_KEYS = {"style", "headline", "dayline", "agenda", "overview", "report", "since_last", "lookahead_days", "max_items", "answer_keys", "hygiene", "color",
              "width", "labels", "buckets", "plan", "pages", "page_rest", "page_skip", "marks", "off_days"}
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -46,13 +58,17 @@ MARK_KEYS = {"label", "match", "color"}
 MARK_COLORS = ("red", "green", "yellow", "blue", "magenta", "cyan", "gray", "white")
 # Where a mark looks: the row's own words and what names its source, never a body.
 MARK_FIELDS = ("id", "project", "url", "task", "context", "area", "repo", "labels")   # never `tracker`: the source's name
+# `options` is accepted for older profiles and ignored: every bucket takes the same four answers (lib/answers.py)
 BUCKET_KEYS = {"id", "title", "options", "nudge_after_days"}
 DEFAULT_BUCKETS = {
-    "do": {"title": "Do (you, today)", "options": ["yes", "later", "drop"]},
-    "plan": {"title": "Plan", "options": ["schedule", "later"]},
-    "delegate": {"title": "I'll do", "options": ["go", "not now"]},
-    "waiting": {"title": "Waiting on others", "options": ["nudge", "wait"], "nudge_after_days": 7},
-    "drop": {"title": "Park or drop", "options": ["park", "keep"]},
+    "do": {"title": "Do (you, today)"},
+    "plan": {"title": "Plan"},
+    "delegate": {"title": "I'll do"},
+    "waiting": {"title": "Waiting on others", "nudge_after_days": 7},
+}
+BUCKET_TITLES = {
+    "en": {b: c["title"] for b, c in DEFAULT_BUCKETS.items()},
+    "de": {"do": "Tun", "plan": "Planen", "delegate": "Mache ich", "waiting": "Wartet auf andere"},
 }
 LABELS = {
     # the headline counts the asks (asks_you); what else stands in Do (reports, ideas) is counted apart
@@ -106,7 +122,17 @@ LABELS = {
     "calm_until_short": "until {date}",
     "calm_rest": "{n} more in the cockpit.",
     "calm_rest_off": "{n} more wait for the next working day.",
-    "calm_answer": "Answer with a number, e.g. “{n} yes”.",
+    "calm_answer": "Answer with a number and a word, e.g. “{n} do” or “{n} later monday”.",
+    # every numbered row takes the same four answers (lib/answers.py): one line says them, below the buckets
+    "answer_legend": "Answer with a number and a word: {words}",
+    # a task nobody touched for a while (advice quiet) stays in its own bucket and says so
+    "resting": "resting for {n} days",
+    "resting_one": "resting for {n} day",
+    # out of sight, only counted below the buckets: put off to a day, on the watch list, done or obsolete today
+    "aside": "Out of sight: {items}",
+    "aside_later": "later {n}",
+    "aside_list": "watch list {n}",
+    "aside_done_today": "done today {n}",
     "more": "+{n} more",
     "end": "That's all for today.",
     "why": "why",
@@ -326,7 +352,14 @@ LABELS_DE = {
     "calm_until_short": "bis {date}",
     "calm_rest": "{n} weitere im Cockpit.",
     "calm_rest_off": "{n} weitere warten auf den nächsten Arbeitstag.",
-    "calm_answer": "Antwort mit Nummer, z. B. „{n} ja“.",
+    "calm_answer": "Antwort mit Nummer und Wort, z. B. „{n} mach“ oder „{n} später montag“.",
+    "answer_legend": "Antwort mit Nummer und Wort: {words}",
+    "resting": "ruht seit {n} Tagen",
+    "resting_one": "ruht seit {n} Tag",
+    "aside": "Außer Sicht: {items}",
+    "aside_later": "später {n}",
+    "aside_list": "Merkliste {n}",
+    "aside_done_today": "fertig heute {n}",
     "more": "+{n} weitere",
     "end": "Das war's für heute.",
     "why": "warum",
@@ -648,7 +681,7 @@ def problems(view, mutes) -> list:
             buckets = []
         seen = set()
         for n, b in enumerate(buckets, 1):
-            if not isinstance(b, dict) or b.get("id") not in BUCKETS:
+            if not isinstance(b, dict) or b.get("id") not in BUCKETS + LEGACY_BUCKETS:
                 bid = b.get("id") if isinstance(b, dict) else b
                 out.append(f"view.buckets {n}: bucket id {bid!r} is not one of {', '.join(BUCKETS)}")
                 continue
@@ -998,15 +1031,19 @@ def _matches(when: dict, item: dict) -> bool:
     return True
 
 
-def _bucket_cfg(view: dict) -> tuple:
-    """(shown bucket configs in order, ids hidden). No list = all five in the default order."""
+def _bucket_cfg(view: dict, language: str | None = None) -> tuple:
+    """(shown bucket configs in order, ids hidden). No list = all four in the default order, titled in the
+    profile's language. A listed `drop` (an older profile) shows nothing: its rows stand in the four. A
+    bucket's `options` are ignored: every bucket takes the same four answers (lib/answers.py)."""
     listed = view.get("buckets")
-    if not isinstance(listed, list) or not listed:
+    if not isinstance(listed, list) or not any(isinstance(b, dict) and b.get("id") in BUCKETS for b in listed):
         listed = [{"id": b} for b in BUCKETS]
+    titles = BUCKET_TITLES["de" if str(language or "").lower().startswith("de") else "en"]
     shown = []
     for b in listed:
         if isinstance(b, dict) and b.get("id") in BUCKETS:
-            shown.append({"id": b["id"], **DEFAULT_BUCKETS[b["id"]], **{k: v for k, v in b.items() if k != "id"}})
+            shown.append({"id": b["id"], **DEFAULT_BUCKETS[b["id"]], "title": titles[b["id"]],
+                          **{k: v for k, v in b.items() if k not in ("id", "options")}})
     ids = [b["id"] for b in shown]
     return shown, [b for b in BUCKETS if b not in ids]
 
@@ -1143,9 +1180,11 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
     def usable(s):
         return s.get("status") == "ok" and sections_cfg.get(s.get("id"), {}).get("bucket") != "none"
 
-    # First pass: what the advice says about tasks (a quiet task is shown once, under drop).
-    quiet, blocked = set(), set()
+    # First pass: what the advice says about tasks. A quiet task stays in its own bucket and is marked as resting
+    # for its days (the bucket "park or drop" is gone, 21.11.2026); its advice stands alone only without a task row.
+    quiet: dict = {}            # task -> the days it rests (None when the advice does not say)
     quiet_titles: dict = {}     # a quiet task's own title, from its tasks section (the advice names it in a sentence)
+    blocked = set()
     for s in result.get("sections") or []:
         if s.get("kind") != "advise" or not usable(s):
             continue
@@ -1153,7 +1192,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             if muted(s["id"], item):
                 continue
             if item.get("check") == "quiet" and item.get("task"):
-                quiet.add(item["task"])
+                quiet[item["task"]] = item.get("days") if _pos_int(item.get("days")) else None
             if item.get("check") == "blocked" and item.get("task"):
                 blocked.add(item["task"])
 
@@ -1344,7 +1383,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 if check == "wip":
                     tend("note", str(item.get("title")))
                 elif check == "quiet":
-                    add(f"task:{item.get('task')}", row(sid, item, forced or "drop", item.get("title"), (), 5))
+                    carried.append((sid, item, forced))
                 elif check == "collision":
                     add(f"advise:{iid}", row(sid, item, forced or "do", item.get("title"), [labels["collides"]], 0))
                 elif check in ("blocked", "waiting", "due"):
@@ -1354,7 +1393,6 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             elif kind == "tasks":
                 if iid in quiet:
                     quiet_titles[iid] = str(item.get("title") or "").strip()
-                    continue
                 nxt = _task_next(item)
                 lane = task_who(item, you)["lane"]
                 age = _days_since(item.get("changed_at"), now)
@@ -1420,6 +1458,21 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
     told = set()
     for sid, item, forced in sorted(carried, key=lambda c: c[1].get("check") != "due"):    # "due" says the most
         check = item.get("check")
+        if check == "quiet":
+            # a quiet task without a row of its own (no tasks section, or no next step): the advice is its row,
+            # yours without a day; with a row the task carries the mark itself (below)
+            slug = item.get("task")
+            if f"task:{slug}" not in out["rows"]:
+                # named by the task's own title, the advice beside it ("untouched for 54 days", "park?"): round 2 of
+                # the cockpit simulation had the advice as the title on the card, the list and the toast
+                title, why = str(item.get("title") or ""), []
+                own = quiet_titles.get(slug)
+                if own and title.startswith(own) and title != own:
+                    rest = title[len(own):].strip()
+                    hint = re.match(r"^(.*?)\s*\((.+)\)$", rest)
+                    title, why = own, [w for w in ([hint.group(1), hint.group(2)] if hint else [rest]) if w]
+                add(f"task:{slug}", row(sid, item, forced or "plan", title, why, 5, task=slug))
+            continue
         subject = str(item.get("id") or "").split(":", 2)[-1]
         carrier = f"task:{item.get('task')}" if check == "blocked" else f"inbox:{subject}"
         if carrier in out["rows"] or carrier in told:
@@ -1430,17 +1483,14 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
         # section's `max:`): a cockpit pass, which reads that item, gives it this row's number and bucket (_row_ident)
         about = {"advise_inbox": subject} if check in ("waiting", "due") and INBOX_ID_LIKE.match(subject) else {}
         add(f"advise:{item.get('id')}", row(sid, item, forced or bucket, item.get("title"), (), 2, **about))
-    # the advice named a quiet task by its title and said how long it rested ("X untouched for 54 days (park?)"): the
-    # point keeps the task's own title, the advice stands beside it (round 2 of the cockpit simulation: the advice was
-    # the title on the card, the list and the toast)
-    for slug, own in quiet_titles.items():
+    # a resting task says so beside its own title, in whichever bucket its next step puts it
+    for slug, days in quiet.items():
         have = out["rows"].get(f"task:{slug}")
-        said = str((have or {}).get("title") or "")
-        if have and own and said.startswith(own) and said != own:
-            rest = said[len(own):].strip()
-            hint = re.match(r"^(.*?)\s*\((.+)\)$", rest)
-            have["title"] = own
-            have["why"] = [w for w in ([hint.group(1), hint.group(2)] if hint else [rest]) if w] + list(have.get("why") or [])
+        if have is not None:
+            have["resting"] = days or True
+            said = _count(labels, "resting", days) if days else None
+            if said and said not in have["why"]:
+                have["why"].append(said)
     _drop_settled(out, result.get("settled"), now)
     _fold(out, view, labels)
     return out
@@ -1546,8 +1596,8 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
     labels = _labels(view, profile.get("_language"))
     now = _when(result.get("collected_at")) or dt.datetime.now()
     data = _rows(result, profile, view, labels, now)
-    shown, hidden_ids = _bucket_cfg(view)
-    titles = {b: DEFAULT_BUCKETS[b]["title"] for b in BUCKETS} | {b["id"]: b["title"] for b in shown}
+    shown, hidden_ids = _bucket_cfg(view, profile.get("_language"))
+    titles = {b["id"]: b["title"] for b in _bucket_cfg({}, profile.get("_language"))[0]} | {b["id"]: b["title"] for b in shown}
 
     # An info event (an `info_calendars` calendar, e.g. a family one) is someone else's:
     # it is listed, but it neither makes the reader busy nor raises a clash.
@@ -1659,9 +1709,15 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
     width = view.get("width")
     out = {"style": style, "collected_at": result.get("collected_at"), "headline": None, "since": None,
            "buckets": [], "hygiene": hygiene, "tend": tend,
-           # every shown bucket in profile order with its title and its answers, also an empty one: the cockpit
-           # sorts its points into them (docs/bridge-cockpit.md, the buckets of Work through)
-           "bucket_defs": [{"id": b["id"], "title": b["title"], "options": list(b.get("options") or [])} for b in shown], "workplace": data["workplace"], "more": 0, "titles": titles,
+           # every shown bucket in profile order with its title, also an empty one: the cockpit sorts its points into
+           # them (docs/bridge-cockpit.md, the buckets of Work through). A bucket has no answers of its own: every
+           # point takes the four of `answers` (lib/answers.py), which the cockpit reads from here
+           "bucket_defs": [{"id": b["id"], "title": b["title"]} for b in shown],
+           "answers": answers.defs(profile.get("_language")),
+           # what is out of sight, only counted: put off to a day, on the watch list, done or obsolete today
+           # (briefing.py aside_counts; none when the caller did not count)
+           "aside": _aside(result.get("aside")),
+           "workplace": data["workplace"], "more": 0, "titles": titles,
            "answer_keys": view.get("answer_keys", True) is not False,
            "show_hygiene": view.get("hygiene", "bottom") != "hide",
            "color": view.get("color", "auto"), "width": width if _pos_int(width) and width >= 40 else 100,
@@ -1692,14 +1748,13 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
         pick = ([r for r in visible if r["bucket"] == "do"] +
                 [r for r in visible if r["bucket"] == "waiting" and r.get("nudge")] +
                 [r for r in visible if r["bucket"] in ("plan", "delegate")] +
-                [r for r in visible if r["bucket"] == "waiting" and not r.get("nudge")] +
-                [r for r in visible if r["bucket"] == "drop"])
+                [r for r in visible if r["bucket"] == "waiting" and not r.get("nudge")])
         out["top"] = [{**r, "why": r["why"] or [titles[r["bucket"]]]} for r in pick[:cap]]
         out["more"] = max(0, len(visible) - len(out["top"]))
         return out
 
     if style == "plan":
-        # The plan shows every row (laid out, meanwhile, waiting, drop, later): nothing is "more".
+        # The plan shows every row (laid out, meanwhile, waiting, later): nothing is "more".
         out["plan"] = _plan(visible, events, now, plan_cfg, day_start, day_end)
         return out
 
@@ -1776,8 +1831,7 @@ def _capped(shown: list, visible: list, cap: int) -> tuple:
         take = mine[b["id"]][:room[b["id"]]]
         more += len(mine[b["id"]]) - len(take)
         if take:
-            buckets.append({"id": b["id"], "title": b["title"], "options": list(b.get("options") or []),
-                            "items": take, "total": len(mine[b["id"]])})
+            buckets.append({"id": b["id"], "title": b["title"], "items": take, "total": len(mine[b["id"]])})
         else:
             dropped += len(mine[b["id"]])
     return buckets, more, dropped
@@ -1792,8 +1846,7 @@ def numbered(view: dict) -> list:
     if style == "report":
         return _report_listing(view)[0]
     if style == "calm":
-        parts = _calm_parts(view)
-        return parts["today"] + parts["next"] + parts["waiting"] + parts["offer"]
+        return [r for _bid, rows in _calm_parts(view) for r in rows]
     if style == "triage":
         return [r for b in view.get("buckets") or [] for r in b["items"]]
     return []
@@ -1881,8 +1934,7 @@ def _plan(rows, events, now, cfg, day_start, day_end) -> dict:
         gap[0] += length
     slots.sort(key=lambda s: (s["start"], s["kind"] != "event"))
     return {"slots": slots, "parallel": [r["title"] for r in rows if r["bucket"] == "delegate"],
-            "waiting": [r["title"] for r in rows if r["bucket"] == "waiting"],
-            "drop": [r["title"] for r in rows if r["bucket"] == "drop"], "later": later, "shutdown": day_end}
+            "waiting": [r["title"] for r in rows if r["bucket"] == "waiting"], "later": later, "shutdown": day_end}
 
 
 # ---------------------------------------------------------------- draw
@@ -1941,7 +1993,7 @@ def draw(view: dict, color: bool = False, width: int | None = None) -> str:
             line = f"  {s['start']}-{s['end']}  {s['title']}"
             out += wrap(line, hang=" " * 15, style="2" if s["kind"] == "event" else None)
         for key, title, style in (("parallel", labels["meanwhile"], None), ("waiting", titles["waiting"], "2"),
-                                  ("drop", titles["drop"], "2"), ("later", labels["later"], "2")):
+                                  ("later", labels["later"], "2")):
             if plan.get(key):
                 out += wrap(f"{title}: " + " · ".join(plan[key]), indent="  ", hang="    ", style=style)
         out += wrap(labels["shutdown"].format(time=plan["shutdown"]), indent="  ", style="1")
@@ -1950,13 +2002,10 @@ def draw(view: dict, color: bool = False, width: int | None = None) -> str:
         for b in view["buckets"]:
             out.append("")
             head = f"── {b['title']} · {b.get('total', len(b['items']))} ──"
-            if view.get("answer_keys") and b.get("options"):
-                letters = "abcdefghij"
-                head += " " + " · ".join(f"{letters[i]} {o}" for i, o in enumerate(b["options"][:10]))
-            out += wrap(head, style="1;31" if b["id"] == "do" else "2" if b["id"] in ("waiting", "drop") else "1")
+            out += wrap(head, style="1;31" if b["id"] == "do" else "2" if b["id"] == "waiting" else "1")
             for r in b["items"]:
                 n += 1
-                num = f"{n:>3}  " if view.get("answer_keys") else "  -  "
+                num = f"{r.get('nr') or n:>3}  "
                 extras = list(r["why"])
                 if len(r["sources"]) > 1:
                     extras.append("+".join(r["sources"]))
@@ -1968,7 +2017,7 @@ def draw(view: dict, color: bool = False, width: int | None = None) -> str:
                 lines = textwrap.wrap(text, width=width, initial_indent=num, subsequent_indent=" " * len(num),
                                       break_long_words=False, break_on_hyphens=False)
                 urgent = b["id"] == "do" and r["rank"] <= 1
-                dim = b["id"] in ("waiting", "drop") and not r.get("nudge")
+                dim = b["id"] == "waiting" and not r.get("nudge")
                 lines = [c("31", line) if urgent else c("2", line) if dim else line for line in lines]
                 ref, url = r.get("ref"), str(r.get("url") or "")
                 if use and ref and url.startswith(("https://", "http://")):
@@ -1976,6 +2025,12 @@ def draw(view: dict, color: bool = False, width: int | None = None) -> str:
                     link = f"\x1b]8;;{url}\x1b\\{ref}\x1b]8;;\x1b\\"
                     lines = [line.replace(ref, link, 1) if ref in line else line for line in lines]
                 out += lines
+        if n and view.get("answer_keys"):
+            out.append("")
+            out += wrap(_legend(view), style="2")
+        if _aside_line(view):
+            out.append("")
+            out += wrap(_aside_line(view), style="2")
 
     if view.get("overview", "inline") != "file":
         out += _overview_lines(view, width, c, wrap)
@@ -1993,6 +2048,29 @@ def draw(view: dict, color: bool = False, width: int | None = None) -> str:
         out += wrap(labels["more"].format(n=view["more"]), style="2")
     out += wrap(labels["end"], style="2")
     return "\n".join(out)
+
+
+ASIDE = ("later", "list", "done_today")
+
+
+def _aside(counts) -> dict | None:
+    """The out-of-sight counts a view carries: {later, list, done_today}, each a whole number; None uncounted"""
+    if not isinstance(counts, dict):
+        return None
+    return {k: _int(counts.get(k), 0, 0) for k in ASIDE}
+
+
+def _aside_line(view: dict) -> str | None:
+    """"Out of sight: later 2 · watch list 5 · done today 1", the counts that are not zero; None for none"""
+    counts, labels = view.get("aside") or {}, view["labels"]
+    items = [labels[f"aside_{k}"].format(n=counts[k]) for k in ASIDE if counts.get(k)]
+    return labels["aside"].format(items=" · ".join(items)) if items else None
+
+
+def _legend(view: dict) -> str:
+    """The one line that says the four answers every numbered row takes, in the view's language"""
+    said = [a["say"] for a in (view.get("answers") or answers.defs(None))["answers"]]
+    return view["labels"]["answer_legend"].format(words=" · ".join(said))
 
 
 def _overview_lines(view: dict, width: int, c, wrap) -> list:
@@ -2156,10 +2234,7 @@ def draw_report(view: dict) -> str:
         body.append("")
     for b, rest, pick in per:
         firsts = sum(1 for r in b["items"] if id(r) in shown_first)
-        head = f"### {b['title']} · {b.get('total', len(b['items'])) - firsts}"
-        if view.get("answer_keys") and b.get("options"):
-            head += "  *(" + " · ".join(f"{'abcdefghij'[i]} {o}" for i, o in enumerate(b["options"][:10])) + ")*"
-        body += [head, ""]
+        body += [f"### {b['title']} · {b.get('total', len(b['items'])) - firsts}", ""]
         for r in pick:
             body += _report_row(number[id(r)], {**r, "new": r["new"] and not flood}, labels, False)
         hidden = len(rest) - len(pick) + (b.get("total", len(b["items"])) - len(b["items"]))
@@ -2172,6 +2247,10 @@ def draw_report(view: dict) -> str:
         body += [f"*{labels['off_day'].format(n=view['off_day'])}*", ""]
     if view.get("collapsed"):
         body += [f"*{labels['collapsed'].format(items=' · '.join(view['collapsed']))}*", ""]
+    if _aside_line(view):
+        body += [f"*{_aside_line(view)}*", ""]
+    if listed and view.get("answer_keys"):
+        body += [f"*{_legend(view)}*", ""]
 
     failed = [st for st in view.get("status") or [] if st.get("status") == "error"]
     warn = [st for st in view.get("status") or [] if st.get("health") and not st.get("status") and st["count"]]
@@ -2249,19 +2328,22 @@ def _calm_title(r: dict, labels: dict, limit: int = 80, step: bool = True) -> st
     return f"{_marked(r)}[{text}]({link})" if link else f"{_marked(r)}{text}"
 
 
-def _calm_parts(view: dict) -> dict:
-    """The rows calm shows, in their order: Today (do), Next days (plan, dated ones first, `per_bucket` of them),
-    Waiting on others, and up to three the Bridge offers (delegate)"""
+def _calm_parts(view: dict) -> list:
+    """The rows calm shows, bucket by bucket in the view's order (the cockpit's order, so the numbers match):
+    Today (do), Next days (plan: `per_bucket` of them, dated ones taken first, shown in the bucket's order), up to
+    three the Bridge offers (delegate), Waiting on others. [(bucket id, rows)]"""
     per = _int((view.get("report") or {}).get("per_bucket"), 5, 1)
-    by = {b["id"]: b for b in view.get("buckets") or []}
-
-    def items(bid):
-        return list((by.get(bid) or {}).get("items") or [])
-
-    plan = items("plan")
-    dated = sorted([r for r in plan if r.get("due")], key=lambda r: str(_when(r["due"])))
-    return {"today": items("do"), "next": (dated + [r for r in plan if not r.get("due")])[:per],
-            "waiting": items("waiting"), "offer": items("delegate")[:3]}
+    out = []
+    for b in view.get("buckets") or []:
+        rows = list(b.get("items") or [])
+        if b["id"] == "plan":
+            dated = sorted([r for r in rows if r.get("due")], key=lambda r: str(_when(r["due"])))
+            keep = {id(r) for r in (dated + [r for r in rows if not r.get("due")])[:per]}
+            rows = [r for r in rows if id(r) in keep]
+        elif b["id"] == "delegate":
+            rows = rows[:3]
+        out.append((b["id"], rows))
+    return out
 
 
 def draw_calm(view: dict) -> str:
@@ -2279,8 +2361,8 @@ def draw_calm(view: dict) -> str:
     by = {b["id"]: b for b in view.get("buckets") or []}
     total = sum(b.get("total", len(b["items"])) for b in by.values())
     parts = _calm_parts(view)
-    today, nxt, waiting, offer = parts["today"], parts["next"], parts["waiting"], parts["offer"]
-    waiting_n = (by.get("waiting") or {}).get("total", len(waiting))
+    today = next((rows for bid, rows in parts if bid == "do"), [])
+    waiting_n = (by.get("waiting") or {}).get("total", len(next((rows for bid, rows in parts if bid == "waiting"), [])))
 
     out = [f"**{title.strip(', ')}**",
            ((labels["calm_off"] + " ") if view.get("off_today") else "")
@@ -2290,43 +2372,38 @@ def draw_calm(view: dict) -> str:
         out.append(labels["calm_failed"].format(items=", ".join(st["title"] for st in failed)))
     n = 0
     first = None
-    for head, rows, dated_rows in ((labels["calm_today"], today, False), (labels["calm_next"], nxt, True)):
+    heads = {"do": labels["calm_today"], "plan": labels["calm_next"], "delegate": labels["calm_delegate"],
+             "waiting": labels["calm_waiting"]}
+    for bid, rows in parts:
         if not rows:
             continue
-        out += ["", f"**{head}**"]
+        out += ["", f"**{heads[bid]}**"]
         for r in rows:
             n += 1
             first = first or n
+            if bid == "waiting":
+                # each row numbered like the others (21.11.2026), so "4 do" names it as the cockpit's card does; on a
+                # line of its own each row names its topic too: "Ada until 31.12" twice said nothing apart
+                who = str(r.get("who") or "").strip()
+                topic = _calm_title({**r, "url": None, "task": None, "mark": None}, labels, step=False)
+                name = f"{who} ({_topic(topic, 40)})" if who else _topic(topic, 50)
+                if r.get("until"):
+                    name += " " + labels["calm_until_short"].format(date=_fmt_when(r["until"], now, labels))
+                out.append(f"{n}. {name}")
+                continue
             when = ""
-            if dated_rows and r.get("due"):
+            if bid == "plan" and r.get("due"):
                 when = labels["calm_until"].format(date=_fmt_when(r["due"], now, labels))
             out.append(f"{n}. {when}{_calm_title(r, labels)}")
-    if waiting:
-        # each row numbered like the others (21.11.2026), so "4 nudge" names it as the cockpit's card does
-        out += ["", f"**{labels['calm_waiting']}**"]
-        for r in waiting:
-            n += 1
-            first = first or n
-            who = str(r.get("who") or "").strip()
-            # on a line of its own each row names its topic too: "Ada until 31.12" twice said nothing apart
-            topic = _calm_title({**r, "url": None, "task": None, "mark": None}, labels, step=False)
-            name = f"{who} ({_topic(topic, 40)})" if who else _topic(topic, 50)
-            if r.get("until"):
-                name += " " + labels["calm_until_short"].format(date=_fmt_when(r["until"], now, labels))
-            out.append(f"{n}. {name}")
-    if offer:
-        out += ["", f"**{labels['calm_delegate']}**"]
-        for r in offer:
-            n += 1
-            first = first or n
-            out.append(f"{n}. {_calm_title(r, labels)}")
-    shown = len(today) + len(nxt) + len(waiting) + len(offer)
+    shown = sum(len(rows) for _bid, rows in parts)
     rest = max(0, total - shown) + (view.get("off_day") or 0) + (view.get("collapsed_n") or 0)
     tail = []
     if rest:
         tail.append(labels["calm_rest_off" if view.get("off_today") else "calm_rest"].format(n=rest))
     if first:
         tail.append(labels["calm_answer"].format(n=first))
+    if _aside_line(view):
+        tail.append(_aside_line(view))
     if tail:
         out += [""] + tail
     return "\n".join(out)

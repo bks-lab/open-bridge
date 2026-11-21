@@ -3,8 +3,8 @@
 
 The sections of a profile say where the data comes from. The `view:` block says how
 the reader sees it. `style: sources` (the default) prints one block per section, the
-briefing as it always was. `triage` sorts every row by what to DO with it (do, plan,
-delegate, waiting, drop), shows a thing once even when two sources carry it, and puts
+briefing as it always was. `triage` sorts every row by who is on the move and when (do,
+plan, delegate, waiting), shows a thing once even when two sources carry it, and puts
 housekeeping last. `brevity` is the bottom line plus the top three with why they
 matter. `plan` lays the day's work into the free gaps of the calendar.
 
@@ -158,8 +158,10 @@ def test_triage_sorts_every_row_by_what_to_do_with_it():
     assert "CV matching" in b["delegate"]        # next step who: bridge
     assert "Austria onboarding" in b["waiting"]                 # blocked_by
     assert "Bridge to bridge" in b["waiting"]  # next step at another person
-    assert any("keys" in t for t in b["drop"])                  # quiet task: park?
-    assert not any("Restore test" in t for t in b["plan"])      # a quiet task is shown once, under drop
+    assert "drop" not in b                                      # no bucket "park or drop" any more
+    assert "Keychain backup" in b["plan"]                       # a quiet task stays in its own bucket, resting
+    rest = next(r for x in view["buckets"] for r in x["items"] if r["title"] == "Keychain backup")
+    assert rest["resting"] is True and not any("untouched" in t for x in b.values() for t in x)
 
 
 def test_a_thing_two_sources_carry_is_shown_once_with_both_sources():
@@ -283,12 +285,12 @@ def test_max_items_caps_the_whole_briefing_and_it_ends():
     assert f"+{view['more']}" in out and "That's all for today." in out
 
 
-def test_answer_keys_number_rows_across_buckets_and_name_the_letters():
+def test_answer_keys_number_rows_across_buckets_and_name_the_four_answers_once():
     view = bv.build(sample(), profile(view={"style": "triage", "answer_keys": True}))
     out = ANSI.sub("", bv.draw(view))
     numbers = [int(n) for n in re.findall(r"^\s+(\d+)\s", out, flags=re.M)]
     assert numbers == list(range(1, len(numbers) + 1)) and numbers
-    assert "a " in out and "b " in out
+    assert out.count("do · later · done · obsolete") == 1
 
 
 def test_long_rows_wrap_at_a_word_and_are_never_cut():
@@ -452,10 +454,10 @@ def test_brevity_still_says_what_failed_and_what_was_muted():
     assert "API rate limit" in out and "1 muted" in out
 
 
-def test_plan_shows_drop_rows_and_no_false_more():
+def test_plan_shows_every_row_and_no_false_more():
     view = bv.build(sample(), profile(view={"style": "plan", "max_items": 2}))
     out = ANSI.sub("", bv.draw(view))
-    assert "keys untouched" in out
+    assert "Keychain backup" in out and "keys untouched" not in out
     assert view["more"] == 0 and "+" not in out
 
 
@@ -1418,7 +1420,7 @@ def test_calm_counts_the_rest_once_and_says_how_to_answer():
                  CALM_SECTIONS, view={"report": {"per_bucket": 3}})
     assert sum(1 for l in text.splitlines() if "Card " in l) == 3
     assert "6 more in the cockpit." in text
-    assert text.rstrip().endswith("Answer with a number, e.g. “1 yes”.")
+    assert text.rstrip().endswith("Answer with a number and a word, e.g. “1 do” or “1 later monday”.")
 
 
 def test_calm_on_a_free_day_says_so():

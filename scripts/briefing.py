@@ -640,7 +640,8 @@ def _section_types(s: dict) -> list:
             out.append(f"{key} must be true or false")
     if "covers" in s and not (_is_str_list(s["covers"]) and set(s["covers"]) <= set(STREAMS)):
         out.append(f"covers must be a list of {', '.join(STREAMS)}")
-    if "bucket" in s and s["bucket"] not in (*_view().BUCKETS, "none"):
+    # `drop` (an older profile) is accepted: its rows stand in the bucket their own rule gives them
+    if "bucket" in s and s["bucket"] not in (*_view().BUCKETS, *_view().LEGACY_BUCKETS, "none"):
         out.append(f"bucket must be one of {', '.join(_view().BUCKETS)} or none")
     return out
 
@@ -826,7 +827,8 @@ def sec_advise(section: dict, ctx: Context) -> list:
     advise = _load_module("briefing_advise", ROOT / "skills" / "briefing" / "scripts" / "advise.py")
     found = advise.advise(ctx.root, now=ctx.now, calendar=ctx.calendar, inbox=_inbox())
     return [{"id": f["key"], "title": f["summary"], "state": "new", "urgency": f["urgency"], "check": f["check"],
-             "task": f.get("task"), "file": f.get("file", True)} for f in found]
+             "task": f.get("task"), "file": f.get("file", True), **({"days": f["days"]} if "days" in f else {})}
+            for f in found]
 
 
 def sec_workplace(section: dict, ctx: Context) -> list:
@@ -2241,7 +2243,7 @@ def settled_record(root: Path, now: dt.datetime) -> dict:
     """What the person decided in the cockpit (work/cockpit/settled/): the keys marked done or not doing and the
     rows put off, with the day they show again. Read for the printed briefing, so a row closed there does not
     come back here. Empty when the record cannot be read: a briefing never fails for it."""
-    empty: dict = {"dismissed": [], "hidden": {}}
+    empty: dict = {"dismissed": [], "dismissed_on": {}, "hidden": {}}
     folder = root / "work" / "cockpit" / "settled"
     if not folder.is_dir():
         return empty
@@ -2253,7 +2255,68 @@ def settled_record(root: Path, now: dt.datetime) -> dict:
         _keys, hidden, dismissed = SettledStore(folder, lambda: 0).state(f"{now:%Y-%m-%d}")
     except (ImportError, OSError, ValueError):
         return empty
-    return {"dismissed": sorted(dismissed), "hidden": hidden}
+    return {"dismissed": sorted(dismissed), "dismissed_on": {k: v.get("at") or "" for k, v in dismissed.items()},
+            "hidden": hidden}
+
+
+def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | None) -> dict:
+    """What is out of sight of the buckets, only counted below them (docs/briefings.md § Views):
+      later       put off to a day past the lookahead, and comes back on it by itself: an inbox item deferred
+                  without anyone it waits on, a row hidden in the cockpit until a day
+      list        the watch list, parked without a day: a task with status backlog, an inbox item or a row
+                  put off to the watch list's day (lib/answers.py LIST_DAY)
+      done_today  done or obsolete today: an inbox item closed or dropped, a task closed, a row settled in
+                  the cockpit
+    A source that cannot be read counts nothing; a briefing never fails for it."""
+    answers = _view().answers
+    today = now.date()
+    horizon = today + dt.timedelta(days=max(0, int(lookahead or 0)))
+    out = {"later": 0, "list": 0, "done_today": 0}
+    if (root / "work" / "inbox").is_dir():
+        ib = _inbox()
+        try:
+            items = ib.Inbox(root / "work" / "inbox", actor="briefing", clock=lambda: now).items()
+        except Exception:  # noqa: BLE001 - an unreadable inbox counts nothing
+            items = []
+        for item in items:
+            state = item.state
+            if state == "deferred":
+                deferral = item.deferral or {}
+                if deferral.get("on"):
+                    continue                    # waits on someone: theirs, not a later of yours
+                if answers.is_list_day(deferral.get("until")):
+                    out["list"] += 1
+                    continue
+                try:
+                    back = ib._local_date(ib._parse_when(deferral.get("until")))
+                except (TypeError, ValueError):
+                    continue
+                if back > horizon:
+                    out["later"] += 1
+            elif state in ("done", "dropped"):
+                end = next((e for e in reversed(item.events) if e.verb in ib.TERMINAL), None)
+                try:
+                    if end is not None and ib._local_date(ib._parse_when(str(end.at).replace("Z", "+00:00"))) == today:
+                        out["done_today"] += 1
+                except (TypeError, ValueError):
+                    pass
+    for status in (root / "work" / "tasks").glob("*/STATUS.md"):
+        if not status.parent.name.startswith("_") and _frontmatter(status.read_text(encoding="utf-8")).get("status") == "backlog":
+            out["list"] += 1
+    for status in (root / "work" / "done" / f"{today:%Y-%m}").glob("*/STATUS.md"):
+        if str(_frontmatter(status.read_text(encoding="utf-8")).get("closed") or "")[:10] == today.isoformat():
+            out["done_today"] += 1
+    record = settled if isinstance(settled, dict) else {}
+    for key, until in (record.get("hidden") or {}).items():
+        if str(key).startswith("inbox:"):
+            continue                            # an inbox item is put off in the inbox, counted above
+        if answers.is_list_day(until):
+            out["list"] += 1
+        elif str(until) > horizon.isoformat():
+            out["later"] += 1
+    out["done_today"] += sum(1 for key, day in (record.get("dismissed_on") or {}).items()
+                             if not str(key).startswith("inbox:") and str(day)[:10] == today.isoformat())
+    return out
 
 
 def render_view(result: dict, profile: dict, style: str | None = None, color: bool = False) -> str:
@@ -2668,6 +2731,10 @@ def main(argv=None) -> int:
     elif profile.get("_whole"):
         # the cockpit's pass keeps every row, but numbers them as the printed briefing does, without what was settled
         result["numbering_settled"] = settled_record(root, ctx.now)
+    if _view().style_of(profile, args.style) != "sources":
+        # out of sight, only counted below the buckets: later, the watch list, done today
+        result["aside"] = aside_counts(root, ctx.now, ctx.lookahead or 0,
+                                       result.get("settled") or result.get("numbering_settled") or settled_record(root, ctx.now))
     if args.cmd == "render" and _view().style_of(profile, args.style) != "sources":
         view_cfg = profile.get("view") if isinstance(profile.get("view"), dict) else {}
         if view_cfg.get("overview") == "file":
