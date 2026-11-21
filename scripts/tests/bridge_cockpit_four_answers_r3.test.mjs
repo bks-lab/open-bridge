@@ -94,3 +94,15 @@ test('With … on a waiting task names no current holder it does not have, and a
   const withJordan = ask('20261009-0900-q3', { inbox_state: 'deferred', who: 'Jordan' })
   assert.equal(logic.ownerChoices({ group: 'row', id: withJordan.key, kind: 'row', row: withJordan }, state()).current, 'Jordan')
 })
+
+// ---------------------------------------------------------------- Fields: Who follows the bucket
+
+test('Fields > Who says who has the point by its bucket', () => {
+  // round 3: Who said the Bridge on a card in Do, you on one in I'll do, nobody on a task waiting on Jordan
+  const r = ask('20261009-0900-q4', { card: { next: { what: 'Plan it', who: 'bridge' } } })
+  const who = (bucket, row) => logic.fieldsSplit([{ id: 'who', drive: { by: 'none' } }], { bucket, row }, state()).top[0].step?.who
+  assert.equal(who('do', r), 'me')
+  assert.equal(who('delegate', { ...r, card: { next: { what: 'x', who: 'me' } } }), 'bridge')
+  assert.equal(who('waiting', task('h', { blocked_by: 'waiting for Jordan', card: { next: { what: 'Draft', who: 'Jordan' } } })), 'Jordan')
+  assert.equal(who('waiting', task('h2', { blocked_by: 'waiting for Jordan' })), 'waiting for Jordan')
+})
