@@ -132,6 +132,18 @@ test('an item whose yes is given keeps Do it in I\'ll do: it starts now', () => 
   assert.deepEqual(got[0].run.args, { keys: [item.key], yes: true })
 })
 
+// ---------------------------------------------------------------- the record in Files
+
+test('the record of a task in Files offers the four answers while the buckets are on', () => {
+  // round 3: Akten offered "An die AI geben", "In Arbeit", "Weg" with drop reasons beside Done and Later
+  const c = new Proxy({}, { get: (_, p) => (p === 'then' || typeof p === 'symbol' ? undefined : () => Promise.resolve({ ok: true })) })
+  const t = task('cost-report', { title: 'Draft the cost report', bucket: 'plan' })
+  const el = mount(html`<${views.flowside.FlowAside} x=${{ group: 'row', id: t.key, kind: 'row', row: t }} s=${state({ work: [t] })} c=${c} />`)
+  const words = el.$$('.flow-can button').map(b => b.text())
+  assert.deepEqual(words.filter(w => ['Do it', 'Later ▾', 'Done', 'Obsolete'].includes(w)), ['Do it', 'Later ▾', 'Done', 'Obsolete'])
+  assert.ok(!words.some(w => /Give it to the AI|In progress|Drop/.test(w)), words.join())
+})
+
 // ---------------------------------------------------------------- go on
 
 test('go on is offered only where the tab asks nothing', () => {
