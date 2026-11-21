@@ -11,7 +11,7 @@ import {
   jevList, TASK_LANES, taskLane, noiseRows, rowActionKey,
   skipFixable, skipText,
   cardPlan, moneyText, costBoard, itemRow, ghFiltered, ghMyLogin,
-  areaLog, workShows, flowBucketsOn, settingsAreaOf,
+  areaLog, workShows, flowBucketsOn, settingsAreaOf, adviceFolded,
 } from '../logic.js'
 import { reducedMotion } from '../motion.js'
 import { T, language } from '../text.js'
@@ -483,7 +483,8 @@ export function PageSection({ page, section, s, c, q = '', topic = null }) {
   const all = more ? more.items : (section.items ?? [])
   // (the taskboard draws no triage bar to undo it, so it shows every task: components.js listed)
   const kept = (section.kind === 'tasks' || section.kind === 'inbox') && section.view !== 'taskboard'
-    ? all.filter(it => workShows(it, s, byKey, s.ui.triageFilter)) : gh ? all.filter(it => ghShows(it, ghFilter, ghMyLogin(all))) : all
+    ? all.filter(it => workShows(it, s, byKey, s.ui.triageFilter)) : gh ? all.filter(it => ghShows(it, ghFilter, ghMyLogin(all)))
+    : all.filter(it => !adviceFolded(it, section, s, byKey))
   // the words of the page's search (views/timeline.js PageSearch): the rows that hold every one
   const words = q.trim()
   // the topic chip of a log (views/logpage.js): the rows of that context alone

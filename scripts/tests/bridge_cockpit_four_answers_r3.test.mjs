@@ -155,6 +155,18 @@ test('By source lists a task folded into its inbox line once, as that line', () 
   assert.equal(logic.workShows({ key: line.key, inbox: line.inbox_id, title: line.title }, s, byKey, 'all'), true)
 })
 
+test('By source folds an advice about a task into that task, and counts it no more', () => {
+  const t = task('import', { title: 'Check the data import', bucket: 'plan', resting: 55 })
+  const s = state({ work: [t] })
+  const byKey = new Map([[t.key, t]])
+  const advise = { id: 'advise', kind: 'advise', total: 2, items: [{ key: 'advise:a1', task: 'import', title: 'Check the data import resting 55 days' },
+    { key: 'advise:a2', title: 'Collision on Friday' }] }
+  assert.equal(logic.adviceFolded(advise.items[0], advise, s, byKey), true)
+  assert.equal(logic.adviceFolded(advise.items[1], advise, s, byKey), false)
+  const [sec] = logic.sourceSections([advise], s, byKey)
+  assert.equal(sec.total, 1)
+})
+
 // ---------------------------------------------------------------- go on
 
 test('go on is offered only where the tab asks nothing', () => {

@@ -566,6 +566,25 @@ function noPoint(row, s) {
   return !row?.inbox_id && !!(row?.stream || row?.work_kind === 'stream') && !BUCKET_IDS.includes(row?.bucket)
 }
 
+/** Whether a page item is an advice about a task that is a point of its own (an advise section's "resting for 55
+ *  days" on a task the page lists): with the buckets on that advice is a mark on the point, never a row beside it
+ *  (round 3: By source counted 195 rows where every other view had 113 points) */
+export function adviceFolded(it, sec, s, byKey) {
+  if (!flowBucketsOn(s) || sec?.kind === 'tasks' || sec?.kind === 'inbox') return false
+  return !!it?.task && (sec?.kind === 'advise' || /advi[cs]e/.test(String(sec?.id ?? ''))) && !!byKey?.get(`task:${it.task}`)
+}
+
+/** A page's sections as By source counts them while the buckets are on: an advice folded into its point is no row
+ *  (adviceFolded), so the strip's "All" and each source say the points shown */
+export function sourceSections(sections, s, byKey) {
+  if (!flowBucketsOn(s)) return sections
+  return (sections ?? []).map(sec => {
+    const items = sec.items ?? []
+    const gone = items.filter(it => adviceFolded(it, sec, s, byKey)).length
+    return gone ? { ...sec, items: items.filter(it => !adviceFolded(it, sec, s, byKey)), total: Math.max(0, (sec.total ?? items.length) - gone) } : sec
+  })
+}
+
 /** Whether a page item stays under the strip's filter: with the buckets on a filter `b:<bucket>` keeps that
  *  bucket's items, without them the triage's; a filter of the other mode (left from before the switch moved) keeps
  *  all */
