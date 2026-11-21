@@ -4801,6 +4801,13 @@ export function tickerFeedValid(feed) {
 // ---------------------------------------------------------------- toast timers
 
 /** How long a toast stays: a `bad` one until it is dismissed (null), every other its own linger */
+/** The toasts once the server answers again: its "does not answer" toast goes, it said something no longer true
+ *  (round 2: it stood 6 s after the server was back) */
+export function backOnline(toasts, table) {
+  const word = table?.errors?.network
+  return (toasts ?? []).filter(x => !word || x.text !== word)
+}
+
 export function toastLinger(tone, linger) {
   return tone === 'bad' ? null : linger
 }

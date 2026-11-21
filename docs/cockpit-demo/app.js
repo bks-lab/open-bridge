@@ -13,7 +13,7 @@ import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WOR
 import {
   CONN_GRACE_MS, DAY, alertToasts, dismissState, giveTwin, notesOpenedState, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
-  codeSeen, reloadSafe, personOf, upsertRecord, addFeed, feedEvents, workersDue, setAreaAliases, setAreaTags, areaOfWord, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
+  backOnline, codeSeen, reloadSafe, personOf, upsertRecord, addFeed, feedEvents, workersDue, setAreaAliases, setAreaTags, areaOfWord, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, areasOff, areaKey, workspacesOn, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
@@ -716,6 +716,12 @@ function onConn(conn) {
     return s.conn === next ? s : { ...s, conn: next, connMs: Date.now(), now: Date.now() }
   })
   clearTimeout(graceTimer)
+  // back: a toast that says the server does not answer is no longer true
+  if (conn === 'open') {
+    const left = backOnline(store.get().toasts, T())
+    for (const x of store.get().toasts) if (!left.includes(x)) toastTimers.stop(x.id)
+    if (left.length !== store.get().toasts.length) store.set(s => ({ ...s, toasts: backOnline(s.toasts, T()) }))
+  }
   // the warning shows once the stream has not been open for CONN_GRACE_MS: re-render then
   if (conn !== 'open') graceTimer = setTimeout(() => store.set(s => ({ ...s, now: Date.now() })), CONN_GRACE_MS + 100)
   if (conn === 'down' && !probeTimer) {

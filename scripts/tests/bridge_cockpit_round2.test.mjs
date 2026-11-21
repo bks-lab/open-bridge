@@ -309,3 +309,10 @@ test('"waiting on you" is one count everywhere while the buckets are on: the poi
   assert.equal(logic.flowWaiting(s), 3)
   assert.equal(logic.startWaiting(s, 'Ops'), 1)
 })
+
+test('once the server answers again its "does not answer" toast goes, and the header says the loss in a few words', () => {
+  const de2 = text.TABLES.de
+  const toasts = [{ id: 1, text: de2.errors.network, tone: 'bad' }, { id: 2, text: 'Verworfen', tone: 'ok' }]
+  assert.deepEqual(logic.backOnline(toasts, de2).map(x => x.id), [2])
+  assert.ok(de2.connLost.length <= 16 && !/,/.test(de2.connLost), de2.connLost)
+})
