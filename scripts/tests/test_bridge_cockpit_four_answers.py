@@ -259,3 +259,11 @@ def test_a_task_the_briefing_folds_into_its_inbox_line_is_one_point():
           "blocked_by": None, "stale": False, "age": 0, "type": None, "status": "doing", "next": "decide", "updated": None, "origin": None}]
     got = m.with_tasks(view, t)
     assert [r["key"] for b in got["buckets"] for r in b["rows"]] == ["inbox:20260929-1900-keep-or-cancel"]
+
+
+def test_a_point_put_off_in_another_browser_refuses_the_next_answer(world):
+    # round 1 (scale): browser B put a task off until tomorrow, browser A pressed Done 50 ms later, and both ran
+    world.act("later", key="task:demo-task", until="2026-12-01", was="doing")
+    with pytest.raises(ActionError) as err:
+        world.act("settle", keys=["task:demo-task"], outcome="done", was="doing")
+    assert err.value.code == "point_moved"

@@ -84,6 +84,10 @@ class WorkVerbs:
                 status = self.task_status(self.slug(row))
                 if status is None or (was in ("doing", "review", "backlog") and status != was):
                     raise moved
+            if not row.get("inbox_id") and (str(self.app.store.hidden().get(key) or "") > today or key in self.app.store.dismissed()):
+                # put off or settled in the cockpit since the page saw it (round 1: a Later in one browser and a
+                # Done 50 ms later in another both ran)
+                raise moved
 
     def refuse_approved(self, rows: list[dict]) -> None:
         """A yes already given runs on the next pass: no start verb goes at the same item a second time."""
