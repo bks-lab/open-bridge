@@ -193,7 +193,7 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
       ${it.link?.kind === 'web' ? html`<a class="btn btn-ghost btn-xs" href=${it.link.href} target="_blank" rel="noopener noreferrer">
         <${Icon} name="external" size=${14} /><span class="btn-label">${t.openLink}</span></a>` : null}
       ${it.link?.kind === 'file' ? html`<${Btn} size="xs" variant="ghost" icon="copy" cls="act-quiet" title=${it.link.path} onClick=${() => c.copy(it.link.path)}>${t.copyPath}<//>` : null}
-      <${PageItemActions} it=${it} s=${s} c=${c} />${bar ? null : html`<${SeenBtn} k=${it.key} acked=${it.acked} loud=${tone === 'bad' || tone === 'warn'} c=${c} />`}
+      ${setup && flowBucketsOn(s) ? null : html`<${PageItemActions} it=${it} s=${s} c=${c} />`}${bar ? null : html`<${SeenBtn} k=${it.key} acked=${it.acked} loud=${tone === 'bad' || tone === 'warn'} c=${c} />`}
       ${it.ask && !bar ? html`<${RowAsk} s=${s} c=${c} rowKey=${it.key} onAsk=${() => c.ask('info', { page, section, index: it.index })} />` : null}
       ${(it.lines ?? []).length ? html`<${Btn} size="xs" variant="ghost" cls=${open ? '' : 'act-quiet'} pressed=${open} onClick=${() => setOpen(!open)}>${t.btnLines}<//>` : null}
       ${it.actions?.length && it.row_id ? html`<${RowSteps} it=${it} page=${page} section=${section} s=${s} c=${c} as=${steps} />` : null}

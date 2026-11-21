@@ -8,7 +8,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   DESK_PARTS, LAUNCH_EFFORTS, LAUNCH_MODELS, MAX_STATIONS, bandsProblem, dropAmong, featureDisabled, featureGroups, flowModeOf, flowModePatch,
   featuresLocked, homeCatalog, homeChosen, homeView, homeViewSet, jevModelValid, launchPatch, moveAmong, personOf, presetBoard, presetChanges, presetOn,
-  restartNotice, restartedLately,
+  restartNotice, restartedLately, flowBucketsOn,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
@@ -245,6 +245,14 @@ function DetailsCard({ s, c }) {
 
 const LOOKUP_TOPICS = ['rows', 'act', 'keys', 'trust']
 
+/** The topics to look up: with the briefing's buckets on, the four buckets in place of the sections and the four
+ *  answers in place of the verbs of before; else as they were */
+export function helpOf(s, t) {
+  const b = t.helpBuckets
+  if (!flowBucketsOn(s) || !b) return t.helpTopics
+  return { ...t.helpTopics, rows: t.helpTopics.rows.map(e => (e[0] === b.replaces ? b.sections : e)), act: b.act, trust: b.trust }
+}
+
 /** To look up, one topic at a time: what the marks of a row say, how acting works, the keys (only while they are on:
  *  mouse first, so off the card says only that they are off, the card above switches them on), what costs tokens and
  *  what stays local. Help in the header opens it on a topic. What each part of a page is for is Explain's, in Help */
@@ -258,7 +266,7 @@ function LookupCard({ s }) {
     ? s.ui.shortcuts ? html`<p class="muted small">${t.commandHint}</p>
       <dl class="keys">${t.keys.map(([k, v], i) => html`<div key=${i}><dt><kbd>${k}</kbd></dt><dd>${v}</dd></div>`)}</dl>`
       : html`<p class="muted small">${t.keysOff}</p>`
-    : html`<dl class="help-text">${t.helpTopics[topic].map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd>${Array.isArray(v)
+    : html`<dl class="help-text">${helpOf(s, t)[topic].map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd>${Array.isArray(v)
       ? html`<ul class="plain help-list">${v.map(x => html`<li key=${x}>${x}</li>`)}</ul>` : v}</dd></div>`)}</dl>`
   return html`<${Card} title=${w.lookupTitle} intro=${w.lookupIntro}>
     <${Segmented} label=${t.help.tabsLabel} current=${topic} values=${LOOKUP_TOPICS.map(id => [id, t.help.tabs[id]])} onPick=${setTopic} />

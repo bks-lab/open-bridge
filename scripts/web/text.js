@@ -1586,6 +1586,26 @@ const en = {
       ['Safety', 'this page only talks to 127.0.0.1 and only runs the fixed Bridge scripts; nothing goes out without your click'],
     ],
   },
+  // Look up while the briefing's buckets are on (Settings, Look up): the four buckets and the four answers in place of
+  // the sections and verbs of before (round 2 of the four answers: it still named Hand on, Let AI do it, Follow up)
+  helpBuckets: {
+    replaces: 'Sections',
+    sections: ['Buckets', ['Every point answers who is on the move and when.', 'Do: you, today', 'Plan: you, no day yet',
+      'I\'ll do: the Bridge', 'Waiting on others: someone else',
+      'Out of sight, only counted: Later (it comes back on its day), Watch list, Done today']],
+    act: [
+      ['The four answers', 'Every point takes the same four, on every card, every view and in the briefing: Do it, Later ▾, Done, Obsolete'],
+      ['Do it', 'the Bridge takes the step the card names under Next: an inbox item gets your yes, a task an agent on its step, a waiting point a nudge written as a draft and never sent. A tab that asks puts its own answers in this place'],
+      ['Later ▾', 'tomorrow, Monday, in a week, a day you pick, or the watch list. It comes back on its day by itself'],
+      ['Done', 'done. On a stream: done for this time, the stream runs on'],
+      ['Obsolete', 'quiet and last, asked first: closed as not done, with a note. An issue stays open on GitHub'],
+      ['More', 'With … (you, the Bridge or a name), To the tab, Fields, Ask'],
+    ],
+    trust: [
+      ['Tokens', 'only Do it, Ask, Sort it, Plan my day, End of day and every launched tab · everything else is local'],
+      ['Safety', 'this page only talks to 127.0.0.1 and only runs the fixed Bridge scripts; nothing goes out without your click'],
+    ],
+  },
   help: {
     tabs: { rows: 'Rows', act: 'Acting', keys: 'Keys', trust: 'Costs and safety' },
     tabsLabel: 'Topics to look up',
@@ -3455,6 +3475,24 @@ const de = {
     ],
     trust: [
       ['Kosten', 'Tokens kosten: Einordnen, Tagesplan, Feierabend, Fragen, Nachfassen und jeder gestartete Tab. Alles andere läuft lokal.'],
+      ['Sicherheit', 'diese Seite spricht nur mit 127.0.0.1 und startet nur die festen Bridge-Skripte; nichts geht ohne deinen Klick nach außen'],
+    ],
+  },
+  helpBuckets: {
+    replaces: 'Abschnitte',
+    sections: ['Fächer', ['Jeder Punkt beantwortet, wer dran ist und wann.', 'Tun: du, heute', 'Planen: du, noch ohne Tag',
+      'Mache ich: die Bridge', 'Wartet auf andere: jemand anderes',
+      'Aus dem Blick, nur gezählt: Später (kommt an seinem Tag wieder), Merkliste, Fertig heute']],
+    act: [
+      ['Die vier Antworten', 'Jeder Punkt hat dieselben vier, auf jeder Karte, in jeder Ansicht und im Briefing: Mach das, Später ▾, Erledigt, Veraltet'],
+      ['Mach das', 'die Bridge macht den Schritt, den die Karte unter Als Nächstes nennt: ein Eintrag bekommt dein Ja, eine Aufgabe einen Agenten auf ihren Schritt, ein wartender Punkt eine Nachfrage als Entwurf, nie gesendet. Ein Tab, der fragt, stellt hier seine eigenen Antworten hin'],
+      ['Später ▾', 'morgen, Montag, in einer Woche, ein Tag deiner Wahl oder die Merkliste. Er kommt an seinem Tag von selbst wieder'],
+      ['Erledigt', 'erledigt. Bei einem Stream: für diesmal erledigt, der Stream läuft weiter'],
+      ['Veraltet', 'leise und zuletzt, fragt vorher: als nicht gemacht geschlossen, mit Notiz. Ein Issue bleibt auf GitHub offen'],
+      ['Mehr', 'Liegt bei … (du, die Bridge oder ein Name), Zum Tab, Felder, Fragen'],
+    ],
+    trust: [
+      ['Kosten', 'Tokens kosten nur Mach das, Fragen, Einordnen, Tagesplan, Feierabend und jeder gestartete Tab. Alles andere läuft lokal.'],
       ['Sicherheit', 'diese Seite spricht nur mit 127.0.0.1 und startet nur die festen Bridge-Skripte; nichts geht ohne deinen Klick nach außen'],
     ],
   },

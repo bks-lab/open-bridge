@@ -147,3 +147,34 @@ test('By source counts in each bucket what Work through holds: no folded task, n
   const work = logic.bucketPoints(s, 'en').buckets
   for (const b of work) assert.equal(counts[b.id], b.points.length, b.id)
 })
+
+test('Look up names the four buckets and the four answers while the buckets are on', async () => {
+  const { views } = await loadCockpit()
+  const s = state()
+  for (const lang of ['en', 'de']) {
+    const t = text.TABLES[lang]
+    const got = views.settings.helpOf(s, t)
+    const all = JSON.stringify([got.rows, got.act, got.trust])
+    assert.doesNotMatch(all, /Hand on|Let AI do it|Advise|Follow up|Weitergeben|AI machen lassen|Beraten|Nachfassen|Abhaken|Waiting for you|AI can take over/, lang)
+    assert.match(all, lang === 'de' ? /Mach das.*Später.*Erledigt.*Veraltet/ : /Do it.*Later.*Done.*Obsolete/)
+    // with the switch off it is as it was
+    const off = { ...s, work: { flow: { enabled: true, buckets: { enabled: false } } } }
+    assert.equal(views.settings.helpOf(off, t), t.helpTopics)
+  }
+})
+
+test('a row of Settings, Setup wears no bucket and no answers, only Seen and its steps', async () => {
+  // round 2 (words): "No machine is named to run inbox approvals" wore Plan, the four answers and a fifth, Seen
+  const { html, views } = await loadCockpit()
+  const { mount, recorder } = await import('./cockpit_render.mjs')
+  const it = { index: 0, key: 'setup:runner', title: 'No machine is named to run inbox approvals', actionable: true, when: '',
+    row_id: 'runner', actions: [{ id: 'fix', label: 'Name this machine' }] }
+  const section = { id: 'gaps', title: 'Gaps', items: [it], view: 'list' }
+  const page = { id: 'setup', group: 'settings', title: 'Setup', sections: [section] }
+  const s = state()
+  s.model.pages = [page]
+  s.more = {}
+  const el = mount(html`<${views.pages.PageSection} page=${page} section=${section} s=${s} c=${recorder()} />`)
+  assert.equal(el.$$('.fb-answer').length, 0, 'no answers')
+  assert.equal(el.$$('.fb-chip').length, 0, 'no bucket chip')
+})
