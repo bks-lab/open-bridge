@@ -743,6 +743,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/flowpoint.js",         # Work through: the one point view, its card, tabs, line and walk
     "scripts/web/views/flowsimple.js",        # Work through, stage 4: the strong button, the four states, More and Order
     "scripts/web/views/flowmarks.js",         # Work through: the read marks in words (counts, why unread, Read mark, Active)
+    "scripts/web/views/flowbuckets.js",       # Work through by the briefing's buckets: the buckets, the card, its answers
     "scripts/web/views/focus.js",
     "scripts/web/views/github.js",
     "scripts/web/views/header.js",
@@ -777,6 +778,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/flow.js",                    # the Work through page: its queue, the return card, the five verbs
     "scripts/web/point.js",                   # the one point view: where a row opens, the drawer's facts, the basic verbs
     "scripts/web/taskboard.js",               # the taskboard's columns, tags, tidy-up rules, tabs without a task
+    "scripts/web/buckets.js",                 # Work through by the briefing's buckets: the points per bucket, their answers
     "scripts/web/markdown.js",
     "scripts/web/triage.js",
     "scripts/web/motion.js",

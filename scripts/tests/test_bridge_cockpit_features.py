@@ -53,6 +53,7 @@ TABLE = {
     "flow_prio_haiku": ("work", "switch", (), "flow", True, None, None),
     "flow_seen": ("work", "switch", (), "flow", False, None, None),
     "flow_attach": ("work", "switch", (), "flow", False, None, None),
+    "flow_buckets": ("work", "switch", (), "flow", False, None, None),
     "describe": ("work", "choice", ("off", "missing", "stale"), None, True, None, None),
     "triage_daily": ("work", "switch", (), None, True, None, None),
     "chat_layout": ("chat", "choice", ("classic", "workspaces"), None, False, None, None),
@@ -64,6 +65,7 @@ TABLE = {
     "voice": ("page", "switch", (), None, False, None, None),
 }
 STORES = {"launch_model", "ticker", "session_guide"}
+SWITCHES_ON = {"flow_buckets"}       # the switches a fresh cockpit has on
 CONFIG_IDS = [i for i in TABLE if i not in STORES]
 
 # what each config feature is in the loaded config, read straight from the WebConfig (not through features.py)
@@ -78,6 +80,7 @@ READ = {
     "flow_prio_haiku": lambda c: c.flow["prio"]["haiku"]["enabled"],
     "flow_seen": lambda c: c.flow["seen"]["enabled"],
     "flow_attach": lambda c: c.flow["attach"]["enabled"],
+    "flow_buckets": lambda c: c.flow["buckets"]["enabled"],
     "describe": lambda c: c.describe["auto"],
     "triage_daily": lambda c: c.triage_daily,
     "chat_layout": lambda c: c.chat_layout,
@@ -358,7 +361,8 @@ def test_the_built_in_basic_puts_every_feature_at_its_default():
     basic = ft.builtin_presets()["basic"]
     assert set(basic) == set(TABLE)
     for fid, (_g, kind, values, *_rest) in TABLE.items():
-        assert basic[fid] == (False if kind == "switch" else values[0]), fid
+        # a switch is off, but the one a fresh cockpit has on (Work through by the briefing's buckets)
+        assert basic[fid] == ((fid in SWITCHES_ON) if kind == "switch" else values[0]), fid
 
 
 def test_the_built_in_full_leaves_files_search_and_flow_only_alone():

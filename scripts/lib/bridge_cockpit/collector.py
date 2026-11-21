@@ -230,6 +230,8 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         link = {"kind": "web", "href": url} if url else make_link(row.get("url"), root)
         out = {
             "key": row["key"], "bucket": row["bucket"], "section": section, "number": numbers.get(row["key"]),
+            # its number in the printed briefing (briefing_view.numbered), which Work through's card names
+            "brief_nr": row.get("brief_nr"),
             "title": row["title"], "why": list(row.get("why", [])), "sources": list(row.get("sources", [])),
             "inbox_id": row.get("inbox_id"), "gate": row.get("gate"), "task": row.get("task"), "ref": row.get("ref"),
             "url": url, "link": link, "priority": row.get("priority"), "urgency": row.get("urgency"),
@@ -384,6 +386,9 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                    "flow_open": flow_open(sections, hidden_out, files_out, task_rows, deferred_out)},
         "sections": sections, "numbers": numbers, "hidden": hidden_out, "approvable": approvable,
         "task_rows": task_rows,
+        # the briefing profile's buckets in its order, titles and answers (model.bucket_defs_of): Work through's
+        # buckets (cockpit.flow.buckets) name and order them as the briefing does
+        "buckets": list(view.get("bucket_defs") or []),
         "review": {"running": review["running"], "error": review["error"], "last": review["last"],
                    "keys": [f"task:{slug}" for slug in verdicts if f"task:{slug}" in index]},
         "pages": pages, "alarms": alarms,

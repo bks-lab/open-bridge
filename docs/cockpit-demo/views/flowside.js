@@ -54,7 +54,7 @@ import {
   activityWhen, adoptStepOf, basicVerbs, canTab, DAY, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes,
   flowRunning, flowSettings, flowSuggestion, flowTabOf, formatDay, isoDate, leftPlan, meterLevel, pageStepsOf, pointFacts,
   pointViewOn, probeText, refOfUrl, replySend, reportsTicked, short, sinceText, tabCloseOffer, triageRunning, workPageOf, workViewsIn, personOf,
-  fieldsSplit, pointName, pointsIn, whoBrief, readMark, seenOn
+  fieldsSplit, pointName, pointsIn, whoBrief, readMark, seenOn, bucketWords,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
@@ -718,7 +718,9 @@ function Fields({ x, s, c }) {
     if (fld.id === 'ask') return activityWhen(fld.value, lang)
     if (fld.id === 'prio') {
       // "only you" only where the ranker said so (who: me), never read off the square
-      const said = fld.jev ? [fld.jev.quadrant ? f.quadrant[fld.jev.quadrant] ?? fld.jev.quadrant : null, fld.jev.who === 'me' ? f.onlyYou : null,
+      // with the briefing's buckets on, a square says the bucket's name (logic.js bucketWords)
+      const square = q => bucketWords(s, lang).quadrant[q] ?? f.quadrant[q] ?? q
+      const said = fld.jev ? [fld.jev.quadrant ? square(fld.jev.quadrant) : null, fld.jev.who === 'me' ? f.onlyYou : null,
         fld.jev.rank ? f.jevPlace(fld.jev.rank, rankerName(fld.jev.ranker)) : null].filter(Boolean).join(' · ') : fld.rank != null ? f.rank(fld.rank) : ''
       // stage 3, the detail column's priority of a task, beside what Jev or the triage said
       if (fld.edit) {

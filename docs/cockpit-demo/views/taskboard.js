@@ -14,9 +14,9 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   indexRows, instructScope, personOf, pointViewOn, recordPoint, soloPoint, TB_COLUMNS, tbBoard, tbCard, tbDecideSlugs, tbInArea,
-  tbLooseTabs, tbTidy,
+  tbLooseTabs, tbTidy, bucketWords,
 } from '../logic.js'
-import { T } from '../text.js'
+import { T, language } from '../text.js'
 import { OpenFile } from './dossier.js'
 import { FlowAside } from './flowside.js'
 import { PointView, useSoloLoad } from './flowpoint.js'
@@ -178,6 +178,8 @@ export function TaskBoard({ items, page, section, s, c }) {
   const [kept, setKept] = useState(readKept)
   const byKey = indexRows(s.model)
   const tabs = s.tabs?.tabs ?? []
+  // with Work through by the briefing's buckets on, the columns say the buckets' names (logic.js bucketWords)
+  const cols = bucketWords(s, language()).columns
   const area = s.ui?.area || null
   const ctx = { now: s.now || Date.now(), decide: tbDecideSlugs([...byKey.values()]), tabs, byKey }
   const cards = (items ?? []).map(it => tbCard(it, ctx)).filter(x => x.slug && tbInArea(x, area))
@@ -201,7 +203,7 @@ export function TaskBoard({ items, page, section, s, c }) {
       <${Btn} onClick=${() => globalThis.document?.getElementById(anchor)?.scrollIntoView?.({ block: 'start' })}>${t.tidyBtn(tidy.length)}<//>
     </div>
     <div class="tb-board">${TB_COLUMNS.map(id => html`<section key=${id} class=${`tb-col tb-col-${id}`} aria-labelledby=${`tb-h-${id}`}>
-      <h3 class="tb-col-title" id=${`tb-h-${id}`}>${t.columns[id]} <span class="sec-count mono">${board.columns[id].length}</span></h3>
+      <h3 class="tb-col-title" id=${`tb-h-${id}`}>${cols[id] ?? t.columns[id]} <span class="sec-count mono">${board.columns[id].length}</span></h3>
       <p class="tb-col-sub muted small">${t.sub[id]}</p>
       ${board.columns[id].length ? board.columns[id].map(card) : html`<p class="muted small">${t.columnNone}</p>`}
     </section>`)}</div>

@@ -24,7 +24,7 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  asksSomething, checkinDays, detailNeedsLoad, dropReasonWord, duration, flowAction, flowDrive, flowSettings, formatDay, guideOf, nextWho, personOf,
+  askQuestion, asksSomething, checkinDays, detailNeedsLoad, dropReasonWord, duration, flowAction, flowDrive, flowSettings, formatDay, guideOf, nextWho, personOf,
   pointName, pointStand, pointStep, previewText, reminderTo, reportsTicked, sourceTrack, resultText, short, soloSource, stageTone, tabOfTask, dropWhat, seenOn,
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -379,7 +379,8 @@ export function PointCard({ x, n = 1, s, c }) {
   if (x.kind === 'tab') {
     // the card says the point that was opened: the title of its row, the tab's name as a line under it (Tab x asks)
     // with its question; a tab with no row behind it is the point, so its name is the title
-    const question = x.tab.ask?.text ? short(x.tab.ask.text.split('\n').find(Boolean), 200) : null
+    // the question itself (logic.js askQuestion: the last line that asks), never the screen's first line
+    const question = x.tab.ask?.text ? short(askQuestion(x.tab.ask.text), 200) : null
     const asking = !(x.tab.state === 'waiting' && !asksSomething(x.tab.ask))
     return html`<${Hero} x=${{ kind: 'tab', id: x.tab.ref, tab: x.tab }} n=${n} tabOf=${() => null} s=${s} c=${c} kindWord=${cardKind(x)} openable=${false}
       foot=${false} facts=${false} screen=${SCREEN_LINES} headEnd=${x.row ? html`<${HeadEnd} row=${x.row} s=${s} c=${c} />` : null}

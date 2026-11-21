@@ -22,6 +22,7 @@ features:
   # flow_prio_haiku: false
   # flow_seen: false
   # flow_attach: false
+  # flow_buckets: true         # Work through by the briefing's buckets, on unless switched off
   # chat_layout: classic       # classic | workspaces
   # files_scope: active        # active | all
   # files_search: false        # Ask AI in Files: set cockpit.files_search.block first

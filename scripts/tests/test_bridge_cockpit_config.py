@@ -296,8 +296,20 @@ def test_the_flow_page_is_off_by_default_with_its_reasons_and_its_return_delay(t
                         "checkin": {"enabled": False, "budget_per_day": 10, "model": None},
                         "seen": {"enabled": False, "open_reads": "auto", "active_days": 7,
                                  "revisit_days": {"active": 7, "resting": 14, "backlog": 30, "question": 2, "issue": 7},
-                                 "counts": {k: True for k in ("note", "status", "doc", "run", "code", "log", "inbox")}}}
+                                 "counts": {k: True for k in ("note", "status", "doc", "run", "code", "log", "inbox")}},
+                        # Work through by the briefing's buckets: on by default, it acts once the page is on
+                        "buckets": {"enabled": True}}
     assert cfg.flow == cf.flow_defaults() and cfg.config_warnings == ()
+
+
+def test_the_buckets_switch_takes_true_or_false_and_names_anything_else(tmp_path):
+    cfg = load_web_config(tmp_path, {"cockpit": {"flow": {"enabled": True, "buckets": {"enabled": False}}}})
+    assert cfg.flow["buckets"] == {"enabled": False} and cfg.config_warnings == ()
+    cfg = load_web_config(tmp_path, {"cockpit": {"flow": {"buckets": {"enabled": "no", "order": 1}}}})
+    assert cfg.flow["buckets"] == {"enabled": True}
+    assert sorted(w.split(":", 1)[0] for w in cfg.config_warnings) == ["cockpit.flow.buckets.enabled", "cockpit.flow.buckets.order"]
+    cfg = load_web_config(tmp_path, {"cockpit": {"flow": {"buckets": True}}})
+    assert cfg.flow["buckets"] == {"enabled": True} and [w.split(":", 1)[0] for w in cfg.config_warnings] == ["cockpit.flow.buckets"]
 
 
 def test_the_flow_block_takes_its_three_keys(tmp_path):

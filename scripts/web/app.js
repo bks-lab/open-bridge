@@ -251,6 +251,9 @@ const store = createStore({
     // point of its own ({key, file, from}: a row that stands nowhere on the page), Instruct or Ask under the card and the
     // question asked there ({key, conv})
     flowLeftAt: null, flowSolo: null, flowLine: 'instruct', flowAsk: null,
+    // Work through by the briefing's buckets (cockpit.flow.buckets, views/flowbuckets.js): the bucket open and the
+    // point in front, held by its id so the next one moves up after an answer
+    flowBucket: null, flowBucketAt: null,
     // stage 2: a finished AI run of Finished, to read open in the middle ({id, i}), null for the list
     flowReadAt: null,
     // stage 3: the list a way to the point in front came from ({items, i, back}, logic.js pointList): the walk walks it,
@@ -1504,6 +1507,9 @@ const ctl = {
   flowGo: (id, i) => setUi(ui => ({ flowAt: { id, i }, flowView: 'point', flowPlan: ui.flowAt?.id === id ? ui.flowPlan : null, flowList: null })),
   flowChip: chip => setUi({ flowChip: chip, flowAt: null }),
   flowDecided: () => setUi(ui => ({ flowDecided: (ui.flowDecided ?? 0) + 1 })),
+  // the briefing's buckets: a bucket opened (its first point in front), a point of it brought to the front
+  flowBucket: id => setUi({ flowBucket: id ?? null, flowBucketAt: null }),
+  flowBucketGo: (id, i) => setUi({ flowBucketAt: { id, i } }),
   // the read marks (cockpit.flow.seen): points read, quietly (an open, Read, Mark all read), at once in the page and
   // then on the server in calls of at most 50 keys; a refusal leaves them unread, as the next state says
   flowSeen: async keys => {

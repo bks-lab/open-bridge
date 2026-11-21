@@ -38,13 +38,13 @@ const VENDOR_BYTES = 13194
 const VIEW_FILES = fs.existsSync(path.join(WEB, 'views'))
   ? fs.readdirSync(path.join(WEB, 'views')).filter(f => f.endsWith('.js')).sort().map(f => `views/${f}`) : []
 const COMPONENT_FILES = ['components.js', ...VIEW_FILES]
-const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'areas.js', 'files.js', 'flow.js', 'point.js', 'motion.js', 'text.js', 'text-areas.js', 'text-card.js', 'text-files.js', 'text-flow.js', 'text-chat.js', 'taskboard.js', 'text-taskboard.js', 'theme.js', 'mock.js', ...VIEW_FILES]
+const AUTHORED_JS = ['app.js', 'api.js', 'components.js', 'inner.js', 'logic.js', 'areas.js', 'files.js', 'flow.js', 'point.js', 'motion.js', 'text.js', 'text-areas.js', 'text-card.js', 'text-files.js', 'text-flow.js', 'text-chat.js', 'taskboard.js', 'buckets.js', 'text-taskboard.js', 'theme.js', 'mock.js', ...VIEW_FILES]
 // the page's styles: style.css and the parts index.html loads right after it, in this order
 const STYLE_FILES = ['style.css', 'areas.css', 'files.css', 'flow.css', 'taskboard.css', 'term.css']
 const SERVED_EXT = new Set(['.html', '.js', '.css', '.svg', '.woff2'])
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-cockpit-frontend-'))
-for (const name of ['logic', 'areas', 'files', 'flow', 'point', 'text', 'text-areas', 'text-card', 'text-files', 'text-flow', 'text-chat', 'taskboard', 'text-taskboard', 'api', 'motion']) {   // relative imports point at the copies (logic.js reads text.js)
+for (const name of ['logic', 'areas', 'files', 'flow', 'point', 'text', 'text-areas', 'text-card', 'text-files', 'text-flow', 'text-chat', 'taskboard', 'buckets', 'text-taskboard', 'api', 'motion']) {   // relative imports point at the copies (logic.js reads text.js)
   const src = fs.readFileSync(path.join(WEB, `${name}.js`), 'utf8').replace(/(from\s+'\.\/[^']+)\.js'/g, "$1.mjs'")
   fs.writeFileSync(path.join(tmp, `${name}.mjs`), src)
 }
