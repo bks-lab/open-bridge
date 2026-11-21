@@ -90,3 +90,45 @@ def test_calm_numbers_every_row_of_every_bucket():
     rows = [r for b in whole["buckets"] for r in b["items"]]
     assert all(r.get("nr") for r in rows)
     assert sorted(r["nr"] for r in rows) == list(range(1, len(rows) + 1))
+
+
+# ---------------------------------------------------------------- after Do it: I'll do, running, in both
+
+def test_a_task_the_cockpit_runs_stands_in_ill_do_as_running_in_the_briefing():
+    # round 3: after Do it the cockpit showed the task in I'll do as running, the briefing kept it in Do (or in Plan
+    # marked resting), so "17 do" stood in two buckets on two surfaces
+    tasks = [{"id": "imp", "title": "Check the data import", "state": "doing", "next": "Run the dry run", "next_who": "me",
+              "next_due": "2026-11-21", "changed_at": "2026-09-01"},
+             {"id": "other", "title": "Plan the rota", "state": "doing", "next": "Ask Robin", "next_who": "me",
+              "changed_at": "2026-11-20"}]
+    result = {"profile": "m", "title": "M", "collected_at": "2026-11-21T08:00",
+              "sections": [_sec("tasks", "tasks", tasks)], "running": ["task:imp"]}
+    built = bv.build(result, {"id": "m", "sections": [{"kind": "tasks"}], "view": {"style": "triage"}})
+    where = {r["title"]: (b["id"], r) for b in built["buckets"] for r in b["items"]}
+    bucket, row = next(v for t, v in where.items() if "data import" in t)
+    assert bucket == "delegate" and row.get("running") is True
+    assert "running" in row["why"] and not any("resting" in w for w in row["why"])
+    assert next(v for t, v in where.items() if "rota" in t)[0] != "delegate"
+
+
+def test_the_cockpit_records_what_runs_and_the_briefing_reads_it_while_fresh(tmp_path):
+    import datetime as dt
+    from lib.bridge_cockpit import returns as ret
+    keys = ret.running_keys([{"key": "task:imp", "stage": "working"}, {"key": "task:old", "stage": "lost"}],
+                            [{"ref": "s1", "state": "working", "slug": "rota"}, {"ref": "s2", "state": "needs-you", "slug": "x"}])
+    assert keys == ["task:imp", "task:rota"]
+    state = tmp_path / ".bridge" / "cockpit"
+    now = dt.datetime(2026, 11, 21, 8, 0)
+    assert ret.write_running(state, keys, now.timestamp() * 1000)
+    assert not ret.write_running(state, keys, now.timestamp() * 1000 + 1000), "the same keys soon after: not again"
+    if "briefing" in sys.modules:
+        br = sys.modules["briefing"]
+    else:
+        spec = importlib.util.spec_from_file_location("briefing", Path(__file__).resolve().parents[1] / "briefing.py")
+        br = importlib.util.module_from_spec(spec)
+        sys.modules["briefing"] = br
+        spec.loader.exec_module(br)
+    assert br.running_record(tmp_path, now) == ["task:imp", "task:rota"]
+    assert br.running_record(tmp_path, now + dt.timedelta(hours=1)) == [], "a closed cockpit runs nothing"
+    (state / "running.json").write_text("{", encoding="utf-8")
+    assert br.running_record(tmp_path, now) == []

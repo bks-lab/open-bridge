@@ -2239,6 +2239,25 @@ def render(result: dict) -> str:
     return "\n".join(out)
 
 
+#: how long the cockpit's record of what runs is believed: it writes it on every pass, a closed cockpit runs nothing
+RUNNING_FRESH_S = 15 * 60
+
+
+def running_record(root: Path, now: dt.datetime) -> list:
+    """The row keys an agent of the cockpit works on since Do it (<root>/.bridge/cockpit/running.json, written by
+    the cockpit on every pass): they stand in I'll do as running, as on the page. Empty when the record is missing,
+    unreadable or older than RUNNING_FRESH_S: a briefing never fails for it."""
+    try:
+        data = json.loads((root / ".bridge" / "cockpit" / "running.json").read_text(encoding="utf-8"))
+        at = float(data.get("at_ms") or 0) / 1000
+        keys = data.get("keys")
+    except (OSError, ValueError, TypeError, AttributeError):
+        return []
+    if not isinstance(keys, list) or abs(now.timestamp() - at) > RUNNING_FRESH_S:
+        return []
+    return sorted({k for k in keys if isinstance(k, str) and k.startswith(("task:", "inbox:", "ref:"))})
+
+
 def settled_record(root: Path, now: dt.datetime) -> dict:
     """What the person decided in the cockpit (work/cockpit/settled/): the keys marked done or not doing and the
     rows put off, with the day they show again. Read for the printed briefing, so a row closed there does not
@@ -2784,6 +2803,7 @@ def main(argv=None) -> int:
         result["inbox"] = {"filed": filed, "closed": closed}
         result["housekeeping"] = housekeep(root, ctx.now, summary=_summary(result, profile, args.style),
                                            profile_id=profile["id"])
+    result["running"] = running_record(root, ctx.now)         # never saved, as the settled record
     if args.cmd == "render":
         result["settled"] = settled_record(root, ctx.now)     # never saved: save_snapshot keeps its own fields
     elif profile.get("_whole"):

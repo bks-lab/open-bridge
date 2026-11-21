@@ -832,6 +832,8 @@ class Collector:
                          "is_control": t["ref"] == app.tabs.control_ref()} for t in tabs]
                 rows = {k: (v.get("out") or v) for k, v in index.items() if isinstance(v, dict)}
                 model["returns"] = ret.build(app.launches.all(), rich, rows, app.root, app.clock(), app.cfg.language)
+                # what runs, for the printed briefing: it puts those points in I'll do as running, as the page does
+                ret.write_running(app.launches.path.parent, ret.running_keys(model["returns"], rich), app.clock())
                 # an end not yet written to the item's log: written once, after the lock
                 to_log = [r for r in model["returns"] if r["stage"] in ("result", "lost") and ret.log_line(r, app.cfg.language)
                           and app.launches.mark(r["key"], r["stage"])]

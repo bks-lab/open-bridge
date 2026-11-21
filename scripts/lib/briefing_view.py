@@ -126,6 +126,7 @@ LABELS = {
     "answer_legend": "Answer with a number and a word: {words}",
     # a task nobody touched for a while (advice quiet) stays in its own bucket and says so
     "resting": "resting for {n} days",
+    "running": "running",
     "resting_one": "resting for {n} day",
     # out of sight, only counted below the buckets: put off to a day, on the watch list, done or obsolete today
     "aside": "Out of sight: {items}",
@@ -353,6 +354,7 @@ LABELS_DE = {
     "calm_answer": "Antwort mit Nummer und Wort, z. B. „{n} mach“ oder „{n} später montag“.",
     "answer_legend": "Antwort mit Nummer und Wort: {words}",
     "resting": "ruht seit {n} Tagen",
+    "running": "läuft",
     "resting_one": "ruht seit {n} Tag",
     "aside": "Außer Sicht: {items}",
     "aside_later": "später {n}",
@@ -1516,6 +1518,19 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             said = _count(labels, "resting", days) if days else None
             if said and said not in have["why"]:
                 have["why"].append(said)
+    # what an agent of the cockpit works on since Do it (the cockpit's running record, briefing.py running_record) is
+    # the Bridge's: it stands in I'll do, marked as running and resting no more, as the cockpit shows it (round 3: the
+    # cockpit had it in I'll do, the printed briefing in Do or in Plan "resting for 55 days")
+    running = {k for k in (result.get("running") or ()) if isinstance(k, str)}
+    for key in out["order"]:
+        have = out["rows"][key]
+        if running and _settled_key(have) in running and "delegate" in BUCKETS:
+            have["bucket"], have["running"] = "delegate", True
+            have.pop("resting", None)
+            rest_words = labels["resting"].split("{n}")[0]
+            have["why"] = [w for w in have["why"] if not (rest_words and str(w).startswith(rest_words))]
+            if labels["running"] not in have["why"]:
+                have["why"].insert(0, labels["running"])
     _drop_settled(out, result.get("settled"), now)
     _fold(out, view, labels)
     return out

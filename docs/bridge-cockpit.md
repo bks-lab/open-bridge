@@ -4381,6 +4381,7 @@ share or clean up.
 | `view.json` | the last briefing, shown at once on the next start until a fresh one arrives | yes: the whole briefing |
 | `days.json` | the day book: each quota's use per day and the counts of each day (section 3), two weeks | no: numbers under ids |
 | `launches.json` | the starts of the last days for the return channel, with model, effort and who chose them | yes: the titles |
+| `running.json` | the row keys an agent works on now (a start at work, a tab at work on a task or item), written on every pass that changes them and every five minutes; the printed briefing reads it while it is fresh (15 minutes) and puts those points in I'll do as running, as the page does | no: row keys and a time |
 | `tabs-seen.json` | since when each agent tab is in its state, so how long a tab has waited survives a restart of the server | no: tab ids and times only |
 | `launch.json` | the settings page's changes to `cockpit.launch_model` (only keys that differ from the config) | no |
 | `ticker.json` | the settings page's changes to `cockpit.ticker` (only keys that differ from the config) | no |

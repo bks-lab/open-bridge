@@ -401,6 +401,37 @@ def build(launches: list, tabs: list, rows: dict, root: Path, now: float, lang: 
     return out
 
 
+#: written again at least this often while the set stays the same, so the briefing knows the cockpit still runs
+RUNNING_REFRESH_MS = 5 * 60 * 1000
+
+
+def running_keys(returns: list, tabs: list) -> list:
+    """The row keys an agent works on now, the Bridge's in I'll do as running (the page's lane): a start that is
+    starting or at work, and a tab at work bound to a task or an inbox item"""
+    keys = {r["key"] for r in returns or [] if r.get("stage") in ("started", "working") and isinstance(r.get("key"), str)}
+    for t in tabs or []:
+        if t.get("is_control") or t.get("state") != "working":
+            continue
+        if isinstance(t.get("slug"), str) and SLUG_RE.match(t["slug"]):
+            keys.add(f"task:{t['slug']}")
+        if isinstance(t.get("item"), str) and INBOX_ID_RE.match(t["item"]):
+            keys.add(f"inbox:{t['item']}")
+    return sorted(keys)
+
+
+def write_running(state_dir: Path, keys: list, now_ms: float) -> bool:
+    """<state_dir>/running.json, what the printed briefing reads (briefing.py running_record) to put a running point
+    in I'll do as the page does: written when the keys change and every RUNNING_REFRESH_MS; True when written"""
+    path = Path(state_dir) / "running.json"
+    old = read_json(path)
+    if (isinstance(old, dict) and old.get("keys") == keys
+            and now_ms - float(old.get("at_ms") or 0) < RUNNING_REFRESH_MS):
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(path, {"v": 1, "at_ms": int(now_ms), "keys": keys})
+    return True
+
+
 def _done_words(x: dict, item: str, stage: str, result: dict | None, root: Path, lang: str) -> dict:
     """A done start's plain sentence, when its item ended and when the person read it; nothing for any other stage"""
     if stage != "done":
