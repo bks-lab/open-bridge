@@ -149,3 +149,19 @@ def test_an_undo_gives_a_task_its_day_back(tmp_path):
         assert any("--last-updated" in c and day in c for c in w.runner.calls)
     finally:
         w.close()
+
+
+def test_a_yes_without_a_terminal_is_the_answer_and_no_failure(tmp_path):
+    # round 2: Do it on an inbox item said "Freigegeben" and, beside it, "Not started: agent tabs need a terminal"
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_bridge_cockpit import World, YES2_ID
+    w = World(tmp_path, config=BUCKETS_ON)
+    try:
+        w.app.driver_caps = lambda fresh=False: []
+        # an item without an action of its own: the yes, and nothing to start without a terminal
+        w.app.collector.resolve(f"inbox:{YES2_ID}")["row"]["has_action"] = False
+        res = w.act("do_it", keys=[f"inbox:{YES2_ID}"], yes=True)
+        assert res["ok"] and not res.get("failed")
+        assert "terminal" not in res["note"].lower(), res["note"]
+    finally:
+        w.close()

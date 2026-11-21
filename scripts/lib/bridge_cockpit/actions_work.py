@@ -161,6 +161,11 @@ class WorkVerbs:
             rest = [r for r in rows if r not in approve]
         yes_given = [r for r in approve if self.approve(ctx, r)]
         rest = [r for r in rest if r not in approve or r in yes_given]
+        if yes and yes_given and "launch" not in self.app.driver_caps():
+            # the yes is the answer, as the briefing's is (approve, then the runner's pass): without a terminal to start
+            # an agent in, nothing beside it is tried, so a yes that went through never reads as a failure (round 2 of
+            # the four answers: "Freigegeben" stood beside "Die Aktion ging nicht")
+            rest = [r for r in rest if r not in yes_given]
         if rest:
             self.launch(ctx, rest, "go", target or self.app.cfg.target)
         if not approve and not rest and not ctx.failed:
