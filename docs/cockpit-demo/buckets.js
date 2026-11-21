@@ -80,9 +80,10 @@ export function pointBucket(x) {
 export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
   const seen = new Set()
   const all = []
+  const gone = answeredHere(s)
   const push = x => {
     const id = x.id
-    if (!id || seen.has(id)) return
+    if (!id || seen.has(id) || gone.has(id)) return
     const bucket = pointBucket(x)
     if (!bucket) return
     seen.add(id)
@@ -116,6 +117,19 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
   const strays = all.filter(x => !shown.has(x.bucket))
   if (strays.length && buckets.length) buckets[0].points.push(...strays)
   return { buckets, all }
+}
+
+// how long a point answered here stays out of its bucket while no newer collection says where it stands now
+const ANSWERED_HOLD_MS = 60000
+
+/** The points answered on this page that the model has not caught up with (ui.flowAnswered: {key: {ms, bucket}}):
+ *  out of their bucket at once, so a point just parked is never answered twice in the seconds before the next
+ *  collection (round 2); one the next collection still holds (Wait on a task that waits) is back, never after a
+ *  minute */
+export function answeredHere(s) {
+  const at = s?.model?.collected_ms ?? 0
+  const now = s?.now || Date.now()
+  return new Set(Object.entries(s?.ui?.flowAnswered ?? {}).filter(([, a]) => a && a.ms > at && now - a.ms < ANSWERED_HOLD_MS).map(([k]) => k))
 }
 
 /** The bucket open: the one picked (ui.flowBucket), also while it is empty (its empty state offers the next bucket

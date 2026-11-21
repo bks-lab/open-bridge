@@ -253,7 +253,7 @@ const store = createStore({
     flowLeftAt: null, flowSolo: null, flowLine: 'instruct', flowAsk: null,
     // Work through by the briefing's buckets (cockpit.flow.buckets, views/flowbuckets.js): the bucket open and the
     // point in front, held by its id so the next one moves up after an answer
-    flowBucket: null, flowBucketAt: null,
+    flowBucket: null, flowBucketAt: null, flowAnswered: {},
     // stage 2: a finished AI run of Finished, to read open in the middle ({id, i}), null for the list
     flowReadAt: null,
     // stage 3: the list a way to the point in front came from ({items, i, back}, logic.js pointList): the walk walks it,
@@ -1512,6 +1512,9 @@ const ctl = {
   // the briefing's buckets: a bucket opened (its first point in front), a point of it brought to the front
   flowBucket: id => setUi({ flowBucket: id ?? null, flowBucketAt: null, flowView: 'buckets', flowSolo: null }),
   flowBucketGo: (id, i) => setUi({ flowBucketAt: { id, i }, flowView: 'buckets', flowSolo: null }),
+  // a point answered on the card leaves its bucket at once (buckets.js answeredHere); entries older than a minute go
+  flowAnswered: (key, bucket) => setUi(ui => ({ flowAnswered: { ...Object.fromEntries(Object.entries(ui.flowAnswered ?? {})
+    .filter(([, a]) => Date.now() - (a?.ms ?? 0) < 60000)), [key]: { ms: Date.now(), bucket } } })),
   // the read marks (cockpit.flow.seen): points read, quietly (an open, Read, Mark all read), at once in the page and
   // then on the server in calls of at most 50 keys; a refusal leaves them unread, as the next state says
   flowSeen: async keys => {

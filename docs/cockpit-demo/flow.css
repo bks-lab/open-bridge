@@ -517,7 +517,15 @@
    everything else under More; no right column */
 .fb-grid { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: var(--space-md); align-items: start; min-width: 0; }
 .fb-side { position: sticky; top: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; max-height: var(--flow-col-max); overflow-y: auto;
-  padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+  padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg);
+  /* a column taller than the screen says so: a soft shade at the edge where more of it waits (scroll shadows, round 2:
+     "Parken oder streichen" was out of view with no sign that the column scrolls) */
+  background:
+    linear-gradient(var(--surface) 30%, transparent) top / 100% 28px no-repeat local,
+    linear-gradient(transparent, var(--surface) 70%) bottom / 100% 28px no-repeat local,
+    radial-gradient(farthest-side at 50% 0, color-mix(in srgb, var(--ink) 18%, transparent), transparent) top / 100% 12px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, color-mix(in srgb, var(--ink) 18%, transparent), transparent) bottom / 100% 12px no-repeat scroll,
+    var(--surface); }
 .fb-side h2 { margin: 0; }
 .fb-buckets, .fb-points { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .fb-bucket {
@@ -588,11 +596,12 @@
 .fb-more-body > .flow-aside { position: static; max-height: none; overflow: visible; }
 .fb-screen { margin: 0; max-height: 40vh; overflow: auto; padding: 10px; border-radius: var(--radius-md); background: var(--surface-raised); font-size: 12.5px;
   white-space: pre-wrap; overflow-wrap: anywhere; }
-.fb-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: var(--space-lg); border: 1px dashed var(--border);
+.fb-empty, .fb-moved { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: var(--space-lg); border: 1px dashed var(--border);
   border-radius: var(--radius-lg); }
-.fb-empty p { margin: 0; }
-.fb-walk { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0;
-  background: var(--surface); }
+.fb-empty p, .fb-moved p { margin: 0; }
+/* the walk stands right under the card, never sticky: the free line under it sticks to the bottom and covered it on a
+   short screen (round 2, 1024x768 and 1440x700) */
+.fb-walk { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0; }
 @media (max-width: 960px) {
   .fb-grid { grid-template-columns: minmax(0, 1fr); }
   .fb-side { position: static; max-height: none; }

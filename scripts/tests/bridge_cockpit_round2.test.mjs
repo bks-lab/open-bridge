@@ -176,3 +176,53 @@ test('an answer names the state the page saw the point in, so the server refuses
   assert.equal(calls.find(x => x[0] === 'act')[2].was, 'open')
   assert.ok(text.TABLES.de.errors.point_moved && text.TABLES.en.errors.point_moved)
 })
+
+test('a point answered here leaves its bucket at once and comes back only if the next collection still holds it', () => {
+  const a = ask('20261009-0900-a')
+  const b = ask('20261009-0901-b')
+  const s = state({ now: [a, b] })
+  s.model.collected_ms = NOW - 1000
+  const answered = { flowAnswered: { [a.key]: { ms: NOW - 500, bucket: 'do' } } }
+  const ids = st => logic.bucketPoints(st, 'de').all.map(x => x.id)
+  assert.deepEqual(ids({ ...s, ui: { ...s.ui, ...answered } }), [b.key], 'gone at once, not after the next collection')
+  assert.deepEqual(ids({ ...s, model: { ...s.model, collected_ms: NOW }, ui: { ...s.ui, ...answered } }).sort(), [a.key, b.key].sort(),
+    'a point the next collection still holds (Wait on a task that waits) is back')
+  assert.deepEqual(ids({ ...s, now: NOW + 61000, ui: { ...s.ui, ...answered } }).sort(), [a.key, b.key].sort(), 'never hidden for long')
+})
+
+test('a card another browser answered stays in place with a word and the way on, it never swaps under the pointer', async () => {
+  const b = ask('20261009-0901-b')
+  const c = recorder()
+  const s = state({ now: [b], ui: { flowView: 'buckets', flowBucket: 'do', flowBucketAt: { id: 'inbox:20261009-0900-gone', i: 0 } } })
+  const el = mount(html`<${views.flow.FlowPage} s=${s} c=${c} />`)
+  await rounds()
+  assert.ok(el.$('.fb-moved'), 'a word that the point was answered elsewhere')
+  assert.equal(el.$('.fb-answers'), null, 'no answers under the pointer')
+  el.$('.fb-moved button').click()
+  assert.deepEqual(c.calls.at(-1), ['flowBucketGo', b.key, 0])
+  // the point answered here: the next card stands at once
+  const own = mount(html`<${views.flow.FlowPage} s=${{ ...s, ui: { ...s.ui, flowAnswered: { 'inbox:20261009-0900-gone': { ms: NOW, bucket: 'do' } } } }} c=${recorder()} />`)
+  await rounds()
+  assert.equal(own.$('.fb-moved'), null)
+})
+
+test('a bucket says it is done only after something was answered in it, else that it holds nothing today', async () => {
+  const s = state({ work: [task('quiet', { bucket: 'drop' })], ui: { flowView: 'buckets', flowBucket: 'delegate' } })
+  const el = mount(html`<${views.flow.FlowPage} s=${s} c=${recorder()} />`)
+  await rounds()
+  assert.match(el.$('.fb-empty').text(), new RegExp(text.TABLES.en.flow.buckets.empty))
+  const done = mount(html`<${views.flow.FlowPage} s=${{ ...s, ui: { ...s.ui, flowAnswered: { 'task:x': { ms: NOW, bucket: 'delegate' } } } }} c=${recorder()} />`)
+  await rounds()
+  assert.match(done.$('.fb-empty').text(), new RegExp(text.TABLES.en.flow.buckets.cleared))
+})
+
+test('the walk stands right under the card, above the free line, never sticky under it', async () => {
+  const s = state({ now: [ask('20261009-0900-a'), ask('20261009-0901-b')], ui: { flowView: 'buckets' } })
+  const el = mount(html`<${views.flow.FlowPage} s=${s} c=${recorder()} />`)
+  await rounds()
+  const kids = el.$('.fb-main').childNodes.map(k => k.getAttribute?.('class') ?? '')
+  assert.ok(kids.findIndex(k => /fb-walk/.test(k)) < kids.findIndex(k => /fb-dock/.test(k)), kids.join(' | '))
+  const { readFileSync } = await import('node:fs')
+  const css = readFileSync(new URL('../web/flow.css', import.meta.url), 'utf8')
+  assert.doesNotMatch(css.match(/\.fb-walk \{[^}]*\}/)[0], /sticky/)
+})

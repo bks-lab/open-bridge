@@ -109,14 +109,14 @@ export function useBucketAnswer(x, bucket, s, c, onDone = null) {
       if (!r?.ok) { if (r?.note) setNote(r.note); return }
       setSay(null)
       c.markAnswered?.(tab.ref, answerMark(tab, a.run.kind === 'say' ? day : a.label, Date.now()))
-      onDone?.()
+      onDone?.(a)
       return
     }
     const go = withWas(a.run.kind === 'pick' ? a.run.then(day) : a.run, row)
     const r = await c.act(go.verb, go.args)
     setPick(null)
     if (Array.isArray(r?.manual) && r.manual.length) { setNote(r.manual.join('\n')); return }
-    if (r?.ok) onDone?.()
+    if (r?.ok) onDone?.(a)
     else if (r?.note) setNote(r.note)
   }
   return { answers, run, pick, setPick, confirm, setConfirm, note, busy, say, setSay }
@@ -180,7 +180,12 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
   useItemDetail(x, s, c)
   const row = x.row ?? null
   const tab = x.tab ?? null
-  const { answers, run, pick, setPick, confirm, setConfirm, note, busy, say, setSay } = useBucketAnswer(x, bucket, s, c, () => { c.flowDecided?.(); onDone?.() })
+  // an answer that went out takes its point out of the bucket at once (answeredHere); Not now leaves it where it is
+  const { answers, run, pick, setPick, confirm, setConfirm, note, busy, say, setSay } = useBucketAnswer(x, bucket, s, c, a => {
+    c.flowDecided?.()
+    if (a?.run?.kind !== 'skip') c.flowAnswered?.(x.id, bucket)
+    onDone?.()
+  })
   const marks = [pointKindWord(x, lang), pointArea(x), row?.due ? f.due(formatDay(String(row.due).slice(0, 10), lang)) : null,
     row?.gate === 'only-you' ? f.onlyYou : null, bucket === 'waiting' && (x.checkin?.who ?? row?.checkin?.who) ? f.with(x.checkin?.who ?? row.checkin.who) : null]
     .filter(Boolean)
@@ -238,8 +243,13 @@ export function BucketBody({ s, c }) {
   const reads = (parts.read ?? []).map((r, k) => ({ id: r.id, title: r.title ?? r.row?.title ?? '', open: () => c.flowReadOpen(r.id, k) }))
   const open = openBucket(buckets, s.ui?.flowBucket)
   const points = open?.points ?? []
-  const i = focusIndex(points, s.ui?.flowBucketAt)
-  const x = points[i] ?? null
+  const at = s.ui?.flowBucketAt ?? null
+  const i = focusIndex(points, at)
+  // the point of the card left its bucket without an answer here (another browser, the chat, a script): the card
+  // stays with a word and the way on, so a click meant for it never lands on the next point (round 2)
+  const answered = s.ui?.flowAnswered ?? {}
+  const movedAway = !!at?.id && !points.some(p => p.id === at.id) && !answered[at.id]
+  const x = movedAway ? null : points[i] ?? null
   const onwards = open ? buckets.find(b => b.id !== open.id && b.points.length) ?? null : null
   // an answer moves on to the next point, also where the point stays in its bucket (Wait on a task that waits, a
   // tab's own answer): the next one is held by its id, at the place the answered one leaves free
@@ -280,16 +290,18 @@ export function BucketBody({ s, c }) {
           <h2 class="fb-head-title">${open.title}</h2><span class="fb-head-sub muted">${f.sub[open.id]}</span>
           ${legend ? html`<p class="fb-legend muted small">${legend}</p>` : null}
         </header>` : null}
-        ${x ? html`<${BucketCard} key=${x.id} x=${x} bucket=${open.id} s=${s} c=${c} onDone=${onwardsAfter} />`
-          : html`<div class="fb-empty"><p>${all.length ? f.cleared : f.empty}</p>
+        ${movedAway ? html`<div class="fb-moved" role="status"><p>${f.moved}</p>
+            ${points.length ? html`<${Btn} size="sm" variant="primary" onClick=${() => c.flowBucketGo(points[i].id, i)}>${f.movedOn}<//>` : null}</div>`
+          : x ? html`<${BucketCard} key=${x.id} x=${x} bucket=${open.id} s=${s} c=${c} onDone=${onwardsAfter} />`
+          : html`<div class="fb-empty"><p>${Object.values(answered).some(v => v?.bucket === open?.id) ? f.cleared : f.empty}</p>
             ${onwards ? html`<${Btn} size="sm" variant="primary" onClick=${() => c.flowBucket(onwards.id)}>${f.onwards(onwards.title)}<//>`
               : html`<p class="muted">${f.allDone}</p>`}</div>`}
-        ${x ? html`<div class="fb-dock flow-dock"><${InstructLine} key=${x.id} scope=${scope} x=${x} s=${s} c=${c} /></div>` : null}
         ${x ? html`<div class="fb-walk">
           <${Btn} size="sm" variant="secondary" icon="back" disabled=${i === 0} onClick=${() => c.flowBucketGo(points[i - 1].id, i - 1)}>${f.prev}<//>
           <span class="fb-pos muted small">${f.pos(i + 1, points.length)}</span>
           <${Btn} size="sm" variant="secondary" disabled=${i >= points.length - 1} onClick=${() => c.flowBucketGo(points[i + 1].id, i + 1)}>${f.next2}<//>
         </div>` : null}
+        ${x ? html`<div class="fb-dock flow-dock"><${InstructLine} key=${x.id} scope=${scope} x=${x} s=${s} c=${c} /></div>` : null}
       </section>
     </div>
   </div>`
