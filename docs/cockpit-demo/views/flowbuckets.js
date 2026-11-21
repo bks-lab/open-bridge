@@ -16,7 +16,7 @@
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
-import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   answerMark, askQuestion, asideCounts, bucketAnswers, bucketDefs, bucketPoints, detailNeedsLoad, errorText, flowParts, focusIndex, formatDay, instructScope,
   isoDate, laterDays, nextSentence, openBucket, ownerChoices, parseDate, pointArea, pointKindWord, pointName, replySend, restingOf, runningOf, short, viewBucket,
@@ -141,7 +141,7 @@ export function useBucketAnswer(x, bucket, s, c, onDone = null) {
 function ObsoleteConfirm({ a, size, busy, run, onCancel }) {
   const f = T().flow.buckets
   const [why, setWhy] = useState('')
-  const ask = a.label === f.obsoleteStream ? f.obsoleteAskStream : f.obsoleteAsk
+  const ask = a.stream ? f.obsoleteAskStream : f.obsoleteAsk
   return html`<span class="fb-confirm" role="group" aria-label=${ask}>
     <span class="fb-confirm-q small">${ask}</span>
     <input class="input fb-confirm-note" type="text" value=${why} placeholder=${f.obsoleteNote} aria-label=${f.obsoleteNote}
@@ -162,14 +162,33 @@ function AnswerButtons({ list, size, busy, menu, confirm, run, setConfirm, max, 
       pressed=${a.run.kind === 'later' ? menu?.id === a.id : undefined} title=${a.quiet ? f.obsoleteTip : a.label} cls=${cls}
       onClick=${() => run(a)}>${short(a.label, max)}<//>`
     if (a.run.kind === 'later') {
-      return html`<span key=${a.id} class="fb-later">${btn}${menu?.id === a.id
-        ? html`<${LaterMenu} a=${a} s=${s} busy=${busy} uid=${`${uid}-day`} onChoose=${(choice, day) => run(a, { choice, day })} />` : null}</span>`
+      const open = menu?.id === a.id
+      return html`<${LaterWrap} key=${a.id} open=${open} onClose=${() => run(a)}>${btn}${open
+        ? html`<${LaterMenu} a=${a} s=${s} busy=${busy} uid=${`${uid}-day`} onChoose=${(choice, day) => run(a, { choice, day })} />` : null}<//>`
     }
     if (a.meaning === 'done' && a.label === f.answers.doneStream) {
       return html`<span key=${a.id} class="fb-done-col">${btn}<small class="muted">${f.doneStreamSub}</small></span>`
     }
     return btn
   })
+}
+
+/** Later with its menu: a click beside it or Escape closes the menu, so it never stays over the card (round 1 of the
+ *  four answers: only a second click on Later closed it). `onClose` toggles it shut, as the button does */
+function LaterWrap({ open, onClose, children }) {
+  const box = useRef(null)
+  useEffect(() => {
+    if (!open || typeof document === 'undefined' || !document.addEventListener) return undefined
+    const away = e => { if (box.current && !box.current.contains(e.target)) onClose() }
+    const esc = e => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('pointerdown', away)
+    document.addEventListener('keydown', esc)
+    return () => {
+      document.removeEventListener('pointerdown', away)
+      document.removeEventListener('keydown', esc)
+    }
+  }, [open])
+  return html`<span class="fb-later" ref=${box}>${children}</span>`
 }
 
 /** A point's bucket as one small chip, the bucket's title, with its number in the printed briefing beside it */
@@ -183,23 +202,18 @@ export function BucketChip({ x, bucket, s, nr: withNr = true }) {
     ? html`<span class="chip fb-chip-nr mono" title=${f.inBriefing(nr, f.say)}>${f.nr(nr)}</span>` : null}</span>`
 }
 
-/** The answers of a point on a row of a list: its bucket chip, the strong one, the rest under one More, the same
- *  answers and acts as the card (BucketCard). `chip` false leaves the chip out where the row shows it */
+/** The answers of a point on a row of a list: its bucket chip and the four answers side by side, the same answers
+ *  and acts as the card (BucketCard): every point shows the same four on every view (round 1 of the four answers:
+ *  Later, Done and Obsolete hid behind a More that meant something else on the card). `chip` false leaves the chip
+ *  out where the row shows it */
 export function BucketBar({ x, s, c, size = 'xs', bucket = null, chip = true, nr = true }) {
-  const f = T().flow.buckets
   const b = bucket ?? viewBucket(x)
   const { answers, run, menu, confirm, setConfirm, note, busy, say, setSay } = useBucketAnswer(x, b, s, c)
-  const [more, setMore] = useState(false)
-  const first = answers.find(a => a.primary) ?? null
-  const rest = answers.filter(a => a !== first)
   const uid = `fb-bar-${String(x?.id ?? 'x').replace(/[^\w-]/g, '-')}`
-  const btns = list => html`<${AnswerButtons} list=${list} size=${size} busy=${busy} menu=${menu} confirm=${confirm} run=${run}
-    setConfirm=${setConfirm} max=${40} s=${s} uid=${uid} />`
   return html`<span class="fb-bar">
     ${chip ? html`<${BucketChip} x=${x} bucket=${b} s=${s} nr=${nr} />` : null}
-    ${first ? btns([first]) : null}
-    ${rest.length ? html`<${Btn} size=${size} variant="ghost" pressed=${more} cls="fb-bar-more" onClick=${() => setMore(!more)}>${f.more}<//>` : null}
-    ${more ? html`<span class="fb-bar-rest">${btns(rest)}</span>` : null}
+    <${AnswerButtons} list=${answers} size=${size} busy=${busy} menu=${menu} confirm=${confirm} run=${run}
+      setConfirm=${setConfirm} max=${40} s=${s} uid=${uid} />
     ${say ? html`<${SayLine} busy=${busy} uid=${`${uid}-say`} onSend=${words => run(say, words)} onCancel=${() => setSay(null)} />` : null}
     ${note ? html`<span class="fb-note small" role="status">${note}</span>` : null}
   </span>`
@@ -244,7 +258,7 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
   })
   const rest = row ? restingOf(row) : null
   const who = bucket === 'waiting' ? x.checkin?.who ?? row?.checkin?.who ?? null : null
-  const marks = [[pointKindWord(x, lang)], [pointArea(x)], [row?.due ? f.due(formatDay(String(row.due).slice(0, 10), lang)) : null],
+  const marks = [[pointKindWord(x, lang)], [x.running ? f.runningMark : null, 'fb-mark-run'], [pointArea(x)], [row?.due ? f.due(formatDay(String(row.due).slice(0, 10), lang)) : null],
     [row?.gate === 'only-you' ? f.onlyYou : null], [who ? f.with(who) : null], [rest ? f.resting(rest) : null, 'fb-mark-quiet', f.restingTip]]
     .filter(m => m[0])
   // a tab that asks is named by its tab (the way it reads in the terminal), the task it works on under it

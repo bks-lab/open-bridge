@@ -280,7 +280,7 @@ export function TabControls({ tab, s, c, compact = false, slim = false }) {
   const settled = !!tab.settled || settledRefs(s.model?.returns, s.tabs?.tabs, s.now || Date.now()).has(tab.ref)
   // with the briefing's buckets on a tab that asks is answered as its card in Work through is: its own answers (the
   // dialog's options, the ready answer, yes and no only where the server takes them), never a button it refuses
-  const point = flowBucketsOn(s) ? tabPoint(tab) : null
+  const point = flowBucketsOn(s) ? tabPoint(tab, s) : null
   const answers = point ? html`<${BucketBar} x=${point} s=${s} c=${c} />` : null
   if (slim && point) {
     const step = {

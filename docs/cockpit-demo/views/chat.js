@@ -6,7 +6,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { personOf, short, askList, askOutcome, canTab, centsText, chatStamp, chatReminders, handoffStatus, isoDate, keepHoursOf, listedChats, reminderArgs } from '../logic.js'
+import { personOf, short, askList, askOutcome, canTab, centsText, chatStamp, chatReminders, doWord, flowBucketsOn, handoffStatus, isoDate, keepHoursOf, listedChats, reminderArgs } from '../logic.js'
 import { T, language } from '../text.js'
 import { Segmented } from './detail.js'
 import { ControlNotice } from './header.js'
@@ -197,7 +197,7 @@ export function ChatFoot({ s, c, conv, autofocus }) {
     <${SendBox} id="quick-input" label=${t.askLabel} value=${text} setValue=${setText} onSend=${send} max=${ASK_MAX} autofocus=${autofocus}
       placeholder=${t.chatPlaceholder} busy=${!!s.ui.busy['ask:free']}
       disabled=${!!conv?.running} sendLabel=${t.chatAsk} u="chat-ask"
-      alt=${{ u: 'chat-ai', label: t.chatSolve, title: t.chatSolveTitle, onSend: solve, busy: solveBusy, ready: (conv ? answered : !!text.trim()) && !starting }} />
+      alt=${{ u: 'chat-ai', label: flowBucketsOn(s) ? doWord(s, language()) : t.chatSolve, title: t.chatSolveTitle, onSend: solve, busy: solveBusy, ready: (conv ? answered : !!text.trim()) && !starting }} />
     ${status ? html`<${HandoffLine} s=${s} c=${c} st=${status} onRetry=${retry} relayId=${handed?.relay_id} handed=${handed} />` : null}
     <${LaunchPick} s=${s} c=${c} label=${t.launch.forSolve} />
   </footer>`

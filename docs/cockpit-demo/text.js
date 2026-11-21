@@ -591,7 +591,7 @@ const en = {
   histNotes: n => `Notes (${n})`,
   historyEmpty: 'Nothing closed yet.',
   histKind: { task: 'Task', stream: 'Stream', inbox: 'Inbox', other: 'Row', row: 'Step' },
-  rowSteps: 'Action', rowStepsTitle: 'Steps this row offers: a click opens them, a second click runs one', rowStepsMore: 'More steps',
+  rowSteps: 'Steps', rowStepsTitle: 'Steps this row offers: a click opens them, a second click runs one', rowStepsMore: 'More steps',
   stepConfirm: label => `${label}: sure?`, stepConfirmTitle: 'A second click runs it; it resets after a few seconds',
   // GitHub work (views/github.js): the figures and boards above a github-work section, and an opened issue or PR
   gh: {
@@ -850,7 +850,7 @@ const en = {
   quickForget: 'remove chat',
   quickForgetSure: 'really remove?',
   quickForgetHint: 'Takes this chat off the list. It is kept in the archive (chats/ in the state folder).',
-  quickIntro: 'Ask straight away. Each chat is a short session of its own that may only read (tasks, board, log, resources), and the answer shows while it is written. When it needs action, "Let AI do it" hands it to a real Claude session in its own terminal tab.',
+  quickIntro: 'Ask straight away. Each chat is a short session of its own that may only read (tasks, board, log, resources), and the answer shows while it is written. When it needs action, the button beside Ask hands it to a real Claude session in its own terminal tab.',
   quickUnavailable: 'No supported AI CLI was found on this computer.',
   quickFailed: err => `no answer: ${err}`,
   quickThinking: m => `${m} is thinking`,
@@ -2738,7 +2738,7 @@ const de = {
   quickForget: 'Chat entfernen',
   quickForgetSure: 'wirklich entfernen?',
   quickForgetHint: 'Nimmt diesen Chat aus der Liste. Er bleibt im Archiv (chats/ im Zustandsordner).',
-  quickIntro: 'Frag direkt los. Jeder Chat ist eine eigene kurze Sitzung, die nur lesen darf (Aufgaben, Board, Log, Ressourcen), und die Antwort erscheint, während sie entsteht. Muss etwas getan werden, übergibt „AI machen lassen“ an eine echte Claude-Sitzung in einem eigenen Terminal-Tab.',
+  quickIntro: 'Frag direkt los. Jeder Chat ist eine eigene kurze Sitzung, die nur lesen darf (Aufgaben, Board, Log, Ressourcen), und die Antwort erscheint, während sie entsteht. Muss etwas getan werden, übergibt der Knopf neben Fragen an eine echte Claude-Sitzung in einem eigenen Terminal-Tab.',
   quickUnavailable: 'Auf diesem Rechner wurde keine unterstützte KI-CLI gefunden.',
   quickFailed: err => `keine Antwort: ${err}`,
   quickThinking: m => `${m} denkt nach`,
