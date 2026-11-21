@@ -282,6 +282,18 @@ def test_work_rows_without_config_take_every_row_also_one_without_an_item_or_a_t
     assert skipped == {"private": 0, "section": 0}
 
 
+def test_a_long_row_title_is_cut_at_a_word_end_with_an_ellipsis():
+    # the Jev view shows the title the order carries: never one cut mid-word ("... mit „Produ")
+    long = ("„Demo Mi 25.11. 17:30: Produktvision lesen und aktualisieren, dann Use Case Zeiterfassung mit K2A "
+            "durchspielen“ am Wed 25.11 17:30 überschneidet sich mit „Produktplanung Q1“")
+    rows, _ = jev.pick_rows([{"id": "s", "title": "S", "items": [{"title": long, "task": "x"}]}], {}, {})
+    title = rows[0]["title"]
+    assert len(title) <= 160 and title.endswith("…")
+    assert long.startswith(title[:-1]) and not title.endswith("„Produ…")
+    assert title[-2] not in " „(,"
+    assert jev.cut_words("kurz", 160) == "kurz"
+
+
 def work_app(tmp_path=None, now=1_760_000_000_000):
     page = {"id": "arbeit", "title": "Arbeit", "jev": CFG,
             "sections": [{k: v for k, v in s.items() if k != "items"} | {"items": s["items"]} for s in WORK]}

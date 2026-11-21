@@ -76,6 +76,8 @@
 .jev-dot-rank { fill: var(--surface-raised); font-size: 11px; font-weight: 700; font-family: var(--font-mono); pointer-events: none; }
 .jev-dot-label { fill: var(--on-surface); font-size: 13px; font-weight: 600; paint-order: stroke; stroke: var(--surface-raised);
   stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
+/* a label that had to stand further from its dot points back to it */
+.jev-leader { stroke: var(--on-surface-faint); stroke-width: 1; pointer-events: none; }
 .jev-ripple { fill: none; stroke: var(--jev-hot); stroke-width: 2; }
 .jev-crown { fill: var(--jev-hot); }
 

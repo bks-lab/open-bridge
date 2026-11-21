@@ -157,3 +157,220 @@ export function costLine(data) {
   return { tokens: u.input_tokens + u.output_tokens, today: (t.input_tokens ?? 0) + (t.output_tokens ?? 0),
     ratings: t.ratings ?? 1, unknown: t.unknown ?? 0, price: data.price ?? null }
 }
+
+// ---------------------------------------------------------------- calm play and a readable matrix
+
+// what a cut may not end on before its ellipsis: a space, an opening quote or bracket, a comma and the like
+const DANGLING = /[\s„“"'(\[{,;:.\-/]+$/
+
+/** A text cut to at most n characters at a word end, with an ellipsis; a text that fits stays whole (its
+ *  whitespace folded). One word longer than the room gets a hard cut, still with the ellipsis */
+export function cutWords(s, n) {
+  const t = String(s ?? '').replace(/\s+/g, ' ').trim()
+  if (t.length <= n) return t
+  const room = t.slice(0, n - 1)
+  const sp = t[n - 1] === ' ' ? room.length : room.lastIndexOf(' ')
+  const head = (sp >= n * 0.4 ? room.slice(0, sp) : room).replace(DANGLING, '')
+  return (head || room) + '…'
+}
+
+/** A title the server cut at `limit` characters (it is that long and does not say so) loses its broken last
+ *  word and says it was cut; any other title stays as it is */
+export function trimCut(s, limit) {
+  const t = String(s ?? '')
+  if (t.length < limit || t.endsWith('…')) return t
+  const sp = t.lastIndexOf(' ')
+  const head = (sp > 0 ? t.slice(0, sp) : t.slice(0, limit - 1)).replace(DANGLING, '')
+  return (head || t.slice(0, limit - 1)) + '…'
+}
+
+/** What a new answer plays: 'intro' for the first rating on the page (or a replay), 'update' when the rating
+ *  changed (its digest or time), 'keep' when the kept rating came back (nothing moves), 'none' for no picture */
+export function playFor(prev, next, { replay = false } = {}) {
+  if (!next || next.empty || !next.plan?.items?.length) return 'none'
+  if (replay || !prev?.plan?.items?.length) return 'intro'
+  if (prev.digest === next.digest && prev.at_ms === next.at_ms) return 'keep'
+  return 'update'
+}
+
+/** When a request shows Jev reading: a click at once; a background check never over a drawn picture (the
+ *  picture stays as it is until a changed answer glides in), and only after a moment when nothing is drawn yet */
+export function readingFor({ force = false, hasPlan = false } = {}) {
+  return force ? 'now' : hasPlan ? 'never' : 'later'
+}
+
+/** Whether a new request may take over from the one in flight (`running`: 'force', 'check' or null): a
+ *  background check never cancels a click's rating, it waits for its answer */
+export const checkWins = ({ force = false, running = null } = {}) => force || running !== 'force'
+
+/** The typing cursor shows only while the line types, and is gone once the line stands */
+export const cursorShown = (T, t0, d) => T >= t0 - 0.1 && T < t0 + d + 0.05
+
+/** The crown over the first task, as a circle: the page draws it 14 above the dot's edge */
+export const crownAt = p => ({ x: p.x, y: p.y - p.r - 14, r: 13 })
+
+/** Points pushed apart until no two overlap (a gap between their edges), seeded by their keys where two sit
+ *  on the same spot, so the same judgments always give the same picture; kept inside `box`. `crownOf` names
+ *  the point that carries the crown: other points keep off it. `ring` is what the radii add for the
+ *  collision over the drawn dot (the crown sits on the drawn dot). `rects` (the quadrant words) keep points and
+ *  the crown off them. Points that touch nothing stay put */
+export function separate(pts, { gap = 4, box = null, crownOf = null, ring = 0, rects = [], iters = 240 } = {}) {
+  const P = pts.map(p => ({ key: p.key, x: p.x, y: p.y, r: p.r }))
+  const crownOfP = p => crownAt({ x: p.x, y: p.y, r: p.r - ring })
+  const inside = p => {
+    if (!box) return
+    const top = p.key === crownOf ? p.r - ring + 27 : p.r
+    p.x = clamp(box.x0 + p.r, box.x1 - p.r, p.x)
+    p.y = clamp(box.y0 + top, box.y1 - p.r, p.y)
+  }
+  const away = (a, b) => {
+    const g = rng(hashSeed(`${a}|${b}`))
+    const ang = g() * Math.PI * 2
+    return [Math.cos(ang), Math.sin(ang)]
+  }
+  const head = crownOf == null ? null : P.find(p => p.key === crownOf) ?? null
+  for (let n = 0; n < iters; n++) {
+    let moved = false
+    for (let i = 0; i < P.length; i++) {
+      for (let j = i + 1; j < P.length; j++) {
+        const a = P[i], b = P[j]
+        const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), min = a.r + b.r + gap
+        if (d >= min - 1e-6) continue
+        const [ux, uy] = d > 1e-6 ? [dx / d, dy / d] : away(a.key, b.key)
+        const push = (min - d) / 2 + 0.05
+        a.x -= ux * push; a.y -= uy * push; b.x += ux * push; b.y += uy * push
+        moved = true
+      }
+    }
+    if (head) {
+      const c = crownOfP(head)
+      for (const p of P) {
+        if (p === head) continue
+        const dx = p.x - c.x, dy = p.y - c.y, d = Math.hypot(dx, dy), min = p.r + c.r + gap / 2
+        if (d >= min - 1e-6) continue
+        const [ux, uy] = d > 1e-6 ? [dx / d, dy / d] : away(head.key, p.key)
+        p.x += ux * (min - d + 0.05); p.y += uy * (min - d + 0.05)
+        moved = true
+      }
+    }
+    for (const rect of rects) {
+      for (const p of P) {
+        const [mx, my] = outOf(p, rect)
+        if (mx || my) { p.x += mx; p.y += my; moved = true }
+        if (p === head) {
+          const [cx, cy] = outOf(crownOfP(p), rect)
+          if (cx || cy) { p.x += cx; p.y += cy; moved = true }
+        }
+      }
+    }
+    P.forEach(inside)
+    if (!moved) break
+  }
+  return new Map(P.map(p => [p.key, p]))
+}
+
+/** How far a circle must move to leave a rect: [0, 0] when it does not touch it; out along the nearest point,
+ *  or through the nearest side when its centre lies inside */
+function outOf(c, r) {
+  const nx = Math.max(r.x0, Math.min(c.x, r.x1)), ny = Math.max(r.y0, Math.min(c.y, r.y1))
+  const dx = c.x - nx, dy = c.y - ny, d = Math.hypot(dx, dy)
+  if (d >= c.r) return [0, 0]
+  if (d > 1e-6) return [(dx / d) * (c.r - d + 0.05), (dy / d) * (c.r - d + 0.05)]
+  const sides = [[r.x0 - c.r - 0.05 - c.x, 0], [r.x1 + c.r + 0.05 - c.x, 0], [0, r.y0 - c.r - 0.05 - c.y], [0, r.y1 + c.r + 0.05 - c.y]]
+  return sides.reduce((a, b) => (Math.hypot(...b) < Math.hypot(...a) ? b : a))
+}
+
+const hitsRect = (c, r) => {
+  const nx = Math.max(r.x0, Math.min(c.x, r.x1)), ny = Math.max(r.y0, Math.min(c.y, r.y1))
+  return Math.hypot(c.x - nx, c.y - ny) < c.r
+}
+const meets = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1
+
+/** Where each label stands by its point, in the order given (the most important first): beside the point,
+ *  above or below it, else a little further with a leader line, with the full text or a shorter cut; never
+ *  over a point (with its ring), another placed label, a rect in `avoid` (the quadrant words, the crown) or
+ *  outside `box`. A label with no free place is hidden (it shows on hover). Per key {dx, dy, anchor, text,
+ *  rect, leader, hidden}: dx, dy and the leader relative to the point, rect in the matrix */
+export function placeLabels(dots, labels, { avoid = [], box = null, charW = 7.2, short = 16 } = {}) {
+  const taken = []
+  const out = new Map()
+  for (const { key, text } of labels) {
+    const d = dots.get(key)
+    if (!d) continue
+    const texts = [text, cutWords(text, short)].filter((x, i, all) => all.indexOf(x) === i)
+    const near = [[d.r + 8, 4, 'start'], [-(d.r + 8), 4, 'end'], [0, -(d.r + 9), 'middle'], [0, d.r + 18, 'middle']]
+    const far = [[d.r + 20, -(d.r + 16), 'start'], [d.r + 20, d.r + 22, 'start'], [-(d.r + 20), -(d.r + 16), 'end'],
+      [-(d.r + 20), d.r + 22, 'end'], [d.r + 36, 4, 'start'], [-(d.r + 36), 4, 'end']]
+    const tries = [...texts.flatMap(t => near.map(c => [t, c, false])), ...texts.flatMap(t => far.map(c => [t, c, true]))]
+    let found = null
+    for (const [t, [dx, dy, anchor], lead] of tries) {
+      const w = t.length * charW
+      const x0 = d.x + (anchor === 'start' ? dx : anchor === 'end' ? dx - w : dx - w / 2)
+      const rect = { x0, y0: d.y + dy - 11, x1: x0 + w, y1: d.y + dy + 4 }
+      if (box && (rect.x0 < box.x0 || rect.x1 > box.x1 || rect.y0 < box.y0 || rect.y1 > box.y1)) continue
+      if ([...dots.values()].some(o => hitsRect({ x: o.x, y: o.y, r: o.r + 4 }, rect))) continue
+      if (taken.some(r => meets(r, rect)) || avoid.some(r => r && meets(r, rect))) continue
+      let leader = null
+      if (lead) {
+        const ex = anchor === 'start' ? dx - 3 : anchor === 'end' ? dx + 3 : dx, ey = dy - 4
+        const len = Math.hypot(ex, ey) || 1
+        leader = { x1: (ex / len) * (d.r + 5), y1: (ey / len) * (d.r + 5), x2: ex, y2: ey }
+      }
+      found = { dx, dy, anchor, text: t, rect, leader, hidden: false }
+      break
+    }
+    if (found) taken.push(found.rect)
+    out.set(key, found ?? { dx: d.r + 8, dy: 4, anchor: 'start', text, rect: null, leader: null, hidden: true })
+  }
+  return out
+}
+
+/** The four squares of the matrix: where each lies, where its word stands and the corner it grows from */
+export const QUADS = [
+  { id: 'now', x: CORE.x, y: Y1, w: X1 - CORE.x, h: CORE.y - Y1, ax: X1 - 12, ay: Y1 + 22, anchor: 'end', ox: CORE.x, oy: CORE.y },
+  { id: 'plan', x: X0, y: Y1, w: CORE.x - X0, h: CORE.y - Y1, ax: X0 + 12, ay: Y1 + 22, anchor: 'start', ox: CORE.x, oy: CORE.y },
+  { id: 'hand', x: CORE.x, y: CORE.y, w: X1 - CORE.x, h: Y0 - CORE.y, ax: X1 - 12, ay: Y0 - 12, anchor: 'end', ox: CORE.x, oy: CORE.y },
+  { id: 'drop', x: X0, y: CORE.y, w: CORE.x - X0, h: Y0 - CORE.y, ax: X0 + 12, ay: Y0 - 12, anchor: 'start', ox: CORE.x, oy: CORE.y },
+]
+
+/** Where the quadrant words stand, as rects the labels keep off (15px capitals with letter spacing) */
+export const quadWordRects = (quads, charW = 11.2) => QUADS.map(q => {
+  const w = String(quads?.[q.id] ?? '').length * charW
+  const x0 = q.anchor === 'end' ? q.ax - w : q.ax
+  return { x0: x0 - 4, y0: q.ay - 14, x1: x0 + w + 4, y1: q.ay + 5 }
+})
+
+/** The resting picture of the matrix: every task on its place (place) pushed apart so no two dots and no dot
+ *  and the crown overlap (separate), and the labels of the first four placed clear of everything
+ *  (placeLabels); the other tasks get a label place for hover only. Deterministic: same items, same picture */
+export function layoutMatrix(items, { first = null, avoid = [], charW = 7.2 } = {}) {
+  const box = { x0: X0, x1: X1, y0: Y1, y1: Y0 }
+  const base = items.map(it => ({ key: it.key, ...place(it) }))
+  const sep = separate(base.map(p => ({ key: p.key, x: p.x, y: p.y, r: p.r + 4 })), { gap: 3, box, crownOf: first?.key ?? null, ring: 4, rects: avoid })
+  const spots = new Map(base.map(p => [p.key, { x: sep.get(p.key).x, y: sep.get(p.key).y, r: p.r }]))
+  const fs = first ? spots.get(first.key) : null
+  const c = fs ? crownAt(fs) : null
+  const crownRect = c ? { x0: c.x - c.r, y0: c.y - c.r, x1: c.x + c.r, y1: c.y + c.r } : null
+  const keep = [...avoid, crownRect].filter(Boolean)
+  const ranked = [...items].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
+  const shownItems = ranked.filter(it => (it.rank ?? 99) <= 4)
+  const labels = new Map()
+  const placed = placeLabels(spots, shownItems.map(it => ({ key: it.key, text: cutWords(it.title, 26) })), { avoid: keep, box, charW })
+  for (const [key, l] of placed) labels.set(key, { ...l, shown: true })
+  const rects = [...placed.values()].map(l => l.rect).filter(Boolean)
+  for (const it of ranked) {
+    if (labels.has(it.key)) continue
+    const one = placeLabels(spots, [{ key: it.key, text: cutWords(it.title, 44) }], { avoid: [...keep, ...rects], box, charW })
+    const l = one.get(it.key)
+    labels.set(it.key, { ...l, hidden: false, shown: false })
+  }
+  return { spots, labels }
+}
+
+/** The words of the matrix: the squares and the legend say the profile's bucket words where a square maps to
+ *  a bucket (buckets.js bucketWords: now Do, plan Plan, hand Delegate, drop Drop), else the page's own */
+export function matrixWords(words, t) {
+  const q = words?.quadrant ?? {}
+  const quads = Object.fromEntries(Object.entries(t.quads).map(([id, w]) => [id, q[id] || w]))
+  return { quads, me: q.now || t.me, delegate: q.hand || t.delegate }
+}

@@ -16,12 +16,14 @@
 // detail beside the page (c.peek), the button beside it goes to the agent's tab (tab_jump) or asks
 // for advice (advise), a dot in the matrix opens the same detail.
 
-import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { clamp, countTo, cursorOn, flash, flowAlpha, noise1, nowSec, o3, ramp, reducedMotion, ripples, spring, track, trackAt, tracking, typed, win } from './motion.js'
-import { CORE, H, W, X0, X1, Y0, Y1, costLine, launch, liveItems, orderPlan, pendingTitles, place, planOpen, rowJump, tokenText } from './logic.js'
+import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
+import { clamp, countTo, flash, flowAlpha, noise1, nowSec, o3, ramp, reducedMotion, ripples, spring, track, trackAt, tracking, typed, win } from './motion.js'
+import { CORE, H, QUADS, W, X0, X1, Y0, Y1, checkWins, costLine, cursorShown, cutWords, launch, layoutMatrix, liveItems, matrixWords, orderPlan,
+  pendingTitles, place, planOpen, playFor, quadWordRects, readingFor, rowJump, tokenText, trimCut } from './logic.js'
 import { indexRows, itemRow, triageKey } from '../logic.js'
 import { KindTag, OriginTag } from '../views/day.js'
 import { T as dashText, language } from '../text.js'
+import { bucketWords } from '../buckets.js'
 
 export { pendingTitles, place }
 export const JEV_PAGE = '@jev'
@@ -69,14 +71,9 @@ const TEXT = {
 }
 const tx = () => TEXT[language() === 'de' ? 'de' : 'en']
 
-const short = (s, n) => (s && s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s || '')
-
-const QUADS = [
-  { id: 'now', x: CORE.x, y: Y1, w: X1 - CORE.x, h: CORE.y - Y1, ax: X1 - 12, ay: Y1 + 22, anchor: 'end', ox: CORE.x, oy: CORE.y },
-  { id: 'plan', x: X0, y: Y1, w: CORE.x - X0, h: CORE.y - Y1, ax: X0 + 12, ay: Y1 + 22, anchor: 'start', ox: CORE.x, oy: CORE.y },
-  { id: 'hand', x: CORE.x, y: CORE.y, w: X1 - CORE.x, h: Y0 - CORE.y, ax: X1 - 12, ay: Y0 - 12, anchor: 'end', ox: CORE.x, oy: CORE.y },
-  { id: 'drop', x: X0, y: CORE.y, w: CORE.x - X0, h: Y0 - CORE.y, ax: X0 + 12, ay: Y0 - 12, anchor: 'start', ox: CORE.x, oy: CORE.y },
-]
+// the server cuts a title it sends to Jev at this length (jev.py pick_rows); an order kept from before shows it
+// cut at a word end with an ellipsis (logic.js trimCut)
+const TITLE_CAP = 160
 
 /** ?jevT=2.4 freezes the first play at that T: for checking single frames, as web-check does in the films */
 const FROZEN = (() => {
@@ -167,7 +164,7 @@ function ThinkingScene({ titles }) {
     ${pos.map((p, i) => html`<line key=${'l' + i} class="jev-wire" x1=${p.x} y1=${p.y} x2=${CORE.x} y2=${CORE.y} />`)}
     ${pos.map((_, i) => html`<circle key=${'s' + i} data-spark=${i} r="3.2" class="jev-spark" opacity="0" />`)}
     ${titles.map((title, i) => html`<g key=${'c' + i} data-chip=${i} opacity="0">
-      <text class="jev-chip" text-anchor=${pos[i].x < CORE.x - 40 ? 'end' : pos[i].x > CORE.x + 40 ? 'start' : 'middle'}>${short(title, 22)}</text></g>`)}
+      <text class="jev-chip" text-anchor=${pos[i].x < CORE.x - 40 ? 'end' : pos[i].x > CORE.x + 40 ? 'start' : 'middle'}>${cutWords(title, 22)}</text></g>`)}
     <circle data-k="pulse" class="jev-pulse" cx=${CORE.x} cy=${CORE.y} r="52" opacity="0" />
     <${Core} />
     <text class="jev-reading" x=${CORE.x} y=${CORE.y + 130} text-anchor="middle">${t.reading(n)}</text>
@@ -185,7 +182,7 @@ function Core({ hidden }) {
 
 // ---------------------------------------------------------------- the answer (markup at rest)
 
-function Matrix({ items, first, spots, emph, onDot }) {
+function Matrix({ items, first, spots, labels, emph, onDot }) {
   const t = tx()
   const fs = first ? spots.get(first.key) : null
   return html`<g class="jev-result">
@@ -203,6 +200,7 @@ function Matrix({ items, first, spots, emph, onDot }) {
     ${[0, 1, 2].map(j => html`<circle key=${'r' + j} data-ripple=${j} r=${fs ? fs.r + 6 : 0} class="jev-ripple" opacity="0" />`)}
     ${items.map((it, i) => ({ it, i })).reverse().map(({ it, i }) => {
       const sp = spots.get(it.key)
+      const lb = labels.get(it.key)
       const on = emph(it.key)
       return html`<g key=${it.key} data-dot=${i} transform=${`translate(${sp.x.toFixed(1)} ${sp.y.toFixed(1)})`}
         class=${`jev-dot jev-${it.who}${on ? ' is-hover' : ''}${it.key === first?.key ? ' is-first' : ''}`} onClick=${e => onDot(it, e)}>
@@ -210,8 +208,10 @@ function Matrix({ items, first, spots, emph, onDot }) {
         <circle class="jev-dot-ring" r=${sp.r + 4} pathLength="1" stroke-dasharray="1" stroke-dashoffset=${(1 - (it.confidence ?? 0)).toFixed(4)} data-conf=${i} />
         <circle class="jev-dot-core" r=${sp.r} />
         <text class="jev-dot-rank" y="4" text-anchor="middle">${it.rank}</text>
-        <text data-label=${i} opacity=${it.rank <= 4 ? 1 : 0} class="jev-dot-label" y="4"
-          x=${sp.x > X1 - 220 ? -(sp.r + 9) : sp.r + 9} text-anchor=${sp.x > X1 - 220 ? 'end' : 'start'}>${short(it.title, it.rank <= 4 ? 26 : 44)}</text>
+        ${lb?.leader ? html`<line data-leader=${i} class="jev-leader" x1=${lb.leader.x1.toFixed(1)} y1=${lb.leader.y1.toFixed(1)}
+          x2=${lb.leader.x2.toFixed(1)} y2=${lb.leader.y2.toFixed(1)} opacity=${lb.shown && !lb.hidden ? 1 : 0} />` : null}
+        <text data-label=${i} opacity=${lb?.shown && !lb.hidden ? 1 : 0} class="jev-dot-label" x=${(lb?.dx ?? sp.r + 8).toFixed(1)}
+          y=${(lb?.dy ?? 4).toFixed(1)} text-anchor=${lb?.anchor ?? 'start'}>${lb?.text ?? cutWords(it.title, 44)}</text>
         <title>${it.title}</title>
       </g>`
     })}
@@ -230,7 +230,7 @@ export function planRow(it, row, pageItems = null) {
   return m ? { key: it.key, [m[1] === 'inbox' ? 'inbox_id' : 'task']: m[2] } : { key: it.key }
 }
 
-function PlanList({ items, byKey, s, c, emph, setHover, listRef, extra, pageItems, onOpen }) {
+function PlanList({ items, byKey, s, c, emph, setHover, listRef, extra, pageItems, onOpen, words }) {
   const t = tx()
   const d = dashText()
   return html`<ol class="jev-plan" ref=${listRef}>
@@ -239,19 +239,21 @@ function PlanList({ items, byKey, s, c, emph, setHover, listRef, extra, pageItem
       const opens = !!planOpen(it, byKey, extra)
       const jump = rowJump(row)
       const selected = s.ui.pageDetail && s.ui.selectedKey === it.key
+      // the dashboard's own row has the whole title; an order's title the server may have cut
+      const title = row?.title || trimCut(it.title, TITLE_CAP)
       return html`<li key=${it.key} data-row=${i} data-key=${it.key}
         class=${`jev-row${emph(it.key) ? ' is-hover' : ''}${selected ? ' is-selected' : ''}`}
         onMouseEnter=${() => setHover(it.key)} onMouseLeave=${() => setHover(null)}>
         <span class=${`jev-rank mono jev-${it.who}`} data-rank=${i}>${it.rank}</span>
         <span class="jev-row-main">
           ${opens ? html`<button type="button" class="btn-link jev-row-title" data-open=${it.key} title=${d.openDetail} aria-expanded=${String(selected)}
-              onFocus=${() => setHover(it.key)} onBlur=${() => setHover(null)} onClick=${e => onOpen(it, e.currentTarget)}>${it.title}</button>`
-            : html`<span class="jev-row-title">${it.title}</span>`}
+              onFocus=${() => setHover(it.key)} onBlur=${() => setHover(null)} onClick=${e => onOpen(it, e.currentTarget)}>${title}</button>`
+            : html`<span class="jev-row-title">${title}</span>`}
           <span class="jev-row-meta">
             <${KindTag} row=${planRow(it, row, pageItems)} s=${s} /><${OriginTag} row=${planRow(it, row, pageItems)} />
-            <span class=${`jev-pill jev-${it.who}`}>${it.who === 'me' ? t.me : t.delegate}</span>
+            <span class=${`jev-pill jev-${it.who}`}>${it.who === 'me' ? words.me : words.delegate}</span>
             <span class="jev-pill">${t.effort[Math.min(3, Math.round(it.effort * 3))]}</span>
-            <span class="jev-pill">${t.quads[it.quadrant]}</span>
+            <span class="jev-pill">${words.quads[it.quadrant] ?? t.quads[it.quadrant]}</span>
             ${it.confidence != null ? html`<span class="jev-conf mono" title=${t.legendRing}><span data-pct=${i} data-to=${Math.round(it.confidence * 100)}></span> % ${t.sure}</span>` : null}
           </span>
           <span class="jev-bar"><span class=${`jev-bar-fill jev-${it.who}`} data-bar=${i} style=${{ transform: `scaleX(${(it.priority ?? 0).toFixed(4)})` }}></span></span>
@@ -298,6 +300,7 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
   const [st, setSt] = useState(() => ({ data: kept, reading: false, err: null }))
   const [hover, setHover] = useState(null)
   const seq = useRef(0)
+  const inflight = useRef(null)   // the request in flight: 'force' (a click), 'check' (a background check) or null
   const live = useRef(true)
   // what is playing: the first answer in full ('intro'), a new answer gliding from where the tasks
   // stood ('update'), or the picture at rest ('rest', for an answer seen before)
@@ -311,38 +314,46 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
   const byKey = indexRows(s.model)
   const plan = st.data?.plan
   const { items, first } = liveItems(plan, s.model, extra)
-  const spots = new Map(items.map(it => [it.key, place(it)]))
+  const words = matrixWords(bucketWords(s, language()), t)
+  // the resting picture: dots pushed apart, labels placed clear of dots, crown and quadrant words (logic.js)
+  const layKey = `${first?.key ?? ''}|${Object.values(words.quads).join('/')}|${items.map(it => `${it.key}:${it.urgency}:${it.impact}:${it.priority}:${it.rank}:${it.title}`).join('|')}`
+  const lay = useMemo(() => layoutMatrix(items, { first, avoid: quadWordRects(words.quads) }), [layKey])
+  const spots = lay.spots
   const selected = s.ui.pageDetail ? s.ui.selectedKey : null
   const emph = key => key === hover || key === selected
   const titles = pendingTitles(s.model)
 
-  /** Start the play of a new answer: from the current picture when there is one */
-  const startPlay = (data, prev) => {
+  /** Start the play of a new answer (logic.js playFor): the intro, or a glide from the current picture */
+  const startPlay = (data, mode) => {
     const m = motion.current
-    const had = !!prev?.plan?.items?.length
     const firstKey = liveItems(data.plan, s.model, extra).first?.key ?? null
-    play.current = had
+    play.current = mode === 'update'
       ? { mode: 'update', t0: nowSec(), from: new Map(m.pos), nums: m.nums, firstChanged: firstKey !== play.current.firstKey, firstKey }
       : { mode: 'intro', t0: nowSec(), from: new Map(), nums: null, firstChanged: true, firstKey }
   }
 
   /** Ask the server for the rating. It rates by itself at most once a day and otherwise answers
    *  the kept one (also after a restart), so the page can ask on every visit and every new model;
-   *  force is the button. "Reading" shows at once for the button and only after a moment for a
-   *  background check, so a kept answer never flashes the reading scene */
+   *  force is the button. "Reading" shows at once for the button; a background check leaves a drawn
+   *  picture exactly as it stands (logic.js readingFor) and never cancels a click's rating (checkWins).
+   *  What the answer plays is logic.js playFor: nothing for the kept rating, a glide for a changed one */
   const run = async (force = false) => {
+    if (!checkWins({ force, running: inflight.current })) return
     const my = ++seq.current
-    if (force) setSt(x => ({ ...x, reading: true, err: null }))
-    const slow = force ? null : setTimeout(() => { if (live.current && my === seq.current) setSt(x => ({ ...x, reading: true })) }, 350)
+    inflight.current = force ? 'force' : 'check'
+    const how = readingFor({ force, hasPlan: !!dataRef.current?.plan?.items?.length })
+    if (how === 'now') setSt(x => ({ ...x, reading: true, err: null }))
+    const slow = how === 'later' ? setTimeout(() => { if (live.current && my === seq.current) setSt(x => ({ ...x, reading: true })) }, 350) : null
     const res = await (ask ? ask(force) : c.jevRun(force))
     clearTimeout(slow)
+    if (my === seq.current) inflight.current = null
     if (!live.current || my !== seq.current) return   // a newer request or a page change won
     if (res.ok && res.data) {
       const prev = dataRef.current
-      const same = prev && prev.digest === res.data.digest && prev.at_ms === res.data.at_ms
-      if (!same && !res.data.empty) startPlay(res.data, prev)
+      const mode = playFor(prev, res.data)
+      if (mode === 'intro' || mode === 'update') startPlay(res.data, mode)
       // the same rating keeps its object (no new play) but takes the fresh note and day total
-      keptBy[store] = same ? { ...prev, changed: res.data.changed, today: res.data.today, cached: res.data.cached } : res.data
+      keptBy[store] = mode === 'keep' ? { ...prev, changed: res.data.changed, today: res.data.today, cached: res.data.cached } : res.data
       setSt({ reading: false, err: null, data: keptBy[store] })
     } else {
       const msg = res.data?.error?.message || res.error?.message || ''
@@ -385,7 +396,7 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
         el.setAttribute('opacity', Math.min(1, k * 1.2).toFixed(3))
       })
       root.querySelectorAll('[data-qlabel]').forEach((el, i) => {
-        el.textContent = typed(Ti, tx().quads[QUADS[i].id], 0.55 + i * 0.14, 0.45)
+        el.textContent = typed(Ti, words.quads[QUADS[i].id], 0.55 + i * 0.14, 0.45)
       })
       // a quadrant lights up briefly as its tasks land in it
       const Tq = intro ? Ti : glide ? T : 1e6
@@ -411,7 +422,8 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
       items.forEach((it, i) => {
         const sp = spots.get(it.key)
         const from = intro ? CORE : (P.from.get(it.key) ?? CORE)
-        const isNew = !intro && !P.from.has(it.key)
+        // only a glide brings new tasks in; at rest (a page seen before) every dot simply stands
+        const isNew = P.mode === 'update' && !P.from.has(it.key)
         const s0 = intro ? launch(i, items.length) : 0.05 + i * 0.035
         const k = calm || P.mode === 'rest' ? 1 : intro ? spring(Ti, s0, { w: 8.5, zeta: 0.68 }) : spring(T, s0, { w: 7.5, zeta: 0.95 })
         // while Jev reads again every task leans a little toward the core
@@ -450,8 +462,11 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
           (1 - (it.confidence ?? 0) * (intro ? spring(Ti, s0 + 0.5, { w: 6, zeta: 1 }) : 1)).toFixed(4))
         const label = root.querySelector(`[data-label="${i}"]`)
         if (label) {
-          const base = it.rank <= 4 ? (intro || isNew ? ramp(intro ? Ti : T, s0 + 0.6, 0.4) : 1) : 0
-          label.setAttribute('opacity', Math.max(base, e).toFixed(3))
+          const lb = lay.labels.get(it.key)
+          const base = lb?.shown && !lb.hidden ? (intro || isNew ? ramp(intro ? Ti : T, s0 + 0.6, 0.4) : 1) : 0
+          const a = Math.max(base, e).toFixed(3)
+          label.setAttribute('opacity', a)
+          root.querySelector(`[data-leader="${i}"]`)?.setAttribute('opacity', a)
         }
       })
       m.pos = pos
@@ -482,12 +497,13 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
     const head = headRef.current
     if (head && plan) {
       const line = head.querySelector('[data-k=line]')
-      const text = first ? tx().first(short(first.title, 70)) : ''
+      const text = first ? tx().first(cutWords(trimCut(first.title, TITLE_CAP), 70)) : ''
       const typeAt = intro ? 2.7 : P.firstChanged && glide ? 0.3 : null
       if (line) line.textContent = typeAt == null || calm ? text : typed(intro ? Ti : T, text, typeAt, 1.1)
       const cur = head.querySelector('[data-k=cursor]')
-      if (cur) cur.style.opacity = typeAt != null && !calm && (intro ? Ti : T) > typeAt - 0.1 && cursorOn(intro ? Ti : T, typeAt, 1.1) ? '1' : '0'
-      if (typeAt != null && !calm) busy = busy || (intro ? Ti : T) < typeAt + 3.2
+      // the cursor stands only while the line types (logic.js cursorShown), then it is gone
+      if (cur) cur.style.opacity = typeAt != null && !calm && cursorShown(intro ? Ti : T, typeAt, 1.1) ? '1' : '0'
+      if (typeAt != null && !calm) busy = busy || (intro ? Ti : T) < typeAt + 1.3
       // the counters run up from zero, or from where they stood; the tokens count last and longest,
       // and the cost line lights up once when they arrive
       const nums = []
@@ -613,10 +629,10 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
             </radialGradient>
           </defs>
           ${thinking ? html`<${ThinkingScene} titles=${titles} />`
-            : plan ? html`<g ref=${svgRef}><${Matrix} items=${items} first=${first} spots=${spots} emph=${emph} onDot=${onDot} /></g>` : null}
+            : plan ? html`<g ref=${svgRef}><${Matrix} items=${items} first=${first} spots=${spots} labels=${lay.labels} emph=${emph} onDot=${onDot} /></g>` : null}
         </svg>
         ${plan ? html`<div class="jev-legend muted small" aria-live="polite">
-          <span><i class="jev-swatch jev-me"></i>${t.me}</span><span><i class="jev-swatch jev-delegate"></i>${t.delegate}</span>
+          <span><i class="jev-swatch jev-me"></i>${words.me}</span><span><i class="jev-swatch jev-delegate"></i>${words.delegate}</span>
           <span>${t.legendSize}</span><span>${t.legendRing}</span>
           ${plan.model ? html`<span class="mono">· ${plan.model}</span>` : null}
           ${st.reading ? html`<span class="jev-note">· ${t.rereading}</span>`
@@ -626,7 +642,7 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
       </div>
       <aside class="jev-side panel">
         <h3 class="jev-side-title">${t.plan}</h3>
-        ${plan ? html`<${PlanList} items=${items} byKey=${byKey} s=${s} c=${c} emph=${emph} setHover=${setHover} listRef=${listRef} extra=${extra} pageItems=${pageItems} onOpen=${onOpen} />`
+        ${plan ? html`<${PlanList} items=${items} byKey=${byKey} s=${s} c=${c} emph=${emph} setHover=${setHover} listRef=${listRef} extra=${extra} pageItems=${pageItems} onOpen=${onOpen} words=${words} />`
           : html`<ol class="jev-plan jev-plan-ghost">${titles.slice(0, 7).map((x, i) => html`<li key=${i} class="jev-row"><span class="jev-rank mono">·</span><span class="jev-row-title muted">${x}</span></li>`)}</ol>`}
       </aside>
     </div>`}
