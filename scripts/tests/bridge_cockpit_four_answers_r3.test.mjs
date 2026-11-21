@@ -123,6 +123,15 @@ test('a waiting card names what it waits on and how long', () => {
   assert.match(el2.$('.fb-marks').text(), /waits on Jordan/)
 })
 
+// ---------------------------------------------------------------- Do it on an approved item
+
+test('an item whose yes is given keeps Do it in I\'ll do: it starts now', () => {
+  const item = ask('20261009-0900-q5', { inbox_state: 'approved', bucket: 'delegate', has_action: true })
+  const got = logic.bucketAnswers({ group: 'row', id: item.key, kind: 'row', row: item }, 'delegate', state({ now: [item] }), 'en')
+  assert.equal(got[0].meaning, 'do')
+  assert.deepEqual(got[0].run.args, { keys: [item.key], yes: true })
+})
+
 // ---------------------------------------------------------------- go on
 
 test('go on is offered only where the tab asks nothing', () => {

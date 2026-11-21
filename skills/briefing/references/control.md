@@ -141,7 +141,8 @@ Two things are yours besides:
 - **Do is the Bridge's next step**, the one the row's next sentence names: a
   task gets an agent on its next step and moves to "I'll do" as running; an
   inbox item gets its yes and runs (`only-you` gets no yes and never runs: a
-  note says "do it", prepare it and say "you press send", as the cockpit does); a point waiting on someone else gets a nudge written as a
+  note says "do it", prepare it and say "you press send", as the cockpit does;
+  an item whose yes is given already starts now: `inbox.py run`); a point waiting on someone else gets a nudge written as a
   DRAFT for the person, never sent, which then stands in Do as a ready draft;
   a row an agent tab asks about is answered in the tab with the tab's own
   answer.

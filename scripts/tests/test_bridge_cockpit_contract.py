@@ -184,6 +184,13 @@ def s_start(w: World) -> None:
     w.act("collect_context", key="task:filed-task")
 
 
+def s_run_now(w: World) -> None:
+    # Do it on an item whose yes is given: the runner's pass now (round 3 of the four answers)
+    row = w.app.collector.resolve(f"inbox:{YES_ID}")["row"]
+    row["inbox_state"], row["has_action"] = "approved", True
+    w.act("do_it", keys=[f"inbox:{YES_ID}"], yes=True)
+
+
 def s_launch_model(w: World) -> None:
     w.act("start_agent", keys=["task:other-task"], model="haiku", effort="xhigh")
 
@@ -451,6 +458,7 @@ SCENARIOS = {
                                   "inbox.list", "inbox.close"}),
     "caps": Scenario(s_caps, {"workplace.caps"}),
     "start": Scenario(s_start, {"inbox.approve", "workplace.launch", "task.note", "inbox.note"}),
+    "run_now": Scenario(s_run_now, {"inbox.run"}),
     "launch_model": Scenario(s_launch_model, {"workplace.launch"}, config=EFFORT_CFG),
     "team": Scenario(s_team, {"workplace.launch"}),
     "resume": Scenario(s_resume, {"workplace.launch"}),

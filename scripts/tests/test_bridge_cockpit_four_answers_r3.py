@@ -245,3 +245,18 @@ def test_a_waiting_row_carries_its_waiting_days_to_the_cockpit():
     built = bv.build(result, {"id": "m", "sections": [{"kind": "tasks"}], "view": {"style": "triage"}})
     row = next(r for b in built["buckets"] for r in b["items"] if r.get("task") == "logbook")
     assert row["waiting_days"] == 56
+
+
+# ---------------------------------------------------------------- Do it on an approved item: now
+
+def test_do_it_on_an_approved_item_runs_it_now(w):
+    # round 3: after Do it an inbox point stood in I'll do without Do it, while its bucket said "Do it: it starts now
+    # instead of later" and the briefing offered "88 do"
+    from test_bridge_cockpit import I
+    row = w.app.collector.resolve(f"inbox:{YES_ID}")["row"]
+    row["inbox_state"], row["has_action"] = "approved", True
+    w.runner.calls.clear()
+    res = w.act("do_it", keys=[f"inbox:{YES_ID}"], yes=True)
+    assert res["ok"]
+    assert I(w, "run") in writes(w), writes(w)
+    assert not any("approve" in c for c in writes(w))

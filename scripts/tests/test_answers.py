@@ -183,6 +183,11 @@ def test_do_it_on_an_inbox_item_is_its_yes_and_the_run():
     assert e["cli"] == ["inbox.py approve i1", "inbox.py run"] and e["then"] == "delegate"
 
 
+def test_do_it_on_an_approved_item_starts_it_now():
+    e = ans.effect("do", {"inbox_id": "i1", "inbox_state": "approved", "has_action": True})
+    assert e["cli"] == ["inbox.py run"] and e["cockpit"]["verb"] == "do_it" and e["then"] == "delegate"
+
+
 def test_do_it_on_an_only_you_item_prepares_it_and_gives_no_yes():
     # round 3: "5 mach" on an only-you item approved it (inbox.py approve), the cockpit's Do it gave no yes and
     # started an agent to prepare it: one word, two acts

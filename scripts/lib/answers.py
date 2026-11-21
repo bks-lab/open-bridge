@@ -313,6 +313,10 @@ def effect(answer: str, row: dict, until: str | None = None, today: str | None =
             out["ready"] = "do"
             out["running"] = True
             return be("do_it", "delegate", note=NUDGE_NOTE)
+        if item and row.get("inbox_state") == "approved":
+            # the yes is given: Do it starts it now instead of on the next pass (round 3 of the four answers)
+            out["running"] = True
+            return be("do_it", "delegate", ["inbox.py run"] if row.get("has_action") else [], yes=True)
         if item and row.get("gate") == "only-you":
             # only the person does its last step (send, publish, pay): no yes, the Bridge prepares it as the cockpit
             # does (round 3: "5 mach" approved an only-you item the page's Do it left open)

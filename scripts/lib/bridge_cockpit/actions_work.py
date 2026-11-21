@@ -146,6 +146,11 @@ class WorkVerbs:
         whose yes nothing would run (no action of their own, no tab at work on them)."""
         entries = self.entries(keys)
         rows = [e["row"] for e in entries]
+        if yes and not note and rows and all(r.get("inbox_state") == "approved" for r in rows):
+            # Do it in I'll do on an item whose yes is given: it starts now instead of on the next pass (round 3 of the
+            # four answers: the bucket promised it, the card had no Do it)
+            self.run_now(ctx, entries, target)
+            return
         self.refuse_approved(rows)
         if note:
             # a sentence of the person's is an order for an agent, never the item's own canned action
@@ -170,6 +175,24 @@ class WorkVerbs:
             self.launch(ctx, rest, "go", target or self.app.cfg.target)
         if not approve and not rest and not ctx.failed:
             ctx.note(self.tx["nothing_to_do"])
+
+    def run_now(self, ctx: Ctx, entries: list[dict], target: str | None) -> None:
+        """Approved items started now: one with an action of its own by the runner's pass (inbox.py run, as the
+        briefing runs a yes), any other by an agent, unless a tab already works on it"""
+        rows = [e["row"] for e in entries]
+        working = {e["row"]["key"] for e in entries if e.get("tab") and m.is_live(e["tab"])}
+        if any(r.get("has_action") for r in rows):
+            run = ctx.call("inbox.run", "run", self.inbox("run"), CLOSE_TIMEOUT)
+            if not run.ok:
+                ctx.note(self.tx["later_failed"].format(err=m.short(run.err, 100)), bad=True)
+                return
+        rest = [r for r in rows if not r.get("has_action") and r["key"] not in working and m.launch_item(r) is not None]
+        if rest:
+            self.launch(ctx, rest, "go", target or self.app.cfg.target)
+        if not ctx.failed:
+            ctx.note(self.tx["run_now"].format(title=m.short(rows[0]["title"], 60)))
+        ctx.delta()
+        self.app.collector.request("both")
 
     def v_advise(self, ctx: Ctx, keys: list[str], note: str | None = None) -> None:
         if note:

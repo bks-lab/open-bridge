@@ -390,7 +390,8 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
       add('do', { kind: 'reply', verb: b.verb, args: b.args }, b.label)
     }
     if (!out.length && jump) add('do', { kind: 'reply', verb: jump.verb, args: jump.args }, jump.label)
-  } else if (key && row.inbox_state !== 'approved') {
+  } else if (key && (row.inbox_state !== 'approved' || (!row.tab?.live && !x.running))) {
+    // an item whose yes is given takes Do it too in I'll do: it starts now instead of on the next pass (round 3)
     if (bucket === 'waiting') {
       const who = waitsOn(x)
       const blocker = blockerOf(row)
