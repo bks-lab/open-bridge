@@ -323,13 +323,15 @@ test('a number typed with the buckets on names the printed briefing\'s row', () 
 
 test('Next is a sentence that fits the bucket, a stream is named a stream, Obsolete asks with its own words', () => {
   const s = state()
-  // an inbox card's generic one-word step ("entscheiden", "dein Ja geben") gives way to the bucket's sentence
-  const q = ask('20261009-0900-q1', { card: { next: { what: 'entscheiden' } } })
-  assert.equal(logic.nextSentence(row(q), 'do', s, 'de'), text.TABLES.de.flow.buckets.next.do)
-  const d = ask('20261009-0901-q2', { bucket: 'delegate', card: { next: { what: 'dein Ja geben' } } })
-  assert.equal(logic.nextSentence(row(d), 'delegate', s, 'de'), text.TABLES.de.flow.buckets.next.delegate)
-  // a task's own step stays, however short
-  assert.equal(logic.nextSentence(row(task('t', { card: { next: { what: 'Merge it' } } })), 'plan', s, 'de'), 'Merge it')
+  // round 1 of the four answers: the sentence says what Do it does to this point, never a generic "the Bridge takes
+  // the next step": an inbox card gets its yes, named by its title
+  const de = text.TABLES.de.flow.buckets
+  const q = ask('20261009-0900-q1', { title: 'Den Strompreis prüfen', card: { next: { what: 'entscheiden' } } })
+  assert.equal(logic.nextSentence(row(q), 'do', s, 'de'), de.nextYes('Den Strompreis prüfen'))
+  // a task: an agent on its own step, however short
+  assert.equal(logic.nextSentence(row(task('t', { card: { next: { what: 'Merge it' } } })), 'plan', s, 'de'), de.nextStep('Merge it'))
+  // a task without a step says so, and what Do it does then
+  assert.equal(logic.nextSentence(row(task('bare')), 'plan', s, 'de'), de.nextNoStep)
   const river = task('river', { stream: true, work_kind: 'stream', bucket: 'plan' })
   assert.equal(logic.pointKindWord(row(river), 'de'), 'Stream')
   assert.doesNotMatch(logic.nextSentence(row(river), 'plan', s, 'de'), /Parken/)

@@ -226,10 +226,10 @@ test('More: with you, the Bridge or a name; a task\'s step is handed over, anyth
 
 test('the card: Next, the four answers, the briefing number with the answer words, the resting mark, More', async () => {
   const { c, calls } = ctl()
-  const t = task('prompt', { title: 'Fetch the prompt', bucket: 'plan', brief_nr: 3, resting: 12, card: { next: { what: 'I draft a note that asks for the prompt.' } } })
+  const t = task('prompt', { title: 'Fetch the prompt', bucket: 'plan', brief_nr: 3, resting: 12, card: { next: { what: 'Draft a note that asks for the prompt' } } })
   const s = state({ work: [t] })
   const el = mount(html`<${BucketCard} x=${row(t)} bucket="plan" s=${s} c=${c} />`)
-  assert.equal(el.$('.fb-next p').text(), 'I draft a note that asks for the prompt.')
+  assert.equal(el.$('.fb-next p').text(), en.nextStep('Draft a note that asks for the prompt'))
   assert.deepEqual(el.$$('.fb-answers .fb-answer').map(b => b.text()), ['Do it', 'Later ▾', 'Done', 'Obsolete'])
   assert.ok(el.$('.fb-answer-do').hasClass('btn-primary'))
   assert.match(el.$('.fb-nr').text(), /no\. 3/)

@@ -282,9 +282,13 @@ export function nextSentence(x, bucket, s, lang = 'en') {
   if (!a.length) return f.nextNone
   if (!a.some(z => z.meaning === 'do')) return x?.row?.tab?.live || x?.running ? f.nextWorking : f.nextNone
   if (bucket === 'waiting') return f.nextWaiting(who ?? f.someone)
+  // what Do it does to this point, said concretely (round 1 of the four answers: 101 of 121 cards said only "the
+  // Bridge takes the next step"): an inbox item gets its yes, a task an agent on its step, or on the task as a whole
   const step = x?.row ? pointStep(x.row, s) : null
-  if (own(step?.what)) return short(own(step.what), 240)
-  if (own(x?.row?.next?.what)) return short(own(x.row.next.what), 240)
+  const said = own(step?.what) ?? own(x?.row?.next?.what)
+  if (x?.row?.inbox_id) return said ? short(said, 240) : f.nextYes(short(pointName(x.row), 120))
+  if (said) return f.nextStep(short(said.replace(/[.!]+$/, ''), 200))
+  if (x?.row?.task) return f.nextNoStep
   return f.next[bucket] ?? ''
 }
 
