@@ -718,3 +718,14 @@ def test_the_return_channel_gets_the_same_questions_the_page_shows(world):
     assert sorted(now) == ["surface:13", "surface:7"]
     for ref, ask in now.items():
         assert ask == ask_of(world, ref)
+
+
+def test_a_question_that_asks_which_way_is_no_yes_or_no():
+    # round 1 (tabs): "... als Hotfix 2.4.1 oder mit dem regulären Release am Donnerstag. Welchen Weg nimmst du, und soll
+    # die Antwort an Jordan erst danach raus?" offered Ja as the strong button, which answers neither way
+    for text in ("Tonight as hotfix 2.4.1 or with the regular release on Thursday. Which way do you take?",
+                 "Heute Abend als Hotfix oder am Donnerstag. Welchen Weg nimmst du, und soll die Antwort erst danach raus?",
+                 "Shall I use the hotfix or the release?", "Was soll in die Notiz?"):
+        assert asks.question_of(f"⏺ {text}\n", "waiting", plain)["yes_no"] is False, text
+    for text in ("Shall I try again?", "Soll ich den Kontakt noch einmal anlegen?"):
+        assert asks.question_of(f"⏺ {text}\n", "waiting", plain)["yes_no"] is True, text

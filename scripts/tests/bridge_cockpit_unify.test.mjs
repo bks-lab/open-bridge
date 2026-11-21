@@ -99,7 +99,7 @@ test('one act, one label: Let the AI do it says Do it in bucket mode, Open a tab
 
 // ---------------------------------------------------------------- Due
 
-test('Due by buckets: every row its bucket word, the four answers, Do it strong, the rest under one More', async () => {
+test('Due by buckets: every row its bucket word, the four answers side by side, Do it strong', async () => {
   const c = recorder()
   const item = ask('20261009-0900-q1', { brief_nr: 4 })
   const s = state({ now: [item], work: [task('bridges', { bucket: 'delegate' })] })
@@ -117,17 +117,14 @@ test('Due by buckets: every row its bucket word, the four answers, Do it strong,
   const bs = acts.$$('.fb-bar button')
   assert.equal(bs[0].text().trim(), 'Do it')
   assert.ok(bs[0].hasClass('btn-primary'))
-  assert.deepEqual(buttonsOf(acts).filter(x => x !== '☆' && x !== '★'), ['Do it', en.flow.buckets.more])
+  assert.deepEqual(buttonsOf(acts).filter(x => x !== '☆' && x !== '★'), ['Do it', 'Later ▾', 'Done', en.flow.buckets.obsolete])
   // none of the old doors and their words
   assert.doesNotMatch(el.text(), /Let AI do it|Close ▾|AI machen lassen|Abhaken/)
   assert.doesNotMatch(el.$$('.sec-title').map(x => x.text()).join(' '), new RegExp(en.section.now))
   bs[0].click()
   await rounds()
   assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: [item.key], yes: true, was: 'open' }])
-  // More holds the rest of the four answers, the same acts as the card's
-  acts.button(en.flow.buckets.more).click()
-  await rounds()
-  assert.deepEqual(buttonsOf(acts).filter(x => !['☆', '★', en.flow.buckets.more].includes(x)), ['Do it', 'Later ▾', 'Done', en.flow.buckets.obsolete])
+  // the rest of the four answers, the same acts as the card's
   acts.button('Later ▾').click()
   await rounds()
   acts.$('.fb-later-menu [data-choice="tomorrow"]').click()
@@ -142,8 +139,6 @@ test('Due by buckets: Later opens the same menu as the card, a day of it is the 
   const c = recorder()
   const s = state({ work: [task('plan-me')] })
   const el = mount(html`<${views.day.DayColumn} s=${s} c=${c} byKey=${logic.indexRows(s.model)} />`)
-  await rounds()
-  el.$('.row-acts .fb-bar-more').click()
   await rounds()
   el.$('.row-acts .fb-answer-later').click()
   await rounds()

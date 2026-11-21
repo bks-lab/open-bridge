@@ -404,7 +404,7 @@ function TabMini({ tab, s, c }) {
       ${tab.long ? html`<span class="chip chip-warn-outline">${t.tabLong}</span>` : null}
     </span>
     <span class="tabmini-acts">
-      ${flowBucketsOn(s) && tabPoint(tab) ? html`<${BucketBar} x=${tabPoint(tab)} s=${s} c=${c} />`
+      ${flowBucketsOn(s) && tabPoint(tab, s) ? html`<${BucketBar} x=${tabPoint(tab, s)} s=${s} c=${c} />`
         : tab.state === 'needs-you' && canTab(s, 'key') ? html`
         <${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('tab_yes', { tab_ref: tab.ref })}>${t.btnYes}<//>
         <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_no', { tab_ref: tab.ref })}>${t.btnNo}<//>` : null}

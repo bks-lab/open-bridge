@@ -296,17 +296,28 @@ test('the left column: who is on the move, the four buckets with what each means
   assert.doesNotMatch(el.text(), /Park or drop|Parken oder streichen/)
 })
 
-test('a row of a list: the bucket chip, Do it strong, Later, Done and Obsolete under one More', async () => {
+test('a row of a list: the bucket chip and the same four answers side by side, no More of its own', async () => {
+  // round 1 of the four answers: Dran, Nach Quelle, Start and Nach Jev hid Later, Done and Obsolete behind a More
   const t = task('t')
   const el = mount(html`<${BucketBar} x=${row(t)} s=${state({ work: [t] })} c=${recorder()} />`)
-  assert.equal(el.$$('.fb-bar > .fb-answer').map(b => b.text()).join(), 'Do it')
-  el.$('.fb-bar-more').click()
-  await rounds()
-  assert.deepEqual(el.$$('.fb-bar-rest .fb-answer').map(b => b.text()), ['Later ▾', 'Done', 'Obsolete'])
+  assert.deepEqual(el.$$('.fb-bar .fb-answer').map(b => b.text()), ['Do it', 'Later ▾', 'Done', 'Obsolete'])
+  assert.equal(el.$('.fb-bar-more'), null)
 })
 
 test('Jev\'s squares and the task board say the four buckets, no drop word', () => {
   const w = logic.bucketWords(state(), 'de')
   assert.deepEqual(w.quadrant, { now: 'Tun', plan: 'Planen', hand: 'Mache ich', drop: 'Merkliste' })
   assert.deepEqual(w.columns, { bridge: 'Mache ich', waiting: 'Wartet auf andere' })
+})
+
+test('a tab that asks about an inbox item offers Later, Done and Obsolete in the tabs column too, as on its card', () => {
+  // round 1 (tabs): the column and Chat offered only the tab's own answer; Work through offered all four
+  const item = ask('20261009-0900-c7ae', { title: 'Robin again' })
+  const tab = { ref: 'surface:7', name: 'Robin again · c7ae', state: 'waiting', item: item.inbox_id, live: true,
+    ask: { text: 'Shall I contact Robin again?', yes_no: true } }
+  const s = state({ now: [item], tabs: [tab] })
+  const p = logic.tabPoint(tab, s)
+  assert.equal(p.row?.key, item.key)
+  const got = logic.bucketAnswers(p, 'do', s, 'en').map(a => a.meaning)
+  assert.ok(got.includes('later') && got.includes('done') && got.includes('obsolete'), got.join())
 })

@@ -111,12 +111,13 @@ test('Obsolete on a stream ends it, with the same note', () => {
     args: { keys: [st.key], outcome: 'not_doing', text: en.obsoleteText, stream: true } })
 })
 
-test('a tab\'s question keeps its own answers: Obsolete only where the tab asks about an inbox item', () => {
+test('a tab\'s question keeps its own answers first: Obsolete last where the tab asks about a point', () => {
   const s = state({ tabs: [asking] })
   const alone = logic.bucketAnswers({ group: 'asks', id: 'tab:surface:9', kind: 'tab', tab: asking, row: null }, 'do', s, 'en')
   assert.ok(alone.every(x => x.meaning !== 'obsolete'))
+  // round 1 of the four answers: a tab about a task takes the four too, Obsolete closes that task as not done
   const onTask = logic.bucketAnswers({ group: 'asks', id: 'tab:surface:9', kind: 'tab', tab: asking, row: task('t') }, 'do', s, 'en')
-  assert.ok(onTask.every(x => x.meaning !== 'obsolete'))
+  assert.equal(onTask.at(-1).meaning, 'obsolete')
   const item = ask('20261009-0900-q1')
   const onItem = logic.bucketAnswers({ group: 'asks', id: 'tab:surface:9', kind: 'tab', tab: asking, row: item }, 'do', s, 'en')
   assert.equal(onItem.at(-1).meaning, 'obsolete')
@@ -158,17 +159,14 @@ test('the card: Obsolete is the last, quiet button; a click asks in place, Yes s
   assert.doesNotMatch(el.text(), /\b(enter|esc|shortcut)\b/i)
 })
 
-test('the bar of a list row: Obsolete stands last under More, never the strong one', async () => {
+test('the bar of a list row: Obsolete stands last, never the strong one', async () => {
   const c = recorder()
   const t = task('old-plan', { bucket: 'delegate' })
   const s = state({ work: [t] })
   const el = mount(html`<${BucketBar} x=${logic.rowPoint(t, s)} s=${s} c=${c} />`)
   await rounds()
   assert.ok(!el.$('.btn-primary').hasClass('fb-answer-obsolete'))
-  assert.equal(el.$('.fb-answer-obsolete'), null, 'under More until it opens')
-  el.$('.fb-bar-more').click()
-  await rounds()
-  const rest = el.$$('.fb-bar-rest button')
+  const rest = el.$$('.fb-bar button')
   assert.ok(rest.at(-1).hasClass('fb-answer-obsolete'))
   rest.at(-1).click()
   await rounds()

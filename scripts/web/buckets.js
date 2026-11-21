@@ -130,8 +130,8 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
   }
   const order = new Map(all.map((x, i) => [x.id, i]))
   const nr = x => (Number.isInteger(x.row?.brief_nr) ? x.row.brief_nr : Infinity)
-  // a tab that asks holds an agent until it is answered: it comes first
-  const tabFirst = x => (x.kind === 'tab' ? 0 : 1)
+  // a tab that asks holds an agent until it is answered: it comes first, whatever kind of card shows it
+  const tabFirst = x => (x.kind === 'tab' || (x.tab && ASKING.has(x.tab.state)) ? 0 : 1)
   const buckets = bucketDefs(s, lang).map(b => ({ ...b,
     points: all.filter(x => x.bucket === b.id).sort((a, z) => tabFirst(a) - tabFirst(z) || nr(a) - nr(z) || order.get(a.id) - order.get(z.id)) }))
   // a bucket the profile hides (left out of view.buckets) hides nothing here: its points join the first bucket
@@ -309,9 +309,10 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
   const stream = isStream(row)
   const tab = x?.tab ?? null
   const isTabPoint = !!tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')
-  // on a tab, Later, Done and Obsolete act only on the inbox item it asks about: on a task or a stream behind it they
-  // would put off or close the whole task, not the question
-  const own = !isTabPoint || !!row?.inbox_id
+  // a tab that asks takes the four like every card (round 1 of the four answers): its own answers in the place of Do
+  // it, Later, Done and Obsolete on the point it asks about (its inbox item, or its task); a tab without a row has
+  // only its own
+  const own = !isTabPoint || !!row
   // ---- Do it
   if (isTabPoint) {
     // the tab's own answers win: what it asks is answered in the tab, never by a new start. Where it takes words
@@ -458,10 +459,14 @@ export function rowPoint(row, s) {
   return { group: 'row', id: row?.key ?? null, kind: 'row', row }
 }
 
-/** An agent tab of the tabs column as a point: one that asks stands in Do with its own answers; one that works or
- *  is the control session is no decision (null) */
-export function tabPoint(tab) {
-  return tab && !tab.is_control && ASKING.has(tab.state) ? { group: 'asks', id: `tab:${tab.ref}`, kind: 'tab', tab, row: null } : null
+/** An agent tab of the tabs column as a point: one that asks stands in Do with its own answers, with the row of the
+ *  inbox item it asks about (Later, Done and Obsolete act on that item, as on its card in Work through: round 1 of
+ *  the four answers had only the tab's own answer in the column and in Chat); one that works or is the control
+ *  session is no decision (null) */
+export function tabPoint(tab, s = null) {
+  if (!tab || tab.is_control || !ASKING.has(tab.state)) return null
+  const row = tab.item ? (s?.model?.sections ?? []).flatMap(x => x.rows ?? []).find(r => r.inbox_id === tab.item) ?? null : null
+  return { group: 'asks', id: `tab:${tab.ref}`, kind: 'tab', tab, row }
 }
 
 /** The bucket a point stands in on a list: its bucket (pointBucket), a backlog task the briefing holds in none (it

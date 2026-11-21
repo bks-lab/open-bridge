@@ -126,9 +126,11 @@ test('do: a tab\'s own answers win, its ready answer first and strong (tab_accep
   assert.match(a[0].label, /yes, try the contact again/)
   // a tab without a row has nothing to put off or close
   assert.ok(a.every(x => x.meaning === 'do'))
-  // nor one that works on a task: Later would put off the whole task, not the question
+  // one that works on a task takes the four like every card (round 1 of the four answers): its own answers in the
+  // place of Do it, then Later, Done and Obsolete of the task
   const onTask = answersOf({ group: 'asks', id: 'tab:surface:9', kind: 'tab', tab: asking, row: task('applications') }, 'do', s)
-  assert.ok(onTask.every(x => x.meaning === 'do'))
+  assert.equal(onTask[0].run.verb, 'tab_accept')
+  assert.deepEqual(onTask.filter(x => x.meaning !== 'do').map(x => x.meaning), ['later', 'done', 'obsolete'])
 })
 
 test('delegate, plan, waiting: Do it starts, a day picked, a nudge that only drafts, the watch list parks', () => {
