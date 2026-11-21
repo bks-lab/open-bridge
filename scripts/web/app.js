@@ -777,6 +777,8 @@ async function act(verb, args = {}, opts = {}) {
       else if (res.status === 401) failNote(res)
       else pushNote(actionFailNote(res, T()))
       if (res.error) refusals.set(args, replyRefusal(res))
+      // another browser answered the point meanwhile: the page fetches it as it is now, so it never answers it twice
+      if (res.error?.code === 'point_moved') api.state().then(st => (st.ok ? applyState(st.data) : null))
       return null
     }
     const r = res.data

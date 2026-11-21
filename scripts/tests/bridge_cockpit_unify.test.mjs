@@ -124,14 +124,14 @@ test('Due by buckets: every row its bucket word, the bucket\'s answers, the firs
   assert.doesNotMatch(el.$$('.sec-title').map(x => x.text()).join(' '), new RegExp(en.section.now))
   bs[0].click()
   await rounds()
-  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: [item.key], yes: true }])
+  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: [item.key], yes: true, was: 'open' }])
   // More holds the rest of the bucket's answers, the same acts as the card's
   acts.button(en.flow.buckets.more).click()
   await rounds()
   assert.deepEqual(buttonsOf(acts).filter(x => !['☆', '★', en.flow.buckets.more].includes(x)), ['Ja', 'Später', 'Streichen', en.flow.buckets.obsolete])
   acts.button('Später').click()
   await rounds()
-  assert.deepEqual(c.calls.filter(x => x[0] === 'act').at(-1), ['act', 'later', { key: item.key, until: TOMORROW }])
+  assert.deepEqual(c.calls.filter(x => x[0] === 'act').at(-1), ['act', 'later', { key: item.key, until: TOMORROW, was: 'open' }])
   assert.equal(rows[1].$('.fb-chip').text(), 'Mache ich')
   assert.equal(rows[1].$('.row-acts .btn-primary').text().trim(), 'Los')
   assert.doesNotMatch(el.text(), KEYS)
@@ -147,7 +147,7 @@ test('Due by buckets: a day first where the answer needs one, the same day picke
   assert.ok(el.$('.fb-pick'), 'the day picker opens')
   el.$('.fb-pick').button(en.flow.buckets.pick.tomorrow).click()
   await rounds()
-  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'later', { key: 'task:plan-me', until: TOMORROW, plan: true }])
+  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'later', { key: 'task:plan-me', until: TOMORROW, plan: true, was: 'doing' }])
 })
 
 test('Due by buckets: a row whose tab asks offers the tab\'s own answers, never a bare yes for a choice', async () => {
@@ -270,5 +270,5 @@ test('By Jev by buckets: each row of the plan its bucket bar, no second set of w
   assert.equal(el.$$('.jev-pill').filter(p => /Tun|Mache/.test(p.text())).length, 0)
   el.$('.fb-bar .btn-primary').click()
   await rounds()
-  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: [t.key] }])
+  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: [t.key], was: 'doing' }])
 })

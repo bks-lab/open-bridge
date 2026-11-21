@@ -63,6 +63,28 @@ def merge_marks(slug: str) -> tuple[str, str]:
 class WorkVerbs:
     """A part of Actions (actions.py), which holds the registry and the helpers called here."""
 
+    def guard_was(self, keys: list, was: str) -> None:
+        """An answer reaches only the point as the page saw it (`was`): an inbox item that ended or was put off or
+        taken back since, or a task whose status moved (another browser parked or closed it), refuses the answer
+        before anything is written. A row of any other kind, or one the files cannot tell, is not compared."""
+        moved = ActionError(409, "point_moved", self.tx["point_moved"], None)
+        today = self.today().isoformat()
+        for key in keys:
+            if not isinstance(key, str):
+                continue
+            row = self.entry(key, "keys")["row"]
+            if row.get("inbox_id"):
+                facts = inbox_facts(self.app.root, str(row["inbox_id"]))
+                if facts is None:
+                    continue
+                now = "ended" if facts.get("ended") else "deferred" if (facts.get("deferred") or "") > today else "active"
+                if now != ("deferred" if was == "deferred" else "active"):
+                    raise moved
+            elif row.get("task"):
+                status = self.task_status(self.slug(row))
+                if status is None or (was in ("doing", "review", "backlog") and status != was):
+                    raise moved
+
     def refuse_approved(self, rows: list[dict]) -> None:
         """A yes already given runs on the next pass: no start verb goes at the same item a second time."""
         if any(row.get("inbox_state") == "approved" for row in rows):

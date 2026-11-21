@@ -3,7 +3,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { canMessage, duration, groupTabs, stateToken, canTab, noTabDriver, pastMerge, pastShown, pastText, screenLines, screenPoll, previewText, tabWords, railOn, SCREEN_FAST_MS, SCREEN_FAST_FOR_MS, SCREEN_POLL_MS, tabStateKey, termEcho, termKey, termParts, termPaste, termQueue } from '../logic.js'
+import { tabNoSend, duration, groupTabs, stateToken, canTab, noTabDriver, pastMerge, pastShown, pastText, screenLines, screenPoll, previewText, tabWords, railOn, SCREEN_FAST_MS, SCREEN_FAST_FOR_MS, SCREEN_POLL_MS, tabStateKey, termEcho, termKey, termParts, termPaste, termQueue } from '../logic.js'
 import { T } from '../text.js'
 import { SendBox } from './chat.js'
 import { TabControls } from './detail.js'
@@ -282,8 +282,8 @@ export function TabView({ s, c }) {
         canType=${canTab(s, 'keys')} c=${c} poke=${poke} past=${tab?.state !== 'shell'} />` : html`<div></div>`}
       <footer class="tabview-foot">
         ${tab ? html`<${TabReply} tab=${tab} s=${s} c=${c} bare />` : null}
-        ${!isControl && tab && !canMessage(tab) && (tab.state === 'needs-you' || tab.ask?.draft)
-          ? html`<p class="tabview-nosend muted small">${tab.state === 'needs-you' ? t.tabNoSendDialog : t.tabNoSendDraft}</p>`
+        ${tabNoSend(tab, isControl)
+          ? html`<p class="tabview-nosend muted small">${tabNoSend(tab, isControl) === 'dialog' ? t.tabNoSendDialog : t.tabNoSendDraft}</p>`
           : html`<${SendBox} id="tabview-input" label=${t.msgPlaceholder} value=${text} setValue=${setText} onSend=${send} busy=${busy}
           max=${isControl ? ASK_MAX : TAB_MSG_MAX} placeholder=${isControl ? t.askPlaceholder : t.tabViewPlaceholder} />`}
       </footer>

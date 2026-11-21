@@ -1253,6 +1253,12 @@ by its place among the bucket's options, whatever the profile calls it:
 | waiting | nudge · wait | nudge: `do_it` with the check-in's sentence that only drafts a message, never sends it. wait: a day picked, then `runs_on` until it, on whom it waits |
 | drop | park · keep | park: a task `task_park` (status backlog, the task stays in `work/tasks/`, as the briefing's park; undone by `task_unpark`), anything else out of sight for 30 days. keep: `task_keep` (a recommendation of the task check is dismissed; without one the task gets a dated note `Kept: stays open`, so its quiet days count from today) |
 
+Every answer names the state the page saw its point in (`was`: an inbox item's
+state, a task's status). When another browser answered the point meanwhile (it
+was put off, dropped, approved, parked), the server refuses the answer (409
+`point_moved`), writes nothing, and the page fetches the point as it is now: a
+second browser that slept never answers over the first one.
+
 **Obsolete** (de: **Veraltet**) is the fixed last answer of every point in
 every bucket, always at the same place: quiet (never the strong one; on the
 card at the right end of the answers, on a row's bar last under More) and not a

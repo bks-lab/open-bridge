@@ -180,7 +180,7 @@ test('the page by buckets: the buckets left with their counts, one card with Nex
   assert.equal(el.$$('.flow-aside').length, el.$$('.fb-more .flow-aside').length)
   buttons[0].click()
   await rounds()
-  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: [item.key], yes: true }])
+  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: [item.key], yes: true, was: 'open' }])
   el.$$('.fb-bucket')[2].click()
   assert.deepEqual(c.calls.at(-1), ['flowBucket', 'delegate'])
 })

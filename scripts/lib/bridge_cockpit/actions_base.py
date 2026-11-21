@@ -73,6 +73,13 @@ STATUS_TIMEOUT = 20
 SNAPSHOT_TIMEOUT = 180
 LIST_TIMEOUT = 20
 
+# the state a page saw a point in when it sent an answer (`was`): an inbox item's (inbox.py) or a task's status. The
+# server refuses the answer when the point moved on since (WorkVerbs.guard_was, 409 point_moved), so a second browser
+# that slept never answers over what another one answered (round 2 of the cockpit simulation, 21.11.2026)
+POINT_STATES = ("open", "approved", "waiting", "deferred", "doing", "review", "backlog")
+# the answers of the buckets that take it
+WAS_VERBS = ("do_it", "later", "settle", "shelve", "task_park", "task_keep", "runs_on")
+
 # verb -> {arg: (type, required)}
 SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # note: the person's sentence for this start; it goes on the item first (a live tab gets it typed in instead)
@@ -282,6 +289,8 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # the mode a board takes until the person switches it (settings), or "profile" to leave it to the profile
     "github_board_default": {"mode": ("board_default", True)},
 }
+for _verb in WAS_VERBS:
+    SPEC[_verb]["was"] = ("point_state", False)
 BOARD_MODES = ("off", "mine", "all")
 BOARD_DEFAULTS = (*BOARD_MODES, "profile")
 ACCOUNT_STATUSES = ("active", "paused", "disabled")

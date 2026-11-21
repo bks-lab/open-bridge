@@ -154,7 +154,7 @@ test('the card: Obsolete is the last, quiet button; a click asks in place, Yes s
   await rounds()
   el.$('.fb-confirm-yes').click()
   await waitFor(() => c.calls.some(x => x[0] === 'act'), { what: 'the act after the yes' })
-  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'settle', { keys: [t.key], outcome: 'not_doing', text: en.obsoleteText }])
+  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'settle', { keys: [t.key], outcome: 'not_doing', text: en.obsoleteText, was: 'doing' }])
   assert.doesNotMatch(el.text(), /\b(enter|esc|shortcut)\b/i)
 })
 

@@ -161,6 +161,10 @@ const TAB_CHROME = /^[\u23f5\u23f8\u23f9✻✶✳✢✽✦※·*]|\?\s+for short
  *  words would be appended to it; the server refuses them, tab_draft) */
 export const canMessage = tab => !!tab?.live && tab.state !== 'needs-you' && !tab.ask?.draft
 
+/** Why no line to type into stands under a tab (the tab overlay): 'dialog' where it shows one, 'draft' where its input
+ *  line holds text, null where words may go, the control session always (it takes them through the relay) */
+export const tabNoSend = (tab, isControl) => (isControl || !tab ? null : tab.state === 'needs-you' ? 'dialog' : tab.ask?.draft ? 'draft' : null)
+
 /** A tab's words in one line, for every view that names them (Start, the tabs column, the drawer, the card): its
  *  question (askQuestion of what the server read off its screen), else its last line where that is no line of
  *  Claude Code's own, else '' */
@@ -300,6 +304,19 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
   const gone = obsoleteRun(row, own, f)
   if (gone) out.push({ id: `obsolete${out.length}`, meaning: 'obsolete', label: f.obsolete, run: gone, confirm: true, quiet: true })
   return out
+}
+
+// the answers that name the state the page saw (actions_base.py WAS_VERBS, POINT_STATES)
+const WAS_VERBS = new Set(['do_it', 'later', 'settle', 'shelve', 'task_park', 'task_keep', 'runs_on'])
+const POINT_STATES = new Set(['open', 'approved', 'waiting', 'deferred', 'doing', 'review', 'backlog'])
+
+/** An answer as it goes out: with the state the page saw its point in (`was`: an inbox item's state, a task's
+ *  status), so the server refuses it once another browser answered the point meanwhile (409 point_moved, round 2);
+ *  a verb that takes none, or a row without a state, goes as it is */
+export function withWas(go, row) {
+  if (!go || !WAS_VERBS.has(go.verb)) return go
+  const was = row?.inbox_id ? row.inbox_state : row?.task ? row.status : null
+  return POINT_STATES.has(was) ? { ...go, args: { ...go.args, was } } : go
 }
 
 /** What Obsolete sends, the fixed last answer of every point: the classic "Drop because out of date" as one settle

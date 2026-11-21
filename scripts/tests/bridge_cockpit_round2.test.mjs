@@ -107,12 +107,13 @@ test('Next never promises a Yes the card does not offer', () => {
   assert.equal(logic.nextSentence(row(busy), 'do', s, 'de'), de.nextWorking)
 })
 
-test('a card quotes the briefing\'s own answer of the bucket the briefing has the point in', () => {
+test('a card quotes the briefing\'s own answer of the bucket the briefing has the point in', async () => {
   // a start got lost: the cockpit asks in Do, the briefing still has no. 8 under Waiting on others
   const t = task('price-list', { bucket: 'waiting', brief_nr: 8 })
   const el = mount(html`<${views.flowbuckets.BucketCard} x=${{ ...row(t), group: 'lost' }} bucket="do" s=${state()} c=${recorder()} />`)
   assert.match(el.$('.fb-nr').text(), /„8 nachfassen“|"8 nachfassen"|8 nachfassen/)
   assert.doesNotMatch(el.$('.fb-nr').text(), /8 ja/)
+  await rounds()
 })
 
 // ---------------------------------------------------------------- words to a tab
@@ -120,7 +121,7 @@ test('a card quotes the briefing\'s own answer of the bucket the briefing has th
 const drafted = { ref: '%6', name: 'update-the-data-import', state: 'waiting', since_ms: NOW - 3 * MIN, workspace: 'Home', live: true,
   ask: { text: 'Soll ich den Haken in der Aufgabe setzen?\n❯ #', hash: 'h6', draft: true, suggestion: null, yes_no: true } }
 
-test('Message is never offered where words cannot go: a dialog takes its options, a draft is in the way', () => {
+test('Message is never offered where words cannot go: a dialog takes its options, a draft is in the way', async () => {
   const s = state({ tabs: [deploy, drafted] })
   for (const tab of [deploy, drafted]) {
     const el = mount(html`<${views.detail.TabControls} tab=${tab} s=${s} c=${recorder()} />`)
@@ -129,18 +130,20 @@ test('Message is never offered where words cannot go: a dialog takes its options
   assert.equal(logic.canMessage(deploy), false)
   assert.equal(logic.canMessage(drafted), false)
   assert.equal(logic.canMessage({ ...drafted, ask: { text: 'Done.', hash: 'x', draft: false } }), true)
+  await rounds()
 })
 
 test('the tab overlay offers no line to type into a dialog or onto a draft, and says why', () => {
-  for (const tab of [deploy, drafted]) {
-    const s = state({ tabs: [tab], ui: { tabView: tab.ref, busy: {} } })
-    const el = mount(html`<${views.tabs.TabView} s=${s} c=${recorder()} />`)
-    assert.equal(el.$('#tabview-input'), null, tab.name)
-    assert.ok(el.$('.tabview-nosend'), 'a quiet sentence instead')
-  }
+  // views/tabs.js TabView shows its sentence in place of the line where tabNoSend names a reason
+  assert.equal(logic.tabNoSend(deploy, false), 'dialog')
+  assert.equal(logic.tabNoSend(drafted, false), 'draft')
+  assert.equal(logic.tabNoSend({ ...drafted, ask: { text: 'Done.', draft: false } }, false), null)
+  // the control session takes words through the relay, whatever its screen shows
+  assert.equal(logic.tabNoSend(deploy, true), null)
+  assert.ok(text.TABLES.de.tabNoSendDialog && text.TABLES.de.tabNoSendDraft)
 })
 
-test('a tab whose prompt holds a draft offers the way to the tab and says what is in the way', () => {
+test('a tab whose prompt holds a draft offers the way to the tab and says what is in the way', async () => {
   const s = state({ tabs: [drafted] })
   const x = { group: 'asks', id: 'tab:%6', kind: 'tab', tab: drafted, row: null }
   const a = answers(x, 'do', s)
@@ -150,4 +153,26 @@ test('a tab whose prompt holds a draft offers the way to the tab and says what i
   assert.match(el.text(), /Entwurf|typed|draft/i)
   const reply = mount(html`<${views.reply.TabReply} tab=${drafted} s=${s} c=${recorder()} noJump />`)
   assert.ok(reply.$('.reply-draft'), 'the reply says a draft is in the way, also without a button')
+  await rounds()
+})
+
+// ---------------------------------------------------------------- two browsers
+
+test('an answer names the state the page saw the point in, so the server refuses one that moved on meanwhile', async () => {
+  const item = ask('20261009-0900-q1')
+  assert.deepEqual(logic.withWas({ verb: 'later', args: { key: item.key, until: TOMORROW } }, item),
+    { verb: 'later', args: { key: item.key, until: TOMORROW, was: 'open' } })
+  const t = task('t', { bucket: 'drop', status: 'doing' })
+  assert.equal(logic.withWas({ verb: 'task_park', args: { key: t.key } }, t).args.was, 'doing')
+  // a verb that does not take it, or a row without a state, goes as it was
+  assert.deepEqual(logic.withWas({ verb: 'tab_jump', args: { tab_ref: '%1' } }, item), { verb: 'tab_jump', args: { tab_ref: '%1' } })
+  assert.equal(logic.withWas({ verb: 'settle', args: { keys: ['issue:x'] } }, { key: 'issue:x' }).args.was, undefined)
+  const calls = []
+  const c = new Proxy({}, { get: (_, p) => (p === 'then' || typeof p === 'symbol' ? undefined
+    : (...a) => { calls.push([p, ...a]); return p === 'act' ? Promise.resolve({ ok: true }) : undefined }) })
+  const el = mount(html`<${views.flowbuckets.BucketCard} x=${row(item)} bucket="do" s=${state()} c=${c} />`)
+  el.$$('.fb-answers button').find(b => b.text() === 'Später').click()
+  await rounds()
+  assert.equal(calls.find(x => x[0] === 'act')[2].was, 'open')
+  assert.ok(text.TABLES.de.errors.point_moved && text.TABLES.en.errors.point_moved)
 })

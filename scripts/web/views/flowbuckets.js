@@ -18,7 +18,7 @@
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   answerMark, bucketAnswers, bucketDefs, bucketPoints, detailNeedsLoad, errorText, flowParts, focusIndex, formatDay, instructScope, nextSentence, openBucket, parseDate,
-  pickDays, pointArea, pointKindWord, pointName, replySend, runningOf, short, viewBucket,
+  pickDays, pointArea, pointKindWord, pointName, replySend, runningOf, short, viewBucket, withWas,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { WorkSwitch } from './day.js'
@@ -112,7 +112,7 @@ export function useBucketAnswer(x, bucket, s, c, onDone = null) {
       onDone?.()
       return
     }
-    const go = a.run.kind === 'pick' ? a.run.then(day) : a.run
+    const go = withWas(a.run.kind === 'pick' ? a.run.then(day) : a.run, row)
     const r = await c.act(go.verb, go.args)
     setPick(null)
     if (Array.isArray(r?.manual) && r.manual.length) { setNote(r.manual.join('\n')); return }
