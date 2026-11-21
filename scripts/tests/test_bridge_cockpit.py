@@ -1510,10 +1510,14 @@ def test_task_park_puts_a_task_in_the_backlog_as_the_briefing_does_and_the_undo_
     assert writes(world) == [K(world, "status", "demo-task", "backlog", "--note", "Parked: untouched for 52 days", "--json")]
     assert res["ok"] is True
     undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
-    assert undo == {"verb": "task_unpark", "args": {"slug": "demo-task", "as": "doing"}}
+    # round 2: the undo gives back what the park changed, its note and last_updated too, so the task keeps its quiet
+    # days and its place in Park or drop
+    assert undo == {"verb": "task_unpark", "args": {"slug": "demo-task", "as": "doing", "last_updated": "2026-10-08",
+                                                     "note": "Parked: untouched for 52 days"}}
     world.runner.calls.clear()
     world.act(undo["verb"], **undo["args"])
-    assert writes(world) == [K(world, "status", "demo-task", "doing", "--note", "Park taken back", "--json")]
+    assert writes(world) == [K(world, "status", "demo-task", "doing", "--back", "--last-updated", "2026-10-08",
+                               "--drop-note", "Parked: untouched for 52 days", "--json")]
 
 
 def test_task_park_refuses_a_stream_and_an_inbox_item(world):
@@ -8849,7 +8853,7 @@ def test_a_lone_surrogate_in_a_relay_file_never_breaks_the_state(world):
 def test_do_it_with_a_note_writes_it_on_the_task_first_and_the_agent_reads_it(world):
     world.runner.calls.clear()
     res = world.act("do_it", keys=["task:other-task"], note="Bitte nur die Tests, nichts mergen")
-    assert writes(world) == [K(world, "note", "other-task", "--", "Start note: Bitte nur die Tests, nichts mergen"),
+    assert writes(world) == [K(world, "note", "other-task", "--quiet", "--", "Start note: Bitte nur die Tests, nichts mergen"),
                              launch_argv(world, "other-task", "go", "area", "--start-note")]
     assert res["ok"] is True
 
@@ -8883,14 +8887,14 @@ def test_a_note_never_types_into_a_tab_that_asks_you_something(world):
 def test_every_start_verb_takes_a_note(world, verb, mode):
     world.runner.calls.clear()
     world.act(verb, keys=["task:other-task"], note="kurz halten")
-    assert writes(world) == [K(world, "note", "other-task", "--", "Start note: kurz halten"),
+    assert writes(world) == [K(world, "note", "other-task", "--quiet", "--", "Start note: kurz halten"),
                              launch_argv(world, "other-task", mode, "area", "--start-note")]
 
 
 def test_collect_context_takes_a_note_too(world):
     world.runner.calls.clear()
     world.act("collect_context", key="task:other-task", note="nur Mails")
-    assert writes(world) == [K(world, "note", "other-task", "--", "Start note: nur Mails"),
+    assert writes(world) == [K(world, "note", "other-task", "--quiet", "--", "Start note: nur Mails"),
                              launch_argv(world, "other-task", "context", "area", "--start-note")]
 
 

@@ -1034,6 +1034,37 @@ def test_a_closed_task_keeps_what_it_waited_on_and_a_reopen_gives_it_back(repo):
     assert "waited_on" not in back and "waited_since" not in back
 
 
+def test_a_quiet_note_is_no_activity_on_the_task(repo):
+    # Round 2: the cockpit's own bookkeeping of a start (a nudge that only drafts a message) reset the briefing's
+    # "waiting 53 days" to 0 and dropped its "nudge?": a quiet note is written, last_updated stays
+    p = repo / "work/tasks/alpha/STATUS.md"
+    import re as _re
+    before = _re.search(r"^last_updated: .*$", p.read_text(encoding="utf-8"), _re.M).group(0)
+    assert run(repo, "note", "alpha", "Start note: draft a nudge, never send it", "--quiet").returncode == 0
+    text = p.read_text(encoding="utf-8")
+    assert "Start note: draft a nudge" in text and before in text
+
+
+def test_status_back_takes_a_park_back_whole_note_and_date_alike(repo):
+    # Round 2 of the cockpit simulation: the undo of a park left last_updated on today and the notes "Parked: ..." and
+    # "Park taken back", so the task lost its quiet days and its place in Park or drop. --back gives back exactly
+    # what the park changed: the status, last_updated as it was, the park's own note gone
+    p = repo / "work/tasks/alpha/STATUS.md"
+    before = p.read_text(encoding="utf-8")
+    import re as _re
+    was_date = _re.search(r"^last_updated: (.+)$", before, _re.M)
+    r = run(repo, "status", "alpha", "backlog", "--note", "Parked: in Work through", "--json")
+    assert r.returncode == 0, r.stderr
+    r = run(repo, "status", "alpha", "doing", "--back", "--last-updated", was_date.group(1).strip().strip('"') if was_date else "",
+            "--drop-note", "Parked: in Work through", "--json")
+    assert r.returncode == 0, r.stderr
+    after = p.read_text(encoding="utf-8")
+    assert "Parked: in Work through" not in after and "Park taken back" not in after
+    if was_date:
+        assert f"last_updated: {was_date.group(1).strip()}" in after
+    assert "status: doing\n" in after
+
+
 def test_status_parks_a_task_in_the_backlog_and_takes_it_back(repo):
     # the briefing's "park" (control.md: park = status: backlog): the task stays in work/tasks, only its status moves,
     # with a dated note; the same command with the old status is the undo

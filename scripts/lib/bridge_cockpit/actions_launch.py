@@ -177,7 +177,8 @@ class LaunchSteps:
             for r in launched:
                 item = m.launch_item(r)
                 if r.get("task") == item and SLUG_RE.match(item):
-                    ctx.call("task.note", item, self.task_cmd("note", item, "--", line), SHORT_TIMEOUT)
+                    # bookkeeping of the start, no activity on the task: its quiet and waiting days go on counting
+                    ctx.call("task.note", item, self.task_cmd("note", item, "--quiet", "--", line), SHORT_TIMEOUT)
                 elif item and INBOX_ID_RE.match(item):
                     ctx.call("inbox.note", item, self.inbox("note", item, "--", line), SHORT_TIMEOUT)
         only_running = run.ok and any_skipped and not launched

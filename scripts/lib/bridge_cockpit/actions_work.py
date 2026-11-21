@@ -16,7 +16,7 @@ from . import activity as act
 from . import model as m
 from .details import INBOX_ID_RE, inbox_facts, split_front
 from .history import REOPEN_AS, item as history_item
-from .actions_base import (CLOSE_TIMEOUT, DECLINED_REASONS, MERGE_MAX, SHORT_TIMEOUT, SLUG_RE, TEAM_RE, ActionError, Ctx, bad_arg,
+from .actions_base import (CLOSE_TIMEOUT, DATE_RE, DECLINED_REASONS, MERGE_MAX, SHORT_TIMEOUT, SLUG_RE, TEAM_RE, ActionError, Ctx, bad_arg,
                            row_go)
 from .quick import MODELS
 from .text import TABLES
@@ -109,11 +109,12 @@ class WorkVerbs:
             else:
                 rows.append(e["row"])
         rows = [r for r in rows if m.launch_item(r) is not None] + self.file_all(ctx, rows)
-        started = [r for r in rows if self.write_note(ctx, r, f"Start note: {note}")]
+        # the start's own note is no activity on a task: a nudge that only drafts left the briefing's waiting days at 0
+        started = [r for r in rows if self.write_note(ctx, r, f"Start note: {note}", quiet=True)]
         if started:
             self.launch(ctx, started, mode, target, word=word, start_note=True)
 
-    def write_note(self, ctx: Ctx, row: dict, text: str) -> bool:
+    def write_note(self, ctx: Ctx, row: dict, text: str, quiet: bool = False) -> bool:
         """The person's sentence, or a decision with it, where the row lives: an inbox item's notes, a task's or a
         stream's notes, and for any other row (an issue, a deadline) a row in work/log.md, since it has no place of
         its own here and its source stays as it is."""
@@ -122,7 +123,7 @@ class WorkVerbs:
             run = ctx.call("inbox.note", item, self.inbox("note", item, "--", text), SHORT_TIMEOUT)
         elif row.get("task"):
             slug = self.slug(row)
-            run = ctx.call("task.note", slug, self.task_cmd("note", slug, "--", text), SHORT_TIMEOUT)
+            run = ctx.call("task.note", slug, self.task_cmd("note", slug, *(["--quiet"] if quiet else []), "--", text), SHORT_TIMEOUT)
         else:
             ref = str(row.get("ref") or "")
             # the repo of an issue, else the source the row came from (an application, a protocol)
@@ -671,6 +672,8 @@ class WorkVerbs:
             raise self.not_applicable("only a task is parked in the backlog; a stream runs on, an inbox item is put off", "key")
         slug = self.slug(row)
         before = self.task_status(slug) or "doing"
+        # what the undo gives back besides the status: last_updated as it was, so the task keeps its quiet days
+        was_date = str(self.task_fields(slug, ("last_updated",)).get("last_updated") or "")[:10]
         reason = " ".join((reason or "").split())[:200]
         note = "Parked" + (f": {reason}" if reason else "")
         run = ctx.call("task.status", slug, self.task_cmd("status", slug, "backlog", "--note", note, "--json"), SHORT_TIMEOUT)
@@ -679,15 +682,24 @@ class WorkVerbs:
             return
         ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task", "did": "parked",
                             "ident": slug, "undone_ms": None, "work_kind": "task",
-                            "undo": {"verb": "task_unpark", "args": {"slug": slug, "as": before if before in REOPEN_AS else "doing"}}})
+                            "undo": {"verb": "task_unpark", "args": {"slug": slug, "as": before if before in REOPEN_AS else "doing",
+                                                                      **({"last_updated": was_date} if DATE_RE.match(was_date) else {}),
+                                                                      "note": note}}})
         ctx.note(self.tx["task_parked"].format(title=m.short(row["title"], 60)), go=row_go(row))
         ctx.delta()
         self.app.collector.request("both")
 
-    def v_task_unpark(self, ctx: Ctx, slug: str, **kw) -> None:
-        """The undo of a park: the status it had before (task.py status), with a note"""
+    def v_task_unpark(self, ctx: Ctx, slug: str, last_updated: str | None = None, note: str | None = None, **kw) -> None:
+        """The undo of a park: what the park changed given back (task.py status --back): the status before,
+        last_updated as it was and the park's own note gone, so the task keeps its quiet days and its place in Park or
+        drop. An undo from before round 2 (no date, no note) keeps its old way: the status with a note"""
         status = kw.get("as") or "doing"
-        run = ctx.call("task.status", slug, self.task_cmd("status", slug, status, "--note", "Park taken back", "--json"), SHORT_TIMEOUT)
+        if last_updated or note:
+            argv = self.task_cmd("status", slug, status, "--back", *(["--last-updated", last_updated] if last_updated else []),
+                                 *(["--drop-note", note] if note else []), "--json")
+        else:
+            argv = self.task_cmd("status", slug, status, "--note", "Park taken back", "--json")
+        run = ctx.call("task.status", slug, argv, SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
             return

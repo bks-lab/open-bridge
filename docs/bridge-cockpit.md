@@ -1251,7 +1251,7 @@ by its place among the bucket's options, whatever the profile calls it:
 | plan | schedule · later | schedule: a day picked (tomorrow, Monday, in a week, in a month, another day), then `later` to it with `plan` (its note says "Planned for"). later: to the next briefing day |
 | delegate | go · not now | go: `do_it`, a start. not now: the point stays as it is, nothing is written (control.md: "start it, or leave it"); the walk moves on |
 | waiting | nudge · wait | nudge: `do_it` with the check-in's sentence that only drafts a message, never sends it. wait: a day picked, then `runs_on` until it, on whom it waits |
-| drop | park · keep | park: a task `task_park` (status backlog, the task stays in `work/tasks/`, as the briefing's park; undone by `task_unpark`), anything else out of sight for 30 days. keep: `task_keep` (a recommendation of the task check is dismissed; without one the task gets a dated note `Kept: stays open`, so its quiet days count from today) |
+| drop | park · keep | park: a task `task_park` (status backlog, the task stays in `work/tasks/`, as the briefing's park; undone by `task_unpark`, which gives back what the park changed: the status, `last_updated` and the park's note gone, `task.py status --back`), anything else out of sight for 30 days. keep: `task_keep` (a recommendation of the task check is dismissed; without one the task gets a dated note `Kept: stays open`, so its quiet days count from today) |
 
 Every answer names the state the page saw its point in (`was`: an inbox item's
 state, a task's status). When another browser answered the point meanwhile (it

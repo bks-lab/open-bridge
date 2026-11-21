@@ -104,7 +104,7 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # Park of Park or drop on a task, the briefing's park: status backlog, the task stays open (task.py status);
     # task_unpark is its undo, the status before
     "task_park": {"key": ("key", True), "reason": ("text", False), "by": ("by", False)},
-    "task_unpark": {"slug": ("slug", True), "as": ("restore_as", False)},
+    "task_unpark": {"slug": ("slug", True), "as": ("restore_as", False), "last_updated": ("day", False), "note": ("text", False)},
     "unhide": {"key": ("key", True)},
     "drop": {"key": ("key", True), "reason": ("drop_reason", False)},
     "inbox_unmute": {"id": ("inbox_id", True)},

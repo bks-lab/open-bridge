@@ -378,17 +378,43 @@ def close_task(root: Path, slug: str, *, reason: str | None = None, declined: bo
 OPEN_STATUSES = ("doing", "review", "backlog")
 
 
-def status_task(root: Path, slug: str, status: str, *, note: str | None = None, today: str | None = None) -> dict:
+def drop_last_note(text: str, note: str) -> str:
+    """The newest dated note line that says exactly `note` taken out (an undo of the step that wrote it); the text as
+    it is without one"""
+    note = " ".join((note or "").split())
+    lines = text.splitlines(keepends=True)
+    for i in range(len(lines) - 1, -1, -1):
+        m_ = re.match(r"^- \d{4}-\d{2}-\d{2}: (.*?)\r?\n?$", lines[i])
+        if m_ and " ".join(m_.group(1).split()) == note:
+            del lines[i]
+            break
+    return "".join(lines)
+
+
+def status_task(root: Path, slug: str, status: str, *, note: str | None = None, today: str | None = None,
+                back: bool = False, last_updated: str | None = None, drop_note: str | None = None) -> dict:
     """An open task's status moves, the task stays where it is: the briefing's "park" (status: backlog, control.md)
     and its undo (the status before). A closed task is task.py close and reopen, never this. A dated note when one is
-    given; last_updated today either way."""
+    given; last_updated today either way. With `back` it is the undo of such a step and gives back exactly what the
+    step changed: the status, last_updated as it was (`last_updated`) and the step's own note gone (`drop_note`), so a
+    task keeps its quiet days and its place in the briefing (round 2 of the cockpit simulation, 21.11.2026)."""
     if status not in OPEN_STATUSES:
         raise ValueError(f"status one of {', '.join(OPEN_STATUSES)} (closing is task.py close)")
+    if (last_updated or drop_note) and not back:
+        raise ValueError("--last-updated and --drop-note go with --back")
+    if last_updated:
+        dt.date.fromisoformat(last_updated)
     today = today or dt.date.today().isoformat()
     path = find_status(root, slug)
     text = path.read_bytes().decode("utf-8")
     was = _frontmatter_values(text, ("status",)).get("status")
-    text = set_fields(text, [("status", status, None), ("last_updated", today, None)])
+    if back:
+        text = set_fields(text, [("status", status, None), ("last_updated", last_updated or today, None)])
+        if drop_note:
+            text = drop_last_note(text, drop_note)
+        note = None
+    else:
+        text = set_fields(text, [("status", status, None), ("last_updated", today, None)])
     note = " ".join((note or "").split())
     if note:
         text = add_note(text, note, today)
@@ -1899,6 +1925,8 @@ def main(argv=None) -> int:
     nt = sub.add_parser("note", help="append a dated note to a task's notes section")
     nt.add_argument("slug")
     nt.add_argument("text")
+    nt.add_argument("--quiet", action="store_true",
+                    help="no activity on the task: last_updated stays (the cockpit's own note of a start)")
     cl = sub.add_parser("close", help="the 3-step close: fields, move to work/done/YYYY-MM/, board, log row")
     cl.add_argument("slug")
     cl.add_argument("--reason", default="")
@@ -1934,6 +1962,9 @@ def main(argv=None) -> int:
     stp.add_argument("slug")
     stp.add_argument("status", choices=OPEN_STATUSES)
     stp.add_argument("--note", default=None, help="a dated note with it")
+    stp.add_argument("--back", action="store_true", help="the undo of a status step: gives back what it changed")
+    stp.add_argument("--last-updated", default=None, help="with --back: YYYY-MM-DD, last_updated as it was before")
+    stp.add_argument("--drop-note", default=None, help="with --back: the step's own note, taken out again")
     stp.add_argument("--json", action="store_true")
     wt = sub.add_parser("wait", help="runs on: waits on a person or a run until a day, nobody asks before")
     wt.add_argument("slug")
@@ -2018,7 +2049,8 @@ def main(argv=None) -> int:
                 print(f"task: warning: {warning}", file=sys.stderr)
             return 0
         if args.cmd == "status":
-            out = status_task(root, args.slug, args.status, note=args.note)
+            out = status_task(root, args.slug, args.status, note=args.note, back=args.back, last_updated=args.last_updated,
+                              drop_note=args.drop_note)
             print(json.dumps(out, ensure_ascii=False) if args.json else f"{out['slug']} {out['was']} -> {out['status']}")
             return 0
         if args.cmd == "wait":
@@ -2076,6 +2108,10 @@ def main(argv=None) -> int:
         old = path.read_bytes().decode("utf-8")   # bytes: read_text would turn CRLF into LF
         new = (set_priority(old, args.value, today) if args.cmd == "priority"
                else add_note(old, args.text, today))
+        if args.cmd == "note" and getattr(args, "quiet", False):
+            # a quiet note keeps last_updated as it was: the briefing's quiet days and waiting days go on counting
+            was = _frontmatter_values(old, ("last_updated",)).get("last_updated")
+            new = set_fields(new, [("last_updated", was, None)]) if was else remove_fields(new, ("last_updated",))
     except (ValueError, OSError) as exc:
         print(f"task: {exc}", file=sys.stderr)
         return 1
