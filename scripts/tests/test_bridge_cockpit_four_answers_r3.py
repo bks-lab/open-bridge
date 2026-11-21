@@ -260,3 +260,17 @@ def test_do_it_on_an_approved_item_runs_it_now(w):
     assert res["ok"]
     assert I(w, "run") in writes(w), writes(w)
     assert not any("approve" in c for c in writes(w))
+
+
+# ---------------------------------------------------------------- one number, one card
+
+def test_a_row_kept_from_an_earlier_run_never_keeps_a_number_the_fresh_run_gave_away():
+    # round 3: after Do it twice, "47 do" named two cards: a row kept from the earlier run beside the fresh one
+    from lib.bridge_cockpit import model as m
+    from test_bridge_cockpit import view, row
+    base = view(is_full=True, buckets=[{"id": "plan", "title": "Plan", "rows": [{**row("gh#1", ["github"]), "brief_nr": 47},
+                                                                               {**row("gh#2", ["github"]), "brief_nr": 50}]}])
+    fresh = view(skipped=["github"], buckets=[{"id": "do", "title": "Do", "rows": [{**row("inbox-1", ["inbox"]), "brief_nr": 47}]}])
+    v = m.merge_view(base, fresh)
+    nr = {r["key"]: r.get("brief_nr") for b in v["buckets"] for r in b["rows"]}
+    assert nr == {"inbox-1": 47, "gh#1": None, "gh#2": 50}

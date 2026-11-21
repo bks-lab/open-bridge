@@ -1096,12 +1096,18 @@ def merge_view(base: dict, fresh: dict) -> dict:
     gone = set(fresh.get("skipped") or [])
     base_skipped = base.get("skipped") or []
     keys = {r["key"] for b in fresh["buckets"] for r in b["rows"]}
+    # a row kept from the earlier run keeps its briefing number only where the fresh run gave that number to none:
+    # two cards never say one number (round 3 of the four answers: "47 do" named two cards after a partial pass)
+    taken = {r.get("brief_nr") for b in fresh["buckets"] for r in b["rows"]} - {None}
+
+    def kept(r: dict) -> dict:
+        return {**r, "brief_nr": None} if r.get("brief_nr") in taken else r
     ids = list(dict.fromkeys([b["id"] for b in fresh["buckets"]] + [b["id"] for b in base.get("buckets", [])]))
     buckets = []
     for bid in ids:
         old = next((o for o in base.get("buckets", []) if o["id"] == bid), None)
         b = next((o for o in fresh["buckets"] if o["id"] == bid), None) or {**old, "rows": []}
-        extra = [r for r in (old["rows"] if old else []) if r.get("sources") and all(s in gone for s in r["sources"])
+        extra = [kept(r) for r in (old["rows"] if old else []) if r.get("sources") and all(s in gone for s in r["sources"])
                  and r["key"] not in keys]
         merged = {**b, "rows": list(b["rows"]) + extra}
         if merged["rows"]:
