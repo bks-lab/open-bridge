@@ -270,8 +270,10 @@ which agent renders it, and the cockpit's Work through sorts its points by the s
 When two sources carry the same thing, the row takes the more urgent bucket of
 the two, unless a section forces its own. Only ids that name their repository
 (`owner/repo#12`) are merged across sections; any other id (a command's `1`, an
-ADO number) stays apart per section. A section's `max:` still caps how many rows
-it contributes. A section can force its rows into one bucket (`bucket: delegate`),
+ADO number) stays apart per section. A view with buckets sorts every row of a
+section, also past its `max:` (that caps the section's own block in `sources` and
+the JSON), and `max_items` cuts what is printed, so the printed briefing and the
+cockpit put each row in the same bucket and count the same. A section can force its rows into one bucket (`bucket: delegate`),
 which wins over the derived bucket, or keep them out of the view (`bucket: none`).
 Advice that repeats a row (`blocked`, `waiting`, `due`) is folded into that row
 and stands alone only when no such row is shown.
@@ -325,8 +327,8 @@ style that numbers (`briefing_view.numbered`): `triage` every row of every bucke
 rows of each bucket it shows. The numbers run in the order of the buckets as the profile
 lists them, the order the cockpit shows them in (`brevity` and `plan` number nothing). The
 built view carries it on each row as `nr`, and "3 do" answers that row. The cockpit asks for every
-row (`collect --max-items 500`) and still gets the printed number: such a pass numbers by the
-profile's own style and `max_items` and leaves out what was settled in the cockpit, so a card
+row (`collect --max-items 500`) and still gets the printed number: both read the same rows, and
+such a pass numbers by the profile's own style and `max_items` and leaves out what was settled in the cockpit, so a card
 of Work through says the number the chat shows ([Buckets](bridge-cockpit.md#buckets)). The
 view also names every shown bucket with its title, an empty one too (`bucket_defs`), in the
 profile's order, titled in the profile's language by default (Tun, Planen, Mache ich, Wartet

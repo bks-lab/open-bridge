@@ -175,24 +175,37 @@ def test_a_cockpit_pass_numbers_as_the_printed_briefing_would():
 
 
 def test_a_cockpit_pass_numbers_as_the_printed_briefing_would_also_with_a_capped_section():
-    # round 1 of the simulation: the inbox section has `max: 3`; the printed briefing reads only its first three
-    # items, the cockpit's pass reads every one (briefing.py collect, `_whole`) and still gives each row the number the
-    # printed briefing gives it, and no number to a row the printed briefing does not show
+    # round 1 of the simulation: the inbox section has `max: 3`. A view with buckets reads every item of a section
+    # (its `all`), the printed run and the cockpit's pass alike, so both put each row in the same bucket and give it
+    # the same number; the view's own max_items cuts what is printed
     items = [item(f"i{n}", f"Ask {n}", urgency="later" if n % 2 else "today") for n in range(1, 8)]
     tasks = [{"id": f"t{n}", "title": f"Task {n}", "task": f"t{n}", "state": "doing", "next": {"what": f"step {n}"}}
              for n in range(1, 4)]
     cfg = [{"kind": "inbox", "max": 3}, {"kind": "tasks"}]
-    printed = bv.build(result(sec("inbox", "inbox", items[:3]), sec("tasks", "tasks", tasks)), profile({"style": "triage"}, cfg))
-    whole = result({**sec("inbox", "inbox", items), "printed_max": 3}, sec("tasks", "tasks", tasks))
-    cockpit = bv.build(whole, profile({"style": "triage", "max_items": 500}, cfg, _whole=True))
+    capped = {**sec("inbox", "inbox", items[:3]), "all": items, "total": len(items)}
+    printed = bv.build(result(capped, sec("tasks", "tasks", tasks)), profile({"style": "triage", "max_items": 6}, cfg))
+    whole = result(sec("inbox", "inbox", items), sec("tasks", "tasks", tasks))
+    cockpit = bv.build(whole, profile({"style": "triage", "max_items": 500}, cfg, _whole=True, _print_max=6))
     want = {r["title"]: r.get("nr") for b in printed["buckets"] for r in b["items"]}
     got = {r["title"]: r.get("nr") for b in cockpit["buckets"] for r in b["items"]}
-    assert len(got) == 10
+    assert len(got) == 10 and len(want) == 6
     assert {t: n for t, n in got.items() if n} == want
-    assert got["Ask 4"] is None and got["Ask 7"] is None
-    # and every row the printed briefing shows stands in the same bucket in both
+    # every bucket counts the same rows in both, and every row stands in the same bucket
+    total = lambda v: {b["id"]: b["total"] for b in v["buckets"]}
+    assert total(printed) == total(cockpit)
     bucket = lambda v: {r["title"]: b["id"] for b in v["buckets"] for r in b["items"]}
     assert {t: b for t, b in bucket(cockpit).items() if t in want} == bucket(printed)
+
+
+def test_numbers_are_unique_and_in_order_in_a_whole_pass():
+    # round 1 (words): `render --max-items 300` printed 17 numbers twice and Plan ran 10, 11, 8, 9
+    items = [item(f"2026100{n % 9 + 1}-0900-ask-{n}", f"Ask {n}", urgency=("now", "today", "later")[n % 3]) for n in range(30)]
+    tasks = [task(f"t{n}", {"what": f"step {n}"}) for n in range(10)]
+    cfg = [{"kind": "inbox", "max": 4}, {"kind": "tasks"}]
+    whole = result(sec("inbox", "inbox", items), sec("tasks", "tasks", tasks))
+    v = bv.build(whole, profile({"style": "triage", "max_items": 300}, cfg, _whole=True, _print_max=12))
+    nrs = [r["nr"] for b in v["buckets"] for r in b["items"] if r.get("nr")]
+    assert nrs == list(range(1, 13))
 
 
 def test_a_cockpit_pass_numbers_by_the_profiles_style_not_the_forced_one():
@@ -232,21 +245,29 @@ def test_a_quiet_task_is_named_by_its_title_and_the_advice_stands_beside_it():
                  profile(sections=[{"kind": "advise"}, {"kind": "tasks"}]))
     row = next(r for b in v["buckets"] for r in b["items"] if r.get("task") == "dash" or r["title"].startswith("Check the dashboard"))
     assert row["title"] == "Check the dashboard"
-    assert "untouched for 54 days" in " ".join(row["why"]) and "park?" in " ".join(row["why"])
+    assert "park?" not in " ".join(row["why"])
 
 
-def test_an_item_the_printed_briefing_shows_as_advice_carries_that_number_and_bucket_in_the_cockpit():
-    # Round 2: the printed inbox stops at its `max:`; an item past it stands there as the advice "waits on you since
-    # 18.06: Document the access review" (no. 4, Plan, "4 einplanen"). The cockpit reads every item: its card of that
-    # item said no number and stood in Do. It takes the advice's number and bucket, so "4 einplanen" names it
-    items = [item("20260617-0900-ask-1", "Ask 1"), item("20260618-0900-document-the-access-review", "Document the access review")]
-    advice = {"id": "advise:waiting:20260618-0900-document-the-access-review", "title": "waits on you since 18.06: Document the access review", "check": "waiting",
-              "urgency": "today"}
+def test_an_item_past_its_sections_max_is_read_itself_never_as_advice_in_another_bucket():
+    # Round 1 of the four answers: an inbox item past the section's `max:` stood as the advice "waits on you since
+    # 19.07: ..." under Plan, although it is urgent now and only you can do it (Do); which items fell past `max:`
+    # moved with every unrelated answer, so a point jumped from Do to Plan. A view with buckets reads every item:
+    # the advice folds into the item's own row, in the item's own bucket
+    items = [item("20260617-0900-ask-1", "Ask 1"), item("20260719-0900-document-the-backup-check", "Document the backup check",
+                                                       urgency="now", gate="only-you")]
+    advice = {"id": "advise:waiting:20260719-0900-document-the-backup-check", "check": "waiting", "urgency": "now",
+              "title": "waits on you since 19.07: Document the backup check"}
     cfg = [{"kind": "inbox", "max": 1}, {"kind": "advise"}]
-    printed = bv.build(result(sec("inbox", "inbox", items[:1]), sec("advise", "advise", [advice])), profile({"style": "triage"}, cfg))
-    nr = next(r["nr"] for b in printed["buckets"] for r in b["items"] if r["title"].startswith("waits on you"))
-    whole = result({**sec("inbox", "inbox", items), "printed_max": 1}, sec("advise", "advise", [advice]))
-    cockpit = bv.build(whole, profile({"style": "triage", "max_items": 500}, cfg, _whole=True))
-    row = next((b["id"], r) for b in cockpit["buckets"] for r in b["items"] if r.get("inbox_id") == "20260618-0900-document-the-access-review")
-    assert row[1].get("nr") == nr
-    assert row[0] == bucket_of(printed, advice["title"])
+    capped = {**sec("inbox", "inbox", items[:1]), "all": items}
+    v = bv.build(result(capped, sec("advise", "advise", [advice])), profile({"style": "triage"}, cfg))
+    titles = {r["title"]: b["id"] for b in v["buckets"] for r in b["items"]}
+    assert titles == {"Ask 1": "do", "Document the backup check": "do"}
+
+
+def test_advice_standing_alone_for_an_urgent_item_stands_in_do():
+    # the advice still stands alone where its item is in no section (muted there, or no inbox section): an item urgent
+    # now or today is yours today, as the item's own row would be
+    advice = {"id": "advise:waiting:20260719-0900-x", "check": "waiting", "urgency": "now", "title": "waits on you since 19.07: X"}
+    later = {"id": "advise:waiting:20260719-0900-y", "check": "waiting", "urgency": "later", "title": "waits on you since 19.07: Y"}
+    v = bv.build(result(sec("advise", "advise", [advice, later])), profile({"style": "triage"}, [{"kind": "advise"}]))
+    assert {r["title"]: b["id"] for b in v["buckets"] for r in b["items"]} == {advice["title"]: "do", later["title"]: "plan"}

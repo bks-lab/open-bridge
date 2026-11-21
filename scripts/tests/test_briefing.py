@@ -665,8 +665,8 @@ def test_max_caps_items_but_keeps_the_total(tmp_path):
     # a dashboard that pages itself (--max-items) keeps every row: a cut row would vanish from its page
     whole = bf.collect(root, {"id": "p", "_whole": True, "sections": [{"kind": "tasks", "max": 2}]}, ctx(root))["sections"][0]
     assert len(whole["items"]) == 3
-    # and keeps the cap of the printed run, so the view numbers the rows as that run does (briefing_view build)
-    assert whole["printed_max"] == 2 and "printed_max" not in sec
+    # and every section keeps all its items beside the cut ones: a view with buckets reads those (briefing_view)
+    assert len(sec["all"]) == 3 and "printed_max" not in whole
 
 
 def test_inbox_section_lists_open_items(tmp_path):

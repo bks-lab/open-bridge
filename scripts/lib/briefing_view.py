@@ -1171,8 +1171,11 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
         out["tend"].append({"kind": kind, "text": text, **facts})
 
     def items_of(s):
-        # The section's own `max:` still caps what it contributes.
-        return s.get("items") or []
+        # Every item of a section (its `all`), past its own `max:` too: the buckets sort every point, and the view's
+        # max_items cuts what is printed. Round 1 of the four answers: an item past `max:` stood as the advice
+        # "waits on you since ..." in another bucket, and which items fell past it moved with every unrelated answer
+        every = s.get("all")
+        return every if isinstance(every, list) else s.get("items") or []
 
     def muted(sid, item):
         return any(m.get("section") == sid and _matches(m["when"], item) for m in mutes)
@@ -1463,22 +1466,22 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             # yours without a day; with a row the task carries the mark itself (below)
             slug = item.get("task")
             if f"task:{slug}" not in out["rows"]:
-                # named by the task's own title, the advice beside it ("untouched for 54 days", "park?"): round 2 of
-                # the cockpit simulation had the advice as the title on the card, the list and the toast
-                title, why = str(item.get("title") or ""), []
+                # named by the task's own title (round 2 had the advice as the title on the card, the list and the
+                # toast); beside it only the quiet mark "resting for N days" (below), never a question to answer
+                title = str(item.get("title") or "")
                 own = quiet_titles.get(slug)
-                if own and title.startswith(own) and title != own:
-                    rest = title[len(own):].strip()
-                    hint = re.match(r"^(.*?)\s*\((.+)\)$", rest)
-                    title, why = own, [w for w in ([hint.group(1), hint.group(2)] if hint else [rest]) if w]
-                add(f"task:{slug}", row(sid, item, forced or "plan", title, why, 5, task=slug))
+                if own and title.startswith(own):
+                    title = own
+                add(f"task:{slug}", row(sid, item, forced or "plan", title, (), 5, task=slug))
             continue
         subject = str(item.get("id") or "").split(":", 2)[-1]
         carrier = f"task:{item.get('task')}" if check == "blocked" else f"inbox:{subject}"
         if carrier in out["rows"] or carrier in told:
             continue
         told.add(carrier)
-        bucket = {"blocked": "waiting", "due": "do", "waiting": "plan"}[check]
+        # an item urgent now or today is yours today, as its own row would be (the inbox rule above)
+        bucket = {"blocked": "waiting", "due": "do",
+                  "waiting": "do" if item.get("urgency") in ("now", "today") else "plan"}[check]
         # the inbox item a waiting or due advice stands for where the item itself is not in the view (past its
         # section's `max:`): a cockpit pass, which reads that item, gives it this row's number and bucket (_row_ident)
         about = {"advise_inbox": subject} if check in ("waiting", "due") and INBOX_ID_LIKE.match(subject) else {}
@@ -1758,13 +1761,8 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
         out["plan"] = _plan(visible, events, now, plan_cfg, day_start, day_end)
         return out
 
-    # a cockpit pass reads more items than the printed run (each section past its `max:`), and a row read together
-    # with one of them can land in another bucket: a row the printed briefing shows keeps its bucket there
+    # the printed run reads the same items as a cockpit pass, so every row stands in the same bucket in both
     printed = _printed_numbers(result, profile) if profile.get("_whole") else {}
-    for r in visible:
-        got = printed.get(_row_ident(r))
-        if got and got[1] in BUCKETS:
-            r["bucket"] = got[1]
     out["buckets"], out["more"], out["dropped"] = _capped(shown, visible, cap)
     # The number every row has in the printed briefing ("3 yes"), one rule for every renderer (numbered). A cockpit
     # pass (`_whole`, every row) numbers as the printed briefing would: the view the printed briefing builds (each
@@ -1792,17 +1790,11 @@ def _row_ident(row: dict) -> str:
 
 
 def _printed_numbers(result: dict, profile: dict) -> dict:
-    """{row ident: (nr, bucket)} of the briefing as it is printed from this result: each section cut to the `max:` of the
-    printed run (briefing.py collect keeps it as `printed_max` in a cockpit pass), the profile without the pass's
+    """{row ident: (nr, bucket)} of the briefing as it is printed from this result: the same items (a view reads every
+    item of a section, past its `max:` too), the profile without the pass's
     max_items (its own, `_print_max`), what was settled in the cockpit left out as a printed run leaves it out"""
-    sections = []
-    for s in result.get("sections") or []:
-        cap = s.get("printed_max")
-        if _pos_int(cap) and len(s.get("items") or []) > cap:
-            s = {**s, "items": list(s.get("items") or [])[:cap]}
-        sections.append(s)
     printed = {k: v for k, v in result.items() if k != "numbering_settled"}
-    printed.update(sections=sections, settled=result.get("numbering_settled"))
+    printed.update(settled=result.get("numbering_settled"))
     view = dict(profile.get("view") if isinstance(profile.get("view"), dict) else {})
     if _pos_int(profile.get("_print_max")):
         view["max_items"] = profile["_print_max"]

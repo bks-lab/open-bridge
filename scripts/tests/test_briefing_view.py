@@ -522,12 +522,15 @@ def test_validation_matches_the_schema_on_nulls_order_and_notes(tmp_path):
     assert any("note" in p for p in bv.problems(None, [{"section": "advise", "when": {"check": "x"}, "note": 3}]))
 
 
-def test_a_sections_max_still_caps_its_rows_in_a_view():
+def test_a_view_reads_every_row_of_a_section_and_max_items_cuts_the_print():
+    # round 1 of the four answers: a section's `max:` cut what the printed briefing sorted, the cockpit read every
+    # row, so the two disagreed on buckets, totals and numbers. A view sorts every row; max_items cuts the print
     rows = [{"id": f"o/r#{n}", "title": f"T{n}", "state": "new", "category": "open"} for n in range(10)]
     s = sec("gh", "tracker", rows[:3], all_rows=None)
     s["all"] = rows
-    view = bv.build(result(s), profile(view={"style": "triage"}))
-    assert sum(len(b["items"]) for b in view["buckets"]) == 3 and view["more"] == 0
+    view = bv.build(result(s), profile(view={"style": "triage", "max_items": 4}))
+    assert sum(len(b["items"]) for b in view["buckets"]) == 4 and view["more"] == 6
+    assert sum(b["total"] for b in view["buckets"]) == 10
 
 
 def test_page_rest_and_page_skip_pass_the_json_schema():
