@@ -5828,7 +5828,7 @@ def test_tab_settled_reads_the_item_and_the_task(tmp_path):
     (events / "20261017T110000Z-00-host-reopen.yaml").write_text("verb: reopen\n", encoding="utf-8")
     assert tab_settled(tmp_path, {"item": item}) is None
     (events / "20261017T111000Z-00-host-drop.yaml").write_text("verb: drop\n", encoding="utf-8")
-    assert tab_settled(tmp_path, {"item": item}) == "item"
+    assert tab_settled(tmp_path, {"item": item}) == "dropped", "closed as not done: Obsolete says so"
     done = tmp_path / "work" / "done" / "2026-10" / "a-task"
     done.mkdir(parents=True)
     (done / "STATUS.md").write_text("x", encoding="utf-8")

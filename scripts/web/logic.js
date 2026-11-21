@@ -3234,8 +3234,10 @@ export function homeViewSet(chosen, view) {
 /** The parts of the list view, each thing once in the order the page reads: the one next step, the tabs
  *  that ask you, the rows that wait on you, the pinned rows, the tasks, then the tabs that work and the
  *  ones that rest. A tab that belongs to a shown row stands on that row (`tabOf`), not again on its own */
+const ASK_STATES = new Set(['needs-you', 'waiting'])
+
 export function homeListParts(tabs, model, { project = null, pins = [] } = {}) {
-  const live = (tabs ?? []).filter(x => !x.is_control && x.state !== 'shell' && inProject(x, project))
+  const live = (tabs ?? []).filter(x => !x.is_control && x.state !== 'shell' && inProject(x, project) && !(ASK_STATES.has(x.state) && tabHeld(x, model)))
   const rows = id => ((model?.sections ?? []).find(x => x.id === id)?.rows ?? []).filter(r => inProject(r, project))
   const pick = focusPick(live, { ...model, sections: [{ id: 'now', rows: rows('now') }, { id: 'work', rows: rows('work') }] })
   // a tab that asks for a row's work leads as that row, the tab on it
@@ -3322,10 +3324,24 @@ export function focusStep(queue, at, key, toFiles = false) {
   return key === 'n' && toFiles ? { files: true } : null
 }
 
+/** Whether an agent tab asks for nothing any more: its item or task is closed (`settled`), put off to a later day
+ *  (the briefing's `away`), or hidden here until a day or settled. It is no point then on any view, the tabs
+ *  column, Start and By source too, as in Work through (round 3 of the four answers: a tab whose item was put off
+ *  led Start as "needs you, Now" and kept the Do chip in the column) */
+export function tabHeld(tab, model) {
+  if (!tab) return false
+  if (tab.settled) return true
+  const keys = [tab.item ? `inbox:${tab.item}` : null, tab.slug ? `task:${tab.slug}` : null].filter(Boolean)
+  if (!keys.length) return false
+  if ((model?.away ?? []).some(a => keys.includes(a?.key))) return true
+  const today = isoDate(model?.collected_ms || Date.now())
+  return (model?.hidden ?? []).some(r => keys.includes(r?.key) && (r.settled_as != null || String(r.hidden_until ?? '').slice(0, 10) > today))
+}
+
 /** The one next step of the start page: a tab that asks you, else the first row waiting on you, else the
  *  first P0 or P1 task of the backlog; nothing when there is none */
 export function focusPick(tabs, model) {
-  const asking = (tabs ?? []).find(t => !t.is_control && t.state === 'needs-you')
+  const asking = (tabs ?? []).find(t => !t.is_control && t.state === 'needs-you' && !tabHeld(t, model))
   if (asking) return { kind: 'tab', tab: asking }
   const rows = id => (model?.sections ?? []).find(x => x.id === id)?.rows ?? []
   const first = rows('now')[0]

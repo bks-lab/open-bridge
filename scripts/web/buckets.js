@@ -11,7 +11,7 @@
 // task_park, settle, the tab's own answers); With … under More hands a task's step over (task_owner, work_on). No DOM,
 // no network. logic.js passes every name on.
 import { TABLES } from './text.js'
-import { DAY, actionRow, flowAction, inProject, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
+import { DAY, tabHeld, actionRow, flowAction, inProject, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
   replySend, short, triageShows } from './logic.js'
 
 // the briefing's buckets, in its order (briefing_view BUCKETS)
@@ -521,7 +521,7 @@ export function rowPoint(row, s) {
   // only the row the tab works on: an inbox item about its task is no answer to its dialog (round 2: "Reply to
   // Jordan" offered the deploy dialog's Yes and approved the deploy)
   const about = row?.inbox_id ? tab?.item === row.inbox_id : !!row?.task && (tab?.slug == null || tab.slug === row.task)
-  if (tab && !tab.is_control && ASKING.has(tab.state) && about) return { group: 'asks', id: row.key, kind: 'tab', tab, row }
+  if (tab && !tab.is_control && ASKING.has(tab.state) && about && !tabHeld(tab, s?.model)) return { group: 'asks', id: row.key, kind: 'tab', tab, row }
   return { group: 'row', id: row?.key ?? null, kind: 'row', row }
 }
 
@@ -530,7 +530,7 @@ export function rowPoint(row, s) {
  *  the four answers had only the tab's own answer in the column and in Chat); one that works or is the control
  *  session is no decision (null) */
 export function tabPoint(tab, s = null) {
-  if (!tab || tab.is_control || !ASKING.has(tab.state)) return null
+  if (!tab || tab.is_control || !ASKING.has(tab.state) || tabHeld(tab, s?.model)) return null
   // its item's row wherever the model holds it (a section, the rows put off, the ones past the briefing's window): a
   // column card has Later, Done and Obsolete as the card in Work through has (round 2: one with a ready answer had none)
   const m = s?.model ?? {}
@@ -553,6 +553,9 @@ export function itemBucket(it, s, byKey) {
  *  into an inbox line (that line is its point), a stream the briefing does not list. By source keeps it among its
  *  source's rows but counts it in no bucket (round 2: its chips counted Plan 62 where Work through had 55) */
 function noPoint(row, s) {
+  // put off to a later day: out of sight until it, as in Work through (round 3: By source listed such an item under Do)
+  const today = isoDate(s?.now || Date.now())
+  if (row?.key && (s?.model?.away ?? []).some(a => a?.key === row.key && String(a.until ?? '').slice(0, 10) > today)) return true
   if (!row?.inbox_id && row?.task && (s?.model?.sections ?? []).some(x => (x.rows ?? []).some(r => (r?.folded_tasks ?? []).includes(row.task)))) return true
   return !row?.inbox_id && !!(row?.stream || row?.work_kind === 'stream') && !BUCKET_IDS.includes(row?.bucket)
 }

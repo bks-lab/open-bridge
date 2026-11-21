@@ -320,11 +320,13 @@ def inbox_settled(root: Path, item: str) -> bool:
 
 
 def tab_settled(root: Path, tab: dict) -> str | None:
-    """Whether a tab has nothing left to do, and why: its inbox item is settled ("item") or its task moved to
-    work/done/ ("task"). Read from the Bridge, never from the tab"""
+    """Whether a tab has nothing left to do, and why: its inbox item is settled ("item", "dropped" when it was closed
+    as not done: Obsolete, a drop or a reject) or its task moved to work/done/ ("task"). Read from the Bridge, never
+    from the tab"""
     item, slug = tab.get("item"), tab.get("slug")
     if isinstance(item, str) and item and inbox_settled(root, item):
-        return "item"
+        end = end_event(root, item) or {}
+        return "dropped" if TERMINAL.get(str(end.get("verb") or "")) == "dropped" else "item"
     if isinstance(slug, str) and slug and task_done(root, slug):
         return "task"
     return None

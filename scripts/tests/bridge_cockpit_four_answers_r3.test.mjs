@@ -44,3 +44,40 @@ test('a waiting task put off to a day is out of sight until it, whatever its blo
   const back = state({ work: [t], taskRows: [t], away: [{ key: t.key, until: '2026-10-09' }] })
   assert.deepEqual(where(back, t.key), ['waiting'])
 })
+
+// ---------------------------------------------------------------- a tab whose item is put off or settled
+
+test('a tab whose item is put off or settled is no point anywhere: column, Start, By source', () => {
+  // round 3: Later > tomorrow on a tab card's item took it out of Work through, the column card kept the Do chip
+  // and the answers, Start led with it as "needs you, Now", By source listed it under Do
+  const id = '20261121-2345-health-report-b34f'
+  const item = ask(id)
+  const tab = { ref: 'surface:9', name: 'Health report', item: id, state: 'needs-you', live: true, since_ms: NOW - 5 * MIN,
+    ask: { text: 'Do you want to proceed?', hash: 'h9' } }
+  const put = state({ now: [item], tabs: [tab], away: [{ key: item.key, until: TOMORROW }] })
+  assert.equal(logic.tabPoint(tab, put), null)
+  assert.equal(logic.focusPick([tab], put.model)?.tab?.ref, undefined)
+  assert.ok(!logic.homeListParts([tab], put.model).asking.some(t => t.ref === tab.ref))
+  assert.equal(logic.rowPoint(item, put).kind, 'row')
+  // closed (Done) or dropped (Obsolete): the tab can go, it asks for no answer
+  const done = state({ now: [], tabs: [{ ...tab, settled: 'dropped' }] })
+  assert.equal(logic.tabPoint({ ...tab, settled: 'dropped' }, done), null)
+  // an open one still stands as itself
+  const open = state({ now: [item], tabs: [tab] })
+  assert.ok(logic.tabPoint(tab, open))
+  assert.equal(logic.focusPick([tab], open.model)?.tab?.ref, tab.ref)
+})
+
+test('the words of a tab whose item was closed as not done say Obsolete', () => {
+  assert.match(text.TABLES.de.tabSettled.dropped, /^Veraltet/)
+  assert.match(text.TABLES.en.tabSettled.dropped, /^Obsolete/)
+})
+
+test('By source counts a row put off to a later day in no bucket', () => {
+  const item = ask('20261121-2345-health-report-b34f')
+  const s = state({ now: [item], away: [{ key: item.key, until: TOMORROW }] })
+  const byKey = new Map([[item.key, item]])
+  assert.equal(logic.itemBucket({ key: item.key, inbox: item.inbox_id, title: item.title }, s, byKey), null)
+  const open = state({ now: [item] })
+  assert.equal(logic.itemBucket({ key: item.key, inbox: item.inbox_id, title: item.title }, open, byKey), 'do')
+})

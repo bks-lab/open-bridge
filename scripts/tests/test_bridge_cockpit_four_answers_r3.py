@@ -147,3 +147,16 @@ def test_an_only_you_report_without_a_day_stands_in_do():
     got = {r["title"]: b["id"] for b in built["buckets"] for r in b["items"]}
     assert got["Sign the audit letter"] == "do"
     assert got["An idea"] != "do"
+
+
+# ---------------------------------------------------------------- a tab whose item was settled
+
+def test_a_tab_whose_item_was_dropped_says_obsolete_not_done(tmp_path):
+    # round 3: after Obsolete on a tab's item the card said "Done, its item is closed"
+    from test_bridge_cockpit_returns import ITEM, T0, MIN, event
+    from lib.bridge_cockpit import returns as ret
+    event(tmp_path, ITEM, T0 + MIN, "drop", "veraltet")
+    assert ret.tab_settled(tmp_path, {"item": ITEM}) == "dropped"
+    event(tmp_path, ITEM, T0 + 2 * MIN, "reopen", "")
+    event(tmp_path, ITEM, T0 + 3 * MIN, "close", "done")
+    assert ret.tab_settled(tmp_path, {"item": ITEM}) == "item"
