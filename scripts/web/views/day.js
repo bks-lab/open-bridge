@@ -6,7 +6,8 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/ht
 import {
   attentionTabs, duration, formatDay, indexRows, pageWarnings, sectionRows, short, stateToken, canTab, actionRow,
   pageItemActs, workPageOf, workViews, flowOn, startMode, parseDate, isoDate, launchChoice, rowKind, repoGroups, originOf, ORIGIN_CATEGORIES,
-  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey, personOf, flowBucketsOn, rowPoint, tabPoint, doWord, nextBriefingDay, shownNumber
+  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey, personOf, flowBucketsOn, rowPoint, tabPoint, doWord, nextBriefingDay, shownNumber,
+  bucketSections
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ItemCardLine, titleOf } from './card.js'
@@ -371,7 +372,7 @@ function SectionBody({ section, s, c, byKey, budget }) {
     ? (section.rows ?? rows).map(r => r.key).filter(k => (s.model?.approvable ?? []).includes(k)) : []
   return html`<section class="sec" aria-labelledby=${`sec-${section.id}`}>
     <header class="sec-head">
-      <h2 class="sec-title" id=${`sec-${section.id}`}>${(flowBucketsOn(s) ? t.flow.buckets.section : t.section)[section.id] ?? section.id}
+      <h2 class="sec-title" id=${`sec-${section.id}`}>${section.title ?? (flowBucketsOn(s) ? t.flow.buckets.section : t.section)[section.id] ?? section.id}
         <span class="sec-count mono">${section.total}</span></h2>
       <span class="sec-tools">
         ${section.id === 'work' ? html`<${CheckButton} s=${s} c=${c} size="xs" />` : null}
@@ -559,10 +560,12 @@ export function DayColumn({ s, c, byKey }) {
       <div class="day-counts muted"><span class="day-asof">${t.sourceAsOf(m.collected_at)}</span></div>
       ${s.layout === 'wide' ? null : html`<${WaitingTabs} s=${s} c=${c} />`}
       ${total === 0 && !attentionTabs(s.tabs?.tabs).length ? html`<div class="callout">${t.emptyHint}</div>` : null}
-      ${total === 0 ? null : SECTION_ORDER.map(id => {
-        const sec = (m.sections ?? []).find(x => x.id === id)
-        return sec ? html`<${Section} key=${id} section=${sec} s=${s} c=${c} byKey=${byKey} budget=${budgets[id] ?? 0} />` : null
-      })}
+      ${total === 0 ? null : flowBucketsOn(s) && !personOf(s)
+        ? bucketSections(s, language()).map(sec => html`<${Section} key=${sec.id} section=${sec} s=${s} c=${c} byKey=${byKey} budget=${0} />`)
+        : SECTION_ORDER.map(id => {
+          const sec = (m.sections ?? []).find(x => x.id === id)
+          return sec ? html`<${Section} key=${id} section=${sec} s=${s} c=${c} byKey=${byKey} budget=${budgets[id] ?? 0} />` : null
+        })}
       <${HiddenList} s=${s} c=${c} />
     </div>
   </div>`

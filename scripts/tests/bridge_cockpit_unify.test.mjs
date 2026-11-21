@@ -270,3 +270,15 @@ test('By Jev by buckets: each row of the plan its bucket bar, no second set of w
   await rounds()
   assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: [t.key], was: 'doing' }])
 })
+
+test('Due by buckets: grouped by the four buckets in their order, the rows in the order of their numbers', async () => {
+  // round 1 (words, tabs): Due said "Now and today / From the inbox / Tasks and streams / ...", words outside the
+  // four, and its numbers ran 1..6, then 8, 9, 11, 10
+  const s = state({ now: [ask('20261009-0900-a', { brief_nr: 2 }), ask('20261009-0901-b', { brief_nr: 1 })],
+    work: [task('w', { bucket: 'waiting', blocked_by: 'Ada', brief_nr: 4 }), task('p', { bucket: 'plan', brief_nr: 3 })] })
+  const el = mount(html`<${views.day.DayColumn} s=${s} c=${recorder()} byKey=${logic.indexRows(s.model)} />`)
+  await rounds()
+  const titles = el.$$('.sec-title').map(x => x.text().replace(/\s*\d+$/, '').trim())
+  assert.deepEqual(titles, ['Tun (du, heute)', 'Planen', 'Wartet auf andere'])
+  assert.deepEqual(el.$$('li.row .row-num').map(x => x.text().trim().slice(-1)), ['1', '2', '3', '4'])
+})

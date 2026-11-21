@@ -412,3 +412,13 @@ test('a toast says a day the way the page says days, never as an ISO date', () =
   // an inbox id with its digits stays as it is
   assert.equal(logic.noteDays('20261121-1443-check-the-release', 'de'), '20261121-1443-check-the-release')
 })
+
+test('waiting on you is the count of Do everywhere, an asking tab without a row included', () => {
+  // round 1 (tabs): the work badge and the start tile said 41, Do said 43; two asking tabs had no row
+  const loneTab = { ref: 'surface:5', name: 'Briefing', state: 'needs-you', since_ms: NOW - MIN, workspace: 'Home', live: true,
+    ask: { text: 'Go on?', yes_no: true } }
+  const s = state({ now: [ask('20261009-0900-q1'), ask('20261009-0901-q2')], tabs: [loneTab], driver: { caps: null } })
+  const doBucket = logic.bucketPoints({ ...s, ui: { ...s.ui, page: '@flow' } }, 'en').buckets.find(b => b.id === 'do')
+  assert.equal(logic.startWaiting(s), doBucket.points.length)
+  assert.equal(doBucket.points.length, 3)
+})

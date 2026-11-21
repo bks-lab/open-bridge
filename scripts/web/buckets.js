@@ -177,6 +177,28 @@ export function waitingRows(s, area = null) {
   return area ? rows.filter(r => inProject(r, area)) : rows
 }
 
+/** How many points wait on you while the buckets are on: the points of Do, an agent tab that asks without a row
+ *  included (round 1: the badge and the tile counted rows only, 41 against Do's 43); under an area only the points
+ *  of its rows. The start page's tile, the work tab's badge and the head of Due say this one count */
+export function waitingCount(s, area = null) {
+  const base = { ...s, ui: { ...(s?.ui ?? {}), page: '@flow', area: null } }
+  const points = bucketPoints(base, 'en').buckets.find(b => b.id === 'do')?.points ?? []
+  return area ? points.filter(x => x.row?.key && inProject(x.row, area)).length : points.length
+}
+
+/** Due by the four buckets (round 1 of the four answers: Due was grouped by its own sections, words outside the four,
+ *  and its numbers ran out of order): one section per shown bucket that holds a row, in the profile's order, its rows
+ *  in the order Work through shows them (the briefing's numbers first), each row once. {id, title, rows, total,
+ *  compact} as a section of the model, so Due draws them as it draws its own */
+export function bucketSections(s, lang = 'en') {
+  const base = { ...s, ui: { ...(s?.ui ?? {}), page: '@flow', area: null } }
+  return bucketPoints(base, lang).buckets.map(b => {
+    const seen = new Set()
+    const rows = b.points.map(x => x.row).filter(r => r?.key && !seen.has(r.key) && seen.add(r.key))
+    return { id: b.id, title: b.title, rows, total: rows.length, compact: rows.slice(0, 8).map(r => r.key) }
+  }).filter(sec => sec.total)
+}
+
 /** The bucket open: the one picked (ui.flowBucket), also while it is empty (its empty state offers the next bucket
  *  that holds a point), else the first one that holds one, else the first */
 export function openBucket(buckets, picked) {
