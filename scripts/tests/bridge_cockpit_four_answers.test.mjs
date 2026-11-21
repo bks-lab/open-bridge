@@ -270,11 +270,17 @@ test('the card: Obsolete asks in place with a note, and the note goes with it', 
   assert.match(sent[2].text, /the vendor left/)
 })
 
-test('the card of a stream says End stream and done for this time', () => {
+test('the card of a stream says Obsolete like every card, its confirm that the stream ends, and done for this time', async () => {
+  // round 1 (words): one act carried three labels ("End stream", "Really end the stream?", "Yes, obsolete")
   const river = stream('river', { title: 'Weekly rota' })
   const el = mount(html`<${BucketCard} x=${row(river)} bucket="plan" s=${state({ work: [river] })} c=${recorder()} />`)
   assert.match(el.$('.fb-answer-done').text(), /done for this time/)
-  assert.equal(el.$('.fb-answer-obsolete').text(), en.obsoleteStream)
+  assert.equal(el.$('.fb-answer-obsolete').text(), en.obsolete)
+  el.$('.fb-answer-obsolete').click()
+  await rounds()
+  assert.equal(el.$('.fb-confirm-q').text(), en.obsoleteAskStream)
+  assert.match(en.obsoleteAskStream, /^Really obsolete\?/)
+  assert.equal(en.obsoleteStream, undefined)
 })
 
 test('the left column: who is on the move, the four buckets with what each means, the three counts out of sight', async () => {

@@ -141,7 +141,7 @@ export function useBucketAnswer(x, bucket, s, c, onDone = null) {
 function ObsoleteConfirm({ a, size, busy, run, onCancel }) {
   const f = T().flow.buckets
   const [why, setWhy] = useState('')
-  const ask = a.label === f.obsoleteStream ? f.obsoleteAskStream : f.obsoleteAsk
+  const ask = a.stream ? f.obsoleteAskStream : f.obsoleteAsk
   return html`<span class="fb-confirm" role="group" aria-label=${ask}>
     <span class="fb-confirm-q small">${ask}</span>
     <input class="input fb-confirm-note" type="text" value=${why} placeholder=${f.obsoleteNote} aria-label=${f.obsoleteNote}

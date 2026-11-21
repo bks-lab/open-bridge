@@ -47,6 +47,12 @@ class LaunchSteps:
         for twin in self.app.collector.twins(key)[1:]:
             self.app.store.unhide(twin)
 
+    def buckets_on(self) -> bool:
+        """Work through by the briefing's buckets (cockpit.flow.buckets on, the page's flowBucketsOn): the four
+        answers' own words in the toasts"""
+        flow = getattr(self.app.cfg, "flow", None) or {}
+        return flow.get("enabled") is True and (flow.get("buckets") or {}).get("enabled") is True
+
     def hide_until(self, ctx: Ctx, row: dict, until: str) -> None:
         self.clear_twins(row["key"])
         self.app.store.hide(row["key"], until, str(row["title"]))
@@ -103,7 +109,8 @@ class LaunchSteps:
             if getattr(app, "launch_model", None) is not None else None
         if chosen:
             argv += ["--model", chosen["model"], *(["--effort", chosen["effort"]] if chosen["effort"] else [])]
-        word = word or (tx["launch_team"].format(role=team["name"]) if team else tx["btn_do"] if mode == "go"
+        do_word = tx["btn_do_it"] if self.buckets_on() else tx["btn_do"]     # one act, one label: Do it of the four
+        word = word or (tx["launch_team"].format(role=team["name"]) if team else do_word if mode == "go"
                 else tx["launch_context"] if mode == "context" else tx["btn_advise"])
         areas = list(dict.fromkeys(r.get("area") for r in rows if m.launch_item(r) in items and r.get("area")))
         where = tx["where_area"].format(name=areas[0]) if target == "area" and len(areas) == 1 else tx["where"][target]

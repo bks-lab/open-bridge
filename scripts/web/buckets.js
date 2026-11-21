@@ -364,7 +364,7 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
   else if (!Array.isArray(row.settle) || row.settle.includes('done')) add('done', act({ verb: 'settle', args: { keys: [key], outcome: 'done' } }), f.answers.done)
   // ---- Obsolete
   const gone = obsoleteRun(row, f)
-  if (gone) add('obsolete', gone, stream ? f.obsoleteStream : f.obsolete, { confirm: true, quiet: true })
+  if (gone) add('obsolete', gone, f.obsolete, { confirm: true, quiet: true, ...(stream ? { stream: true } : {}) })
   return out
 }
 

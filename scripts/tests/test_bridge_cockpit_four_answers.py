@@ -193,3 +193,32 @@ def test_a_quiet_task_beside_the_briefing_says_its_days_too():
               "stale": True, "age": 53, "type": None, "status": "doing", "next": None, "updated": None, "origin": None}]
     got = m.with_tasks(m.parse_view({"view": {"buckets": []}}, True, 0), tasks)
     assert [r["resting"] for b in got["buckets"] for r in b["rows"]] == [53]
+
+
+def test_obsolete_says_obsolete_in_its_toast_while_the_buckets_are_on(tmp_path):
+    # round 1 of the four answers: the button and its confirm said Veraltet, the toast "Verworfen" (the old Drop)
+    from test_bridge_cockpit import World
+    w = World(tmp_path, config="cockpit:\n  enabled: true\n  language: en\n  flow:\n    enabled: true\n")
+    try:
+        res = w.act("settle", keys=[f"inbox:{YES_ID}"], outcome="not_doing", reason="outdated", text="veraltet")
+        assert res["note"].startswith("Obsolete") and "Dropped" not in res["note"]
+        res = w.act("settle", keys=["task:demo-task"], outcome="not_doing", text="veraltet")
+        assert "Obsolete" in res["note"] and "dropped" not in res["note"].lower()
+    finally:
+        w.close()
+
+
+def test_with_the_buckets_off_the_toast_keeps_its_word(world):
+    res = world.act("settle", keys=[f"inbox:{YES_ID}"], outcome="not_doing", reason="outdated")
+    assert res["note"].startswith("Dropped")
+
+
+def test_a_start_is_named_do_it_while_the_buckets_are_on(tmp_path):
+    # round 1 (words): Mach das failed with "Nicht gestartet (AI machen lassen): ...", one act under two labels
+    from test_bridge_cockpit import World
+    w = World(tmp_path, config="cockpit:\n  enabled: true\n  language: en\n  flow:\n    enabled: true\n")
+    try:
+        res = w.act("do_it", keys=["task:demo-task"])
+        assert "Let AI do it" not in res["note"] and "Do it" in res["note"]
+    finally:
+        w.close()

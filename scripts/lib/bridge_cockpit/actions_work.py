@@ -967,7 +967,8 @@ class WorkVerbs:
                                                work_kind="stream" if out.get("stream") or row.get("stream") else "task"),
                                 **({"reason": text} if text else {})})
             if len(rows) == 1:
-                self.settle(ctx, row, self.tx["task_declined" if why in DECLINED_REASONS else "task_closed"])
+                word = ("task_obsolete" if self.buckets_on() else "task_declined") if why in DECLINED_REASONS else "task_closed"
+                self.settle(ctx, row, self.tx[word])
             else:
                 self.app.collector.settle(row["key"], self.tx["task_closed"])
                 ctx.settled.append(row["key"])
@@ -1020,7 +1021,8 @@ class WorkVerbs:
                 ctx.history.append({**history_item(key, row["title"], "inbox", "done" if outcome == "done" else "dropped", item),
                                     **({"reason": text} if text else {})})
                 self.end_also(ctx, row, verb)
-                self.settle(ctx, row, self.tx["res_done" if outcome == "done" else "dropped_muted" if muted else "dropped"])
+                self.settle(ctx, row, self.tx["res_done" if outcome == "done" else "dropped_muted" if muted
+                                              else "obsolete_done" if self.buckets_on() else "dropped"])
                 self.settle_soon(ctx)
             elif kind == "other":
                 # not collector.settle: its source still lists the row, so it would stay invisible for good;

@@ -58,8 +58,8 @@ export const FLOW = {
       sayAnswer: 'Answer…', sayLabel: 'Your answer to the tab', saySend: 'Send', sayCancel: 'Cancel',
       // the fixed, quiet last answer of every point (buckets.js bucketAnswers): closed as not done with a note, asked
       // first in place
-      obsolete: 'Obsolete', obsoleteStream: 'End stream', obsoleteText: 'obsolete', obsoleteAsk: 'Really obsolete?',
-      obsoleteAskStream: 'Really end the stream?', obsoleteNote: 'A note why (optional)', obsoleteYes: 'Yes, obsolete', obsoleteNo: 'Cancel',
+      obsolete: 'Obsolete', obsoleteText: 'obsolete', obsoleteAsk: 'Really obsolete?',
+      obsoleteAskStream: 'Really obsolete? The stream ends.', obsoleteNote: 'A note why (optional)', obsoleteYes: 'Yes, obsolete', obsoleteNo: 'Cancel',
       obsoleteTip: 'Closes it as not done, with a note: a task settled as not done, an inbox item dropped, an issue hidden here and left open on GitHub',
       kind: { tab: 'Agent tab', inbox: 'Inbox', stream: 'Stream', task: 'Task', issue: 'Issue or PR', other: 'Point' },
       onlyYou: 'only you', due: d => `due ${d}`, with: who => `waits on ${who}`,
@@ -448,8 +448,8 @@ export const FLOW = {
       prev: 'Vorheriger', next2: 'Nächster', pos: (i, n) => `${i} von ${n}`,
       parkText: 'Auf der Merkliste', someone: 'der anderen Seite',
       sayAnswer: 'Antworten…', sayLabel: 'Deine Antwort an den Tab', saySend: 'Senden', sayCancel: 'Abbrechen',
-      obsolete: 'Veraltet', obsoleteStream: 'Stream beenden', obsoleteText: 'veraltet', obsoleteAsk: 'Wirklich veraltet?',
-      obsoleteAskStream: 'Stream wirklich beenden?', obsoleteNote: 'Notiz, warum (freiwillig)', obsoleteYes: 'Ja, veraltet', obsoleteNo: 'Abbrechen',
+      obsolete: 'Veraltet', obsoleteText: 'veraltet', obsoleteAsk: 'Wirklich veraltet?',
+      obsoleteAskStream: 'Wirklich veraltet? Der Stream endet.', obsoleteNote: 'Notiz, warum (freiwillig)', obsoleteYes: 'Ja, veraltet', obsoleteNo: 'Abbrechen',
       obsoleteTip: 'Schließt ihn als nicht erledigt, mit Notiz: eine Aufgabe als nicht gemacht, ein Eintrag im Posteingang gestrichen, ein Issue hier ausgeblendet und auf GitHub offen gelassen',
       kind: { tab: 'Agent-Tab', inbox: 'Posteingang', stream: 'Stream', task: 'Aufgabe', issue: 'Issue oder PR', other: 'Punkt' },
       onlyYou: 'nur du', due: d => `fällig ${d}`, with: who => `wartet auf ${who}`,
