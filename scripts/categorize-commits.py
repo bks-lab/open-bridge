@@ -473,6 +473,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_briefing_providers.py",
     "scripts/tests/test_briefing_truthful_rows.py",
     "scripts/tests/test_briefing_view.py",
+    "scripts/tests/test_briefing_buckets.py",
     "scripts/tests/test_briefing_activity.py",
     "scripts/tests/test_briefing_pages.py",
     "scripts/tests/test_briefing_act.py",
@@ -652,6 +653,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/lib/bridge_cockpit/card_fields.py",          # the wire shape of a card and of a brief
     "scripts/lib/bridge_cockpit/brief_refs.py",           # what a brief may point at, and the links of a card
     "scripts/tests/test_bridge_cockpit_brief_refs.py",
+    "scripts/tests/test_bridge_cockpit_buckets.py",
     "scripts/lib/bridge_cockpit/describe.py",             # each item's brief written and kept by a small model
     "scripts/tests/test_bridge_cockpit_describe.py",
     "scripts/tests/test_bridge_cockpit_issue.py",         # the issue card on a board: review and done, a click only
@@ -743,6 +745,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/views/flowpoint.js",         # Work through: the one point view, its card, tabs, line and walk
     "scripts/web/views/flowsimple.js",        # Work through, stage 4: the strong button, the four states, More and Order
     "scripts/web/views/flowmarks.js",         # Work through: the read marks in words (counts, why unread, Read mark, Active)
+    "scripts/web/views/flowbuckets.js",       # Work through by the briefing's buckets: the buckets, the card, its answers
     "scripts/web/views/focus.js",
     "scripts/web/views/github.js",
     "scripts/web/views/header.js",
@@ -777,6 +780,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/web/flow.js",                    # the Work through page: its queue, the return card, the five verbs
     "scripts/web/point.js",                   # the one point view: where a row opens, the drawer's facts, the basic verbs
     "scripts/web/taskboard.js",               # the taskboard's columns, tags, tidy-up rules, tabs without a task
+    "scripts/web/buckets.js",                 # Work through by the briefing's buckets: the points per bucket, their answers
     "scripts/web/markdown.js",
     "scripts/web/triage.js",
     "scripts/web/motion.js",
@@ -819,6 +823,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_features.test.mjs",     # Settings, Features: grouping, requires, presets, the area
     "scripts/tests/bridge_cockpit_boot.test.mjs",         # the boot guard of the page (web/boot.js)
     "scripts/tests/bridge_cockpit_taskboard.test.mjs",
+    "scripts/tests/bridge_cockpit_buckets.test.mjs",
     "scripts/tests/bridge_cockpit_files.test.mjs",
     "scripts/tests/bridge_cockpit_person.test.mjs",
     "scripts/tests/bridge_cockpit_logrange.test.mjs",

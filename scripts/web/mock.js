@@ -435,7 +435,7 @@ const FEATURE_CATALOG = [
   ['flow', 'work', 'switch'], ['flow_only', 'work', 'switch', null, 'flow'], ['flow_themes', 'work', 'switch', null, 'flow', true],
   ['flow_summary', 'work', 'switch', null, 'flow', true], ['flow_instruct', 'work', 'switch', null, 'flow', true],
   ['flow_checkin', 'work', 'switch', null, 'flow', true], ['flow_prio_haiku', 'work', 'switch', null, 'flow', true],
-  ['flow_seen', 'work', 'switch', null, 'flow'], ['flow_attach', 'work', 'switch', null, 'flow'],
+  ['flow_seen', 'work', 'switch', null, 'flow'], ['flow_attach', 'work', 'switch', null, 'flow'], ['flow_buckets', 'work', 'switch', null, 'flow'],
   ['describe', 'work', 'choice', ['off', 'missing', 'stale'], null, true], ['triage_daily', 'work', 'switch', null, null, true],
   ['chat_layout', 'chat', 'choice', ['classic', 'workspaces']], ['files_scope', 'files', 'choice', ['active', 'all']],
   ['files_search', 'files', 'switch', null, null, true],
@@ -446,7 +446,8 @@ const FEATURE_CATALOG = [
 /** The built-in presets as the server makes them: basic every feature at its default, full every switch on and each
  *  choice at its last value, but Ask AI in Files and Only Work through left as they are */
 const FEATURE_BUILTINS = {
-  basic: Object.fromEntries(FEATURE_CATALOG.map(x => [x.id, x.kind === 'choice' ? x.values[0] : false])),
+  // a switch is off but the one a fresh cockpit has on (features.py Feature.on)
+  basic: Object.fromEntries(FEATURE_CATALOG.map(x => [x.id, x.kind === 'choice' ? x.values[0] : x.id === 'flow_buckets'])),
   full: Object.fromEntries(FEATURE_CATALOG.filter(x => !['files_search', 'flow_only'].includes(x.id)).map(x => [x.id, x.kind === 'choice' ? x.values.at(-1) : true])),
 }
 // one preset from a file of workflow/cockpit-presets/, as an org overlay would ship it
@@ -457,7 +458,7 @@ const FEATURE_TEAM = { id: 'team', builtin: false, title: 'Team', description: '
 function featureConfig(opts, seenOn) {
   const flow = opts.flow !== false
   return { flow, flow_only: false, flow_themes: flow, flow_summary: flow, flow_instruct: flow, flow_checkin: false, flow_prio_haiku: true,
-    flow_seen: !!seenOn, flow_attach: flow, describe: 'missing', triage_daily: false, chat_layout: opts.chat === 'workspaces' ? 'workspaces' : 'classic',
+    flow_seen: !!seenOn, flow_attach: flow, flow_buckets: false, describe: 'missing', triage_daily: false, chat_layout: opts.chat === 'workspaces' ? 'workspaces' : 'classic',
     files_scope: opts.filesScope === 'all' ? 'all' : 'active', files_search: true, launch_model: !!LAUNCH_CONFIG.enabled, ticker: !!TICKER_CONFIG.enabled,
     session_guide: true, voice: false }
 }

@@ -59,8 +59,11 @@ FLOW_INTS = (("prep_ahead", 2, 0), ("max_running", 4, 1), ("rank_max_age_days", 
 # active_days, revisit_days, counts}, off by default like every block of the page that changes how it lists its points)
 # drop_idea: Drop on a task shelves it (declined, and an idea filed and put off, task.py shelve; the default, as it always
 # did), or, false, closes it as declined with its reason and files no idea
+# buckets: Work through sorts its points into the briefing's buckets, one card with the bucket's answers each
+# (cockpit.flow.buckets {enabled}, on by default; docs/bridge-cockpit.md, Buckets)
 FLOW_KEYS = ("enabled", "drop_reasons", "drop_idea", "return_after_s", *(key for key, _d, _low in FLOW_INTS), "infer_sessions",
-             "themes", "summary", "instruct", "attach", "prio", "checkin", "seen")
+             "themes", "summary", "instruct", "attach", "prio", "checkin", "seen", "buckets")
+FLOW_BUCKETS_DEFAULT = True
 FLOW_REASON_MAX = 80
 FLOW_REASONS_MAX = 12
 FLOW_RETURN_MAX = 3600
@@ -243,7 +246,8 @@ def flow_defaults() -> dict:
     return {"enabled": False, "drop_reasons": list(FLOW_DROP_REASONS), "drop_idea": True, "return_after_s": 20,
             **{key: default for key, default, _low in FLOW_INTS}, "infer_sessions": True, "themes": thm.defaults(),
             "summary": act.ai_defaults(act.SUMMARY_BUDGET), "instruct": act.ai_defaults(act.INSTRUCT_BUDGET),
-            "attach": act.attach_defaults(), "prio": pr.defaults(), "checkin": cki.defaults(), "seen": sn.defaults()}
+            "attach": act.attach_defaults(), "prio": pr.defaults(), "checkin": cki.defaults(), "seen": sn.defaults(),
+            "buckets": {"enabled": FLOW_BUCKETS_DEFAULT}}
 
 
 def files_search_defaults() -> dict:
@@ -344,6 +348,9 @@ def flow_of(value: Any) -> dict:
     out["prio"] = pr.prio_of(value.get("prio"))
     out["checkin"] = act.ai_of(value.get("checkin"), cki.BUDGET)
     out["seen"] = sn.seen_of(value.get("seen"))
+    buckets = value.get("buckets")
+    if isinstance(buckets, dict) and isinstance(buckets.get("enabled"), bool):
+        out["buckets"] = {"enabled": buckets["enabled"]}
     return out
 
 
@@ -382,6 +389,16 @@ def _check_flow(value: Any, used: dict, where: str) -> list[str]:
             out += pr.check(v, used["prio"], at)
         elif key == "seen":
             out += sn.check(v, used["seen"], at)
+        elif key == "buckets":
+            if not isinstance(v, dict):
+                out.append(f"{at}: must be a mapping {{enabled: true or false}}, got {_show(v)}; using enabled "
+                           f"{_show(used['buckets']['enabled'])}")
+            else:
+                for k2, v2 in v.items():
+                    if k2 != "enabled":
+                        out.append(f"{at}.{str(k2)[:40]}: unknown key, ignored")
+                    elif not isinstance(v2, bool):
+                        out.append(f"{at}.enabled: must be true or false, got {_show(v2)}; using {_show(used['buckets']['enabled'])}")
         elif key in lows:
             if not _is_int(v):
                 out.append(f"{at}: must be a whole number, got {_show(v)}; using {used[key]}")

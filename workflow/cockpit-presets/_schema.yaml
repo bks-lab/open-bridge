@@ -40,6 +40,7 @@ properties:
       flow_prio_haiku: {type: boolean}
       flow_seen: {type: boolean}
       flow_attach: {type: boolean}
+      flow_buckets: {type: boolean}
       describe: {enum: ['off', missing, stale]}
       triage_daily: {type: boolean}
       chat_layout: {enum: [classic, workspaces]}

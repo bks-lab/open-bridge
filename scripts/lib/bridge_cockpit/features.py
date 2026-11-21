@@ -49,10 +49,11 @@ class Feature:
     store: str | None = None       # None: a key of the cockpit: block; launch, ticker, guide: that store's `enabled`
     area: str | None = None        # the settings area that holds its details
     path: tuple = ()               # the key under cockpit: a config feature stands for (flow_only has two, FLOW_ONLY)
+    on: bool = False               # a switch that a fresh cockpit has on (flow_buckets): its default is true
 
     @property
     def default(self) -> Any:
-        return self.values[0] if self.kind == "choice" else False
+        return self.values[0] if self.kind == "choice" else self.on
 
 
 CATALOG: tuple[Feature, ...] = (
@@ -65,6 +66,8 @@ CATALOG: tuple[Feature, ...] = (
     Feature("flow_prio_haiku", "work", "switch", requires="flow", ai=True, path=("flow", "prio", "haiku", "enabled")),
     Feature("flow_seen", "work", "switch", requires="flow", path=("flow", "seen", "enabled")),
     Feature("flow_attach", "work", "switch", requires="flow", path=("flow", "attach", "enabled")),
+    # Work through by the briefing's buckets (config.FLOW_BUCKETS_DEFAULT): on unless switched off
+    Feature("flow_buckets", "work", "switch", requires="flow", path=("flow", "buckets", "enabled"), on=True),
     Feature("describe", "work", "choice", ("off", "missing", "stale"), ai=True, path=("describe", "auto")),
     Feature("triage_daily", "work", "switch", ai=True, path=("triage_daily",)),
     Feature("chat_layout", "chat", "choice", ("classic", "workspaces"), path=("chat_layout",)),

@@ -1393,14 +1393,15 @@ def test_calm_reads_as_a_few_plain_lines():
     assert not any(l.startswith("*") and not l.startswith("**") for l in lines)    # no italics
 
 
-def test_calm_waiting_is_one_line_of_names_and_dates():
+def test_calm_numbers_each_waiting_row_with_its_name_and_date():
+    # 21.11.2026: every visible row has a number, waiting too, so "2 nudge" names it as the cockpit's card does
     deferred = inbox_item("i3", "Answer from the agency", urgency="later", state="deferred", until="2026-10-12",
                           waiting_on="Agency")
     text = _calm([sec("inbox", "inbox", [deferred]),
                   sec("tasks", "tasks", [task_item("t1", "Portal relaunch", nxt={"what": "review", "who": "Bob"})])],
                  CALM_SECTIONS)
-    block = text[text.index("**Waiting on others**"):].splitlines()[1]
-    assert block == "Agency until 12.10, Bob (Portal relaunch)"
+    block = text[text.index("**Waiting on others**"):].splitlines()[1:3]
+    assert block == ["1. Agency (Answer from the agency) until 12.10", "2. Bob (Portal relaunch)"]
 
 
 def test_calm_titles_open_their_task_or_issue():

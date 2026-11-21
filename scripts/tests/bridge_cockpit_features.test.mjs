@@ -336,7 +336,7 @@ test('features area: Work through heads the area as its own card, then the prese
   assert.equal(el.$$('select').length, 0)
 })
 
-const SUBS = ['flow_themes', 'flow_summary', 'flow_instruct', 'flow_checkin', 'flow_prio_haiku', 'flow_seen', 'flow_attach']
+const SUBS = ['flow_themes', 'flow_summary', 'flow_instruct', 'flow_checkin', 'flow_prio_haiku', 'flow_seen', 'flow_attach', 'flow_buckets']
 const heroOf = el => el.$$('.set-card').find(x => x.hasClass('feat-hero'))
 
 test('features area: the sub switches of Work through stand indented in its card and grey while it is off', () => {
@@ -493,8 +493,8 @@ test('features area: each preset card sketches what it sets, one mark per featur
     assert.equal(marks.length, s.features.items.length, s.features.presets[i].id)
     assert.deepEqual(marks.map(m => m.getAttribute('class')), board.map(d => `is-${d.state}`), s.features.presets[i].id)
   }
-  // basic lights nothing, full lights all it names
-  assert.equal(radios[0].$$('.view-thumb-board i.is-on').length, 0)
+  // basic lights only the switch a fresh cockpit has on (Work through by the briefing's buckets), full all it names
+  assert.equal(radios[0].$$('.view-thumb-board i.is-on').length, 1)
   assert.ok(radios[1].$$('.view-thumb-board i.is-on').length > 10)
 })
 

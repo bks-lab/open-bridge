@@ -127,6 +127,7 @@ their defaults:
 | `flow.seen.active_days` | `7` | a doing task is **active** while something counted moved on it within this many days (or an agent works on it, or it is pinned or in focus), else it **rests**; 1 to 366 |
 | `flow.seen.revisit_days` | `{active: 7, resting: 14, backlog: 30, question: 2, issue: 7}` | after how many days a read point comes back unread by itself when nothing new happened, by its kind: a doing task active or resting (it then asks go on, park or close), a backlog task or an idea, a question or an approval of the inbox, an issue or a pull request; 1 to 366 each. A day set with Revisit ▾ wins |
 | `flow.seen.counts` | all `true` | which movement makes a read point unread again: `note` and `status` (both read the time of the task's STATUS.md), `doc` (its deliverables), `run` (a finished AI run on it), `code` (an issue or pull request changed on GitHub), `log` (a row of `work/log.md` that names it), `inbox` (an event of the inbox item, or of one that names the task). Never: a brief describe writes, a theme, a Prio order, your own clicks in the cockpit |
+| `flow.buckets.enabled` | `true` | Work through by the briefing's buckets: every point in one bucket of the briefing profile, one card at a time with the bucket's answers, everything else under More, see [Buckets](#buckets). Off, Work through is as it was |
 | `flow.prio.fallback` | `none` | `haiku`: a read-in with Jev on a click that fails (Jev busy, 5xx, a timeout, no key; never a refusal such as 401 or 403) runs Haiku instead, while `flow.prio.haiku.enabled`, within its budget, and Prio's foot says so; the daily order never falls back. `none`: the failure stands |
 | `flow.prio.haiku.enabled` | `false` | **Read in with Haiku** at Prio's foot: a small Claude model ranks the points as Jev does, see [Work through](#work-through-flow). Off, the button does not show and the route refuses (`prio_off`). Haiku needs no Jev: `integrations.typesafe` may be off |
 | `flow.prio.haiku.budget_per_day` | `6` | how many read-ins a day Haiku may run (the fallback included); `0` none. A run is counted before the call, also when it fails |
@@ -1196,6 +1197,70 @@ its description; the task named only where the point is an open task), and the
 answer stands under the line with **Close**. Ask needs no
 `cockpit.flow.instruct`: with the instruction line off, and on a closed point,
 the line asks only. A person's page asks nothing here.
+
+#### Buckets
+
+With `cockpit.flow.buckets.enabled` (on by default, so it acts as soon as
+Work through is on; Settings, Features: **By the briefing's buckets**, de:
+**Nach den Fächern des Briefings**, feature `flow_buckets`) Work through is
+sorted the way the briefing is: every point (a task, a stream, an inbox item,
+an agent tab that asks, a check-in, a report, an issue) stands in exactly one
+of the briefing profile's buckets, by the briefing's own rule
+([Which bucket a row lands in](briefings.md#views)), so the printed briefing
+and the page never disagree. Names, order and answer words are the profile's
+`view.buckets` (the server sends them as the model's `buckets`, with the
+defaults of [docs/briefings.md](briefings.md#views) where a profile names
+none); a bucket the profile hides lends its points to the first one. On top of
+the rule the page puts what only it sees: an agent tab that asks (or finished,
+or got lost) stands in Do, a check-in whose day came in Waiting on others, a
+task the briefing does not list by who has its next move (the Bridge:
+delegate, blocked: waiting, resting: drop, else plan). A backlog task no bucket
+holds is parked already and stands in none, as in the briefing. Within a bucket a
+tab that asks comes first (it holds an agent), then the rows in the order the
+printed briefing numbers them, then the rest.
+
+- **Left** the buckets in their order, each with how many points it holds and
+  what it means in a few words; the open one lists its points under it, a click
+  brings one to the front. A bucket that holds nothing says empty; the page
+  opens the first one that holds a point.
+- **The middle** says the open bucket's title and what its answers do, then one
+  card: its kind and facts as small marks (Agent tab, Inbox, Task, the area, the
+  due day, only you, with whom), its title (a tab's name, the task it works on
+  under it), **one sentence Next** (de: Als Nächstes): what the tab asks (the
+  question itself: the last sentence of its screen that ends with a question
+  mark, read across the lines the terminal wrapped, with the sentence before it
+  where the question alone is short), else the step of its card, else a fixed
+  sentence of its bucket;
+  no model is asked for it. Under it the bucket's answers as big buttons, the
+  first one strong, and the point's number in the printed briefing ("In the
+  briefing: no. 3 ("3 yes")", from the row's `brief_nr`). Under **More** (de:
+  Mehr) stands everything else the page offers on a point: the tab's whole
+  screen, the states, Hand over, the fields (the right column of the classic
+  view) and Description, Steps, Activity. There is no right column.
+- An answer moves on by itself: the card is held by its id, so the next point
+  of the bucket takes its place, and once the bucket is empty the next one that
+  holds a point opens. The walk bar under the card only goes back and forth.
+
+The first answer of every bucket is the Bridge taking the next step. Each answer
+is the act the briefing's answer is (skills/briefing/references/control.md),
+by its place among the bucket's options, whatever the profile calls it:
+
+| Bucket | Answers (default words) | What goes out |
+|---|---|---|
+| do | yes · later · drop | yes: a tab's own answers win (a dialog's options, Yes and No, the ready answer of its input line, `tab_accept`); an inbox item or a task `do_it` (an item waiting for your yes is approved and run, as "3 yes" in the briefing; anything else starts an agent on its next step). later: `later` to the next briefing day. drop: `settle` not doing (an inbox item is dropped), a task `shelve` |
+| plan | schedule · later | schedule: a day picked (tomorrow, Monday, in a week, in a month, another day), then `later` to it. later: to the next briefing day |
+| delegate | go · not now | go: `do_it`. not now: `later` to the next briefing day |
+| waiting | nudge · wait | nudge: `do_it` with the check-in's sentence that only drafts a message, never sends it. wait: a day picked, then `runs_on` until it, on whom it waits |
+| drop | park · keep | park: a task `shelve` (an idea), anything else out of sight for 30 days. keep: `task_keep` |
+
+An answer a point cannot take is left out: a stream is never dropped, and a tab
+is put off or dropped only where it asks about an inbox item (on a task or a
+stream behind it, later would put off the whole task, not the question). The
+classic card of a tab that asks shows the same question (the last sentence that
+asks, no longer its screen's first line). The Aufgaben page's columns (Me, Bridge,
+Waiting on others) and the squares of Jev in a point's fields then say the
+buckets' names too (do, delegate, waiting; do, plan, delegate, drop). With the
+switch off Work through is as it was. A person's page keeps it as it is.
 
 #### Read marks
 
@@ -3523,6 +3588,7 @@ Those carry an AI mark: small calls of about a cent each, within the daily budge
 | `flow_only` | work | on: `work_view: flow` and `work_views: [files, flow]`, Work through alone in the work tab, only while `flow` is on (otherwise it is refused, or ignored with a warning in a file); off is the config's own value, and where the config itself has it on, off gives every view back and keeps the config's `work_view` |
 | `flow_themes`, `flow_summary`, `flow_instruct`, `flow_checkin`, `flow_seen`, `flow_attach` | work | `flow.<name>.enabled` of the block of that name |
 | `flow_prio_haiku` | work | `flow.prio.haiku.enabled` |
+| `flow_buckets` | work | `flow.buckets.enabled`, Work through by the briefing's buckets ([Buckets](#buckets)); the one switch a fresh cockpit has on, so Basic puts it on |
 | `describe` | work | `describe.auto`: `off`, `missing` or `stale` |
 | `triage_daily` | work | `triage_daily`; a served cockpit (`serve --served`) never sorts by itself, so there the row is not available and a save of it changes nothing |
 | `chat_layout` | chat | `chat_layout`: `classic` or `workspaces` |
@@ -3580,7 +3646,7 @@ open`, which starts it again or finds the one a login item started).
 A **preset** is a named set of feature values; a click applies it after a line that says how many
 switches it sets. Applying one sets exactly the features it names, the others keep their value, and
 the preset whose every feature has its value now is marked. Two are built in: **Basic** puts every
-feature back at its default (switches off, the first value of each choice, the helpers off), and
+feature back at its default (switches off but `flow_buckets`, the first value of each choice, the helpers off), and
 **Full** switches everything on (`describe: stale`, `chat_layout: workspaces`, `files_scope: all`),
 except Ask AI in Files, which should first get its block words, and `flow_only`, which hides views;
 those two it leaves as they are. More presets are files in `workflow/cockpit-presets/`, one

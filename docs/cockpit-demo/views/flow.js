@@ -56,7 +56,7 @@ import { html, useEffect, useRef } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   flowDriver, flowMode, flowParts, flowQueue, flowSettings, flowSides, focusIndex, instructScope, laneRows, leftWalk, pointListAt, pointsIn,
   runningOf, prepTargets, prioLoaded, prioOn, restSuggestions, short, soloPoint, themesToAsk, workPageOf, personOf, pointName,
-  pointKeys, readMark, seenFigures, seenOn, seenSettings, unreadWalk
+  pointKeys, readMark, seenFigures, seenOn, seenSettings, unreadWalk, flowBucketsOn
 } from '../logic.js'
 import { T } from '../text.js'
 import { NoModel, WorkSwitch } from './day.js'
@@ -64,6 +64,7 @@ import { CheckList, LeftList, ReadList } from './flowleft.js'
 import { FlowOverview, listRows, walkOrder } from './flowlist.js'
 import { PrioGrid, PrioSource } from './flowprio.js'
 import { RunningStrip, SessionCards } from './flowrun.js'
+import { BucketBody } from './flowbuckets.js'
 import { FlowAside, FlowSide, SideDot, sideName } from './flowside.js'
 import { InstructLine } from './flowinstruct.js'
 import { PointView, pointStandWord, pointTitle, useSoloLoad } from './flowpoint.js'
@@ -94,7 +95,8 @@ function intoView(el) {
 /** The page; before the first state (or without one: the connection gone, a pass failed) it says so, as Due does,
  *  never the calm card's All decided over an empty queue (round 6 B) */
 export function FlowPage({ s, c }) {
-  if (s.model) return html`<${FlowBody} s=${s} c=${c} />`
+  // the briefing's buckets (cockpit.flow.buckets, views/flowbuckets.js) in place of the overview and the right column
+  if (s.model) return flowBucketsOn(s) ? html`<${BucketBody} s=${s} c=${c} />` : html`<${FlowBody} s=${s} c=${c} />`
   return html`<div class="col col-page flow"><header class="page-head flow-head"><${WorkSwitch} s=${s} c=${c} /></header><${NoModel} s=${s} cls="flow-nostate" /></div>`
 }
 

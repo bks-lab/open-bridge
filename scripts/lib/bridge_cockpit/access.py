@@ -112,12 +112,12 @@ MODEL_NEUTRAL: dict[str, Any] = {
     "stale": False, "profile": "", "title": "", "headline": "", "headline_rest": "", "since": None, "skipped": [], "agenda": [], "status": [],
     "extras": {"clear": [], "hygiene": [], "workplace": None}, "pages": [], "alarms": [], "teams": [], "briefing_badge": 0,
     "review": {"running": False, "error": None, "last": None, "keys": []}, "days": {"quota": {}, "counts": {}},
-    "week": {"quota": {}, "counts": {}}, "returns": []}
+    "week": {"quota": {}, "counts": {}}, "returns": [], "buckets": []}
 
 # a date as a person gets it: what the calendar says, nothing a page of the owner hangs on it. No overlaps: they name
 # the events beside it, which may stand in a calendar that is not theirs. No figures either, they count all of them
 FLOW_KEPT = frozenset({"drop_reasons", "return_after_s"})
-FLOW_OFF: dict[str, Any] = {"prep_ahead": 0, "infer_sessions": False, **{k: {"enabled": False} for k in ("instruct", "themes", "summary", "attach", "prio", "seen")}}
+FLOW_OFF: dict[str, Any] = {"prep_ahead": 0, "infer_sessions": False, **{k: {"enabled": False} for k in ("instruct", "themes", "summary", "attach", "prio", "seen", "buckets")}}
 DATE_FIELDS = frozenset({"title", "when", "id", "cal", "group"})
 DATE_NEUTRAL: dict[str, Any] = {"detail": "", "tone": None, "url": None, "task": None, "ask": False, "mark": None, "lines": [],
                                 "actions": None, "flags": None, "tags": None}
@@ -131,7 +131,7 @@ ROW_FIELDS = frozenset({
     "slug", "label", "age", "stale", "type", "kind", "blocked_by", "path_kind"})
 ROW_NEUTRAL: dict[str, Any] = {"url": None, "link": None, "inbox_key": None, "tab": None, "actions": [], "starting": False,
                                "adopt_candidates": [], "team": None, "team_suggestions": [], "review": None,
-                               "also_inbox": [], "on_board": None, "describe": None, "selectable": False}
+                               "also_inbox": [], "on_board": None, "describe": None, "selectable": False, "brief_nr": None}
 TASK_FIELDS = frozenset({"ok", "slug", "kind", "work_kind", "origin", "front", "sections", "brief", "files", "inbox", "card"})
 TASK_NEUTRAL: dict[str, Any] = {"related": [], "log": [], "describe": None}
 TASK_DROPPED = frozenset({"path"})       # where it lies on this machine, the page of a person needs no folder

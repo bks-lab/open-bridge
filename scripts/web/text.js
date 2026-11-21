@@ -1895,7 +1895,7 @@ const en = {
     label: {
       flow: 'Work through', flow_only: 'Only Work through', flow_themes: 'Themes', flow_summary: 'Summary of the activity',
       flow_instruct: 'Instruction line', flow_checkin: 'Look before a check-in', flow_prio_haiku: 'Read in with Haiku',
-      flow_seen: 'Read marks', flow_attach: 'Attach a document', describe: 'Briefs by themselves', triage_daily: 'Daily sort',
+      flow_seen: 'Read marks', flow_attach: 'Attach a document', flow_buckets: 'By the briefing\'s buckets', describe: 'Briefs by themselves', triage_daily: 'Daily sort',
       chat_layout: 'Chat layout', files_scope: 'Which tasks are files', files_search: 'Ask AI in Files',
       launch_model: 'Model choice', ticker: 'News ticker', session_guide: 'Decision guide', voice: 'Voice',
     },
@@ -1909,6 +1909,7 @@ const en = {
       flow_prio_haiku: 'At the foot of Prio a small Claude model ranks the points, no Jev needed.',
       flow_seen: 'A point you opened folds out of sight until something new happens to it.',
       flow_attach: 'A document goes into the deliverables folder of the point\'s open task.',
+      flow_buckets: 'Every point in one bucket of the briefing, one card at a time with the bucket\'s answers. Everything else under More.',
       describe: 'A small model writes each item\'s brief ahead: goal, story, acceptance. The button on a card works when off too.',
       triage_daily: 'Sorts every task and inbox item once a day by itself, otherwise only on sort again.',
       chat_layout: 'Classic lists the agent tabs. Workspaces shows each workspace with its tabs and its work beside them.',
@@ -3756,7 +3757,7 @@ const de = {
     label: {
       flow: 'Abarbeiten', flow_only: 'Nur Abarbeiten', flow_themes: 'Themen', flow_summary: 'Zusammenfassung der Aktivität',
       flow_instruct: 'Anweisungszeile', flow_checkin: 'Vor der Nachfrage nachsehen', flow_prio_haiku: 'Mit Haiku einlesen',
-      flow_seen: 'Gelesen-Marken', flow_attach: 'Dokument anhängen', describe: 'Beschreibungen von selbst', triage_daily: 'Täglich einschätzen',
+      flow_seen: 'Gelesen-Marken', flow_attach: 'Dokument anhängen', flow_buckets: 'Nach den Fächern des Briefings', describe: 'Beschreibungen von selbst', triage_daily: 'Täglich einschätzen',
       chat_layout: 'Chat-Ansicht', files_scope: 'Welche Aufgaben Akten sind', files_search: 'KI fragen in den Akten',
       launch_model: 'Modellwahl', ticker: 'Nachrichtenband', session_guide: 'Entscheidungshilfe', voice: 'Sprachausgabe',
     },
@@ -3770,6 +3771,7 @@ const de = {
       flow_prio_haiku: 'Am Fuß von Prio ordnet ein kleines Claude-Modell die Punkte, ohne Jev.',
       flow_seen: 'Ein geöffneter Punkt verschwindet aus dem Blick, bis etwas Neues mit ihm passiert.',
       flow_attach: 'Ein Dokument kommt in den Ergebnisordner der offenen Aufgabe des Punkts.',
+      flow_buckets: 'Jeder Punkt in einem Fach des Briefings, eine Karte nach der anderen mit den Antworten des Fachs. Alles andere unter Mehr.',
       describe: 'Ein kleines Modell schreibt die Beschreibung jedes Eintrags vorab: Ziel, Story, Abnahme. Der Knopf auf der Karte geht auch, wenn es aus ist.',
       triage_daily: 'Schätzt jede Aufgabe und jeden Eingang einmal am Tag von selbst ein, sonst nur auf neu einschätzen.',
       chat_layout: 'Klassisch listet die Agenten-Tabs. Workspaces zeigt jeden Workspace mit seinen Tabs und seiner Arbeit daneben.',

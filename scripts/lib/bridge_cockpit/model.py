@@ -303,7 +303,9 @@ def _base_row(**extra) -> dict:
            "origin_raw": None, "inbox_kind": None, "origin_provider": None, "origin_section_kind": None,
            "about_task": None, "about_kind": None,
            # the inbox ids of the asks this line took in (briefing_view._fold): they end with it
-           "also_inbox": []}
+           "also_inbox": [],
+           # its number in the printed briefing (briefing_view.numbered), None where it prints none
+           "brief_nr": None}
     row.update(extra)
     return row
 
@@ -321,7 +323,9 @@ def task_row_for(slug: str, title: str, tasks: list[dict], tx: dict = EN) -> dic
     why = [tx["blocked"].format(by=t["blocked_by"])] if t["blocked_by"] else (
         [tx["quiet_for"].format(days=as_text(t["age"]))] if t["stale"] else [])
     row = task_row(slug, title or t.get("title") or t["label"])
-    row.update(why=why, sources=["tasks"], priority=t["priority"], area=t["area"], area_names=list(t["area_names"]),
+    # no bucket of the briefing: "tasks", as with_tasks names a task it lists beside the briefing, never the default do
+    # (Work through by buckets read a backlog task a page names as one for today, 21.11.2026)
+    row.update(bucket="tasks", why=why, sources=["tasks"], priority=t["priority"], area=t["area"], area_names=list(t["area_names"]),
                task_type=t["type"], origin_raw=t.get("origin"), updated=t.get("updated"), status=t.get("status"))
     return row
 
@@ -647,6 +651,8 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
                 about_task=as_text_or_null(i.get("about_task")),
                 about_kind=i.get("about_kind") if i.get("about_kind") in ("task", "stream") else None,
                 also_inbox=[x for x in _list(i.get("also_inbox")) if isinstance(x, str)][:ALSO_MAX],
+                # the row's number in the printed briefing ("3 yes", briefing_view.numbered), None where it prints none
+                brief_nr=i["nr"] if isinstance(i.get("nr"), int) and not isinstance(i.get("nr"), bool) and i["nr"] > 0 else None,
             )
             # Same key twice (same number from two trackers): the second gets the block added.
             key = row_key(base)
@@ -693,10 +699,30 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
                                                   "title": as_text_or_null(x.get("title"))}
                          for x in (_dict(s) for s in _list(data.get("sections"))) if as_text(x.get("id"))},
         "buckets": buckets,
+        # the profile's buckets in its order with their titles and answers (briefing_view bucket_defs), also an
+        # empty one: Work through sorts its points into them (flow.buckets)
+        "bucket_defs": bucket_defs_of(v.get("bucket_defs")),
         "agenda": agenda,
         "status": status,
         "pages": parse_pages(data, tx),
     }
+
+
+BRIEF_BUCKETS = ("do", "plan", "delegate", "waiting", "drop")
+
+
+def bucket_defs_of(value: Any) -> list[dict]:
+    """[{id, title, options}] of the view's bucket_defs: the five ids of the briefing only, each once, a title and at
+    most ten answers of text; an older briefing sends none, then the list is empty and the page takes its defaults"""
+    out, seen = [], set()
+    for b in (_dict(x) for x in _list(value)):
+        bid = b.get("id")
+        if bid not in BRIEF_BUCKETS or bid in seen:
+            continue
+        seen.add(bid)
+        out.append({"id": bid, "title": as_text(b.get("title")) or bid,
+                    "options": [o.strip() for o in _list(b.get("options")) if isinstance(o, str) and o.strip()][:10]})
+    return out
 
 
 def _json_list(out: Any) -> list:
