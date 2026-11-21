@@ -186,7 +186,8 @@ def test_do_it_on_an_inbox_item_is_its_yes_and_the_run():
 def test_do_it_on_a_waiting_point_writes_a_nudge_as_a_draft_never_sent():
     e = ans.effect("do", {"task": "a", "bucket": "waiting", "who": "Ada"})
     # a verb the server has (round 1: "nudge" was none, the page sent do_it): an agent writes the draft, never sends
-    assert e["cockpit"]["verb"] == "do_it" and e["draft_only"] is True and e["then"] == "do"
+    # round 2: while the agent writes it the point runs in I'll do, the draft then waits in Do
+    assert e["cockpit"]["verb"] == "do_it" and e["draft_only"] is True and e["then"] == "delegate" and e["ready"] == "do"
     assert "draft" in e["cockpit"]["args"]["note"].lower()
 
 

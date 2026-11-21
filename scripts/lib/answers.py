@@ -282,8 +282,12 @@ def effect(answer: str, row: dict, until: str | None = None, today: str | None =
             out["own_answers"] = True           # the tab's own answers stand in this place
             return be("tab_answer", "delegate")
         if kind == "waiting":
-            out["draft_only"] = True            # never sent: the draft stands in Do for the person
-            return be("do_it", "do", note=NUDGE_NOTE)
+            # never sent: while the agent writes it the point is the Bridge's, running; the draft it leaves stands in
+            # Do for the person to send (`ready`; round 2 of the four answers: the table said Do at once)
+            out["draft_only"] = True
+            out["ready"] = "do"
+            out["running"] = True
+            return be("do_it", "delegate", note=NUDGE_NOTE)
         if item:
             return be("do_it", "delegate", [f"inbox.py approve {item}", "inbox.py run"], yes=True)
         out["running"] = True
