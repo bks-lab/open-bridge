@@ -359,7 +359,7 @@ test('the Jev page uses the calm helpers: its own words, no reading flash, word 
   assert.match(page, /matrixWords\(null/)
   assert.ok(page.indexOf('data-qlabel') > page.indexOf('data-dot'), 'the square words over the dots')
   // the plan's rows run in at once on a first visit, no second of an empty plan between the waiting list and Jev's
-  const start = /const k = intro \? spring\(Ti, ([\d.]+) \+ i \*/.exec(page)
+  const start = /const k = intro \? spring\(Ti, ([\d.]+) \+ i \* [\d.]+, \{ w: 8, zeta: 0\.95 \}\)/.exec(page)
   assert.ok(start && Number(start[1]) < 0.5, 'rows run in at once')
   assert.match(page, /readingFor\(/)
   assert.match(page, /playFor\(/)
