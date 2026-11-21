@@ -298,3 +298,20 @@ test('tabWords: what a tab asks or said last, never the driver\'s chrome line', 
   assert.equal(logic.tabWords({ last: '? for shortcuts' }), '')
   assert.equal(logic.tabWords({ last: 'Tests are green.' }), 'Tests are green.')
 })
+
+test('a row shows one number, the printed briefing\'s, while the buckets are on', () => {
+  const s = { ...state(), model: { ...state().model, numbers: { 'task:a': 4, 'task:b': 42 } } }
+  assert.equal(logic.shownNumber({ key: 'task:a', brief_nr: null }, s), null)
+  assert.equal(logic.shownNumber({ key: 'task:b', brief_nr: 4 }, s), 4)
+  // with the switch off the cockpit's own number, as before
+  assert.equal(logic.shownNumber({ key: 'task:b', brief_nr: 4 }, { ...s, work: { flow: { enabled: true, buckets: { enabled: false } } } }), 42)
+})
+
+test('a number typed with the buckets on names the printed briefing\'s row', () => {
+  const a = task('a', { brief_nr: 4 })
+  const b = task('b')
+  const byKey = new Map([[a.key, a], [b.key, b]])
+  const by = logic.rowByNumber({ numbers: { [b.key]: 4 } }, byKey, true)
+  assert.equal(by.get(4), a)
+  assert.equal(logic.rowByNumber({ numbers: { [b.key]: 4 } }, byKey).get(4), b)
+})

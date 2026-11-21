@@ -4,7 +4,7 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, tabWords, workPageOf, homeCatalog, homeChosen,
+  attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, tabWords, shownNumber, workPageOf, homeCatalog, homeChosen,
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
   rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv, askMark,
@@ -253,7 +253,7 @@ function HomeTabCard({ tab, s, c, preview }) {
  *  its detail walks on through them */
 function HomeRowCard({ row, s, c, tab, big = false, queue = null }) {
   const t = T()
-  const n = s.model?.numbers?.[row.key] ?? row.number
+  const n = shownNumber(row, s)
   const project = rowProject(row)
   return html`<article class=${`hcard hcard-row${big ? ' hcard-focus' : ''}`}>
     <div class="hcard-row-head">

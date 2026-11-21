@@ -343,3 +343,11 @@ export function doWord(s, lang = 'en') {
   if (!flowBucketsOn(s)) return (TABLES[lang] ?? TABLES.en).action.do
   return upFirst(bucketDefs(s, lang).find(b => b.id === 'delegate')?.options?.[0] ?? (TABLES[lang] ?? TABLES.en).action.do)
 }
+
+/** The number a row shows on a list (Due, By source, the start page): while the buckets are on only its number in the
+ *  printed briefing (brief_nr, "4 yes" in the chat acts on it), null for a row the briefing does not number, so no
+ *  second number of the cockpit's own stands beside it; else the cockpit's own (model.numbers) */
+export function shownNumber(row, s) {
+  if (flowBucketsOn(s)) return Number.isInteger(row?.brief_nr) ? row.brief_nr : null
+  return s?.model?.numbers?.[row?.key] ?? row?.number ?? null
+}

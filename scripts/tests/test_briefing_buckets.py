@@ -162,6 +162,27 @@ def test_a_cockpit_pass_numbers_as_the_printed_briefing_would():
     assert len(got) == 7 and {t: n for t, n in got.items() if n} == want
 
 
+def test_a_cockpit_pass_numbers_as_the_printed_briefing_would_also_with_a_capped_section():
+    # round 1 of the simulation: the inbox section has `max: 3`; the printed briefing reads only its first three
+    # items, the cockpit's pass reads every one (briefing.py collect, `_whole`) and still gives each row the number the
+    # printed briefing gives it, and no number to a row the printed briefing does not show
+    items = [item(f"i{n}", f"Ask {n}", urgency="later" if n % 2 else "today") for n in range(1, 8)]
+    tasks = [{"id": f"t{n}", "title": f"Task {n}", "task": f"t{n}", "state": "doing", "next": {"what": f"step {n}"}}
+             for n in range(1, 4)]
+    cfg = [{"kind": "inbox", "max": 3}, {"kind": "tasks"}]
+    printed = bv.build(result(sec("inbox", "inbox", items[:3]), sec("tasks", "tasks", tasks)), profile({"style": "triage"}, cfg))
+    whole = result({**sec("inbox", "inbox", items), "printed_max": 3}, sec("tasks", "tasks", tasks))
+    cockpit = bv.build(whole, profile({"style": "triage", "max_items": 500}, cfg, _whole=True))
+    want = {r["title"]: r.get("nr") for b in printed["buckets"] for r in b["items"]}
+    got = {r["title"]: r.get("nr") for b in cockpit["buckets"] for r in b["items"]}
+    assert len(got) == 10
+    assert {t: n for t, n in got.items() if n} == want
+    assert got["Ask 4"] is None and got["Ask 7"] is None
+    # and every row the printed briefing shows stands in the same bucket in both
+    bucket = lambda v: {r["title"]: b["id"] for b in v["buckets"] for r in b["items"]}
+    assert {t: b for t, b in bucket(cockpit).items() if t in want} == bucket(printed)
+
+
 def test_a_cockpit_pass_numbers_by_the_profiles_style_not_the_forced_one():
     rows = [sec("inbox", "inbox", [item("i1", "Sign"), item("i2", "Object", urgency="later")])]
     v = bv.build(result(*rows), profile({"style": "brevity"}, _whole=True), "triage")

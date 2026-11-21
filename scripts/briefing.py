@@ -1877,6 +1877,9 @@ def collect(root: Path, profile: dict, ctx: Context, previous: dict | None = Non
         entry["total"] = len(items)
         entry["all"] = items
         entry["items"] = items[: _positive(s.get("max"), len(items) or 1)] if s.get("max") and not profile.get("_whole") else items
+        if s.get("max") and profile.get("_whole"):
+            # the cockpit's pass keeps every item, the view numbers them as the printed run cut to `max:` would
+            entry["printed_max"] = _positive(s.get("max"), len(items) or 1)
         out.append(entry)
     result = {"profile": profile.get("id"), "title": profile.get("title") or profile.get("id"),
               "collected_at": ctx.now.isoformat(timespec="minutes"), "sections": out}

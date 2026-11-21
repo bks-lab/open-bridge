@@ -665,6 +665,8 @@ def test_max_caps_items_but_keeps_the_total(tmp_path):
     # a dashboard that pages itself (--max-items) keeps every row: a cut row would vanish from its page
     whole = bf.collect(root, {"id": "p", "_whole": True, "sections": [{"kind": "tasks", "max": 2}]}, ctx(root))["sections"][0]
     assert len(whole["items"]) == 3
+    # and keeps the cap of the printed run, so the view numbers the rows as that run does (briefing_view build)
+    assert whole["printed_max"] == 2 and "printed_max" not in sec
 
 
 def test_inbox_section_lists_open_items(tmp_path):
@@ -1552,7 +1554,8 @@ def test_cli_max_items_lifts_the_view_cap_for_one_run(tmp_path, capsys, monkeypa
     assert bf.main(["--root", str(root), "collect", "a", "--json", "--no-save"]) == 0
     assert bf.main(["--root", str(root), "collect", "a", "--json", "--no-save", "--max-items", "500"]) == 0
     capsys.readouterr()
-    assert seen == [1, 500]
+    # the pass with every row numbers by the printed briefing it builds inside, with the profile's own cap
+    assert seen == [1, 500, 1]
     assert "max_items: 1" in (root / "workflow" / "briefings" / "a.yaml").read_text(encoding="utf-8")
 
 

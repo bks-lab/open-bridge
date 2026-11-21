@@ -6,7 +6,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/ht
 import {
   attentionTabs, duration, formatDay, indexRows, pageWarnings, sectionRows, short, stateToken, canTab, actionRow,
   pageItemActs, workPageOf, workViews, flowOn, startMode, parseDate, isoDate, launchChoice, rowKind, repoGroups, originOf, ORIGIN_CATEGORIES,
-  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey, personOf, flowBucketsOn, rowPoint, tabPoint, doWord, nextBriefingDay
+  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey, personOf, flowBucketsOn, rowPoint, tabPoint, doWord, nextBriefingDay, shownNumber
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ItemCardLine, titleOf } from './card.js'
@@ -309,7 +309,8 @@ export function RowBar({ row, s, c, pin = true, size = 'xs', tab = null }) {
 /** A row's bar with the briefing's buckets on (cockpit.flow.buckets): its bucket's answers, as the card of Work
  *  through offers them, so one view differs from another only in order and grouping, never in words or answers */
 function BucketRowBar({ row, s, c, size, pin }) {
-  return html`<${BucketBar} x=${rowPoint(row, s)} s=${s} c=${c} size=${size} />${pin ? html`<${PinStar} rowKey=${row.key} s=${s} c=${c} />` : null}`
+  // the row's number stands at its start (shownNumber): the bar names no second one
+  return html`<${BucketBar} x=${rowPoint(row, s)} s=${s} c=${c} size=${size} nr=${false} />${pin ? html`<${PinStar} rowKey=${row.key} s=${s} c=${c} />` : null}`
 }
 
 /** The buttons of a page row that is no inbox item or task but a person can hand on: the same bar as a work row.
@@ -335,9 +336,9 @@ function RowItem({ row, s, c }) {
   const selected = s.ui.selectedKey === row.key
   const focused = s.ui.focusKey === row.key
   const picked = s.ui.picked.includes(row.key)
-  const n = s.model?.numbers?.[row.key] ?? row.number
+  const n = shownNumber(row, s)
   return html`<li class=${`row${selected ? ' is-selected' : ''}${focused ? ' is-focused' : ''}${row.tab?.waiting ? ' is-waiting' : ''}`} data-key=${row.key}>
-    <span class="row-num mono"><span class="sr-only">${t.numberLabel(n)}</span><span aria-hidden="true">${n}</span></span>
+    <span class="row-num mono">${n != null ? html`<span class="sr-only">${t.numberLabel(n)}</span><span aria-hidden="true">${n}</span>` : null}</span>
     ${row.selectable
       ? html`<input class="row-pick" type="checkbox" checked=${picked} aria-label=${t.select(short(row.title, 40))}
           onChange=${() => c.togglePick(row.key)} />`

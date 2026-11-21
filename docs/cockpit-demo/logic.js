@@ -591,9 +591,14 @@ export function displayedRows(model, expanded, byKey, heightPx = 0) {
   return out
 }
 
-/** Number to row, from model.numbers */
-export function rowByNumber(model, byKey) {
+/** Number to row, from model.numbers; `brief` (the buckets on) by the printed briefing's numbers instead, the only
+ *  ones the page then shows (buckets.js shownNumber) */
+export function rowByNumber(model, byKey, brief = false) {
   const out = new Map()
+  if (brief) {
+    for (const r of byKey.values()) if (Number.isInteger(r?.brief_nr) && !out.has(r.brief_nr)) out.set(r.brief_nr, r)
+    return out
+  }
   for (const [key, n] of Object.entries(model?.numbers ?? {})) {
     const r = byKey.get(key)
     if (r) out.set(n, r)

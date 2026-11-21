@@ -115,19 +115,19 @@ function AnswerButtons({ list, strong, size, busy, pick, confirm, run, setConfir
 }
 
 /** A point's bucket as one small chip, the bucket's title, with its number in the printed briefing beside it */
-export function BucketChip({ x, bucket, s }) {
+export function BucketChip({ x, bucket, s, nr: withNr = true }) {
   const lang = language()
   const f = T().flow.buckets
   const def = bucketDefs(s, lang).find(b => b.id === bucket)
   if (!def) return null
-  const nr = x?.row?.brief_nr
+  const nr = withNr ? x?.row?.brief_nr : null
   return html`<span class="fb-chips"><span class=${`chip fb-chip fb-chip-${bucket}`} title=${f.sub[bucket]}>${def.title}</span>${Number.isInteger(nr)
     ? html`<span class="chip fb-chip-nr mono" title=${f.inBriefing(nr, null)}>${f.nr(nr)}</span>` : null}</span>`
 }
 
 /** The answers of a point on a row of a list: its bucket chip, the first answer strong, the rest under one More,
  *  the same answers and acts as the card (BucketCard). `chip` false leaves the chip out where the row shows it */
-export function BucketBar({ x, s, c, size = 'xs', bucket = null, chip = true }) {
+export function BucketBar({ x, s, c, size = 'xs', bucket = null, chip = true, nr = true }) {
   const f = T().flow.buckets
   const b = bucket ?? viewBucket(x)
   const { answers, run, pick, setPick, confirm, setConfirm, note, busy } = useBucketAnswer(x, b, s, c)
@@ -139,7 +139,7 @@ export function BucketBar({ x, s, c, size = 'xs', bucket = null, chip = true }) 
     confirm=${confirm} run=${run} setConfirm=${setConfirm} max=${40} />`
   const uid = `fb-pick-${String(x?.id ?? 'x').replace(/[^\w-]/g, '-')}`
   return html`<span class="fb-bar">
-    ${chip ? html`<${BucketChip} x=${x} bucket=${b} s=${s} />` : null}
+    ${chip ? html`<${BucketChip} x=${x} bucket=${b} s=${s} nr=${nr} />` : null}
     ${first ? btns([first], true) : null}
     ${rest.length ? html`<${Btn} size=${size} variant="ghost" pressed=${more} cls="fb-bar-more" onClick=${() => setMore(!more)}>${f.more}<//>` : null}
     ${more ? html`<span class="fb-bar-rest">${btns(rest, false)}</span>` : null}

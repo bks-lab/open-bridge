@@ -1679,19 +1679,55 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
         out["plan"] = _plan(visible, events, now, plan_cfg, day_start, day_end)
         return out
 
+    # a cockpit pass reads more items than the printed run (each section past its `max:`), and a row read together
+    # with one of them can land in another bucket: a row the printed briefing shows keeps its bucket there
+    printed = _printed_numbers(result, profile) if profile.get("_whole") else {}
+    for r in visible:
+        got = printed.get(_row_ident(r))
+        if got and got[1] in BUCKETS:
+            r["bucket"] = got[1]
     out["buckets"], out["more"], out["dropped"] = _capped(shown, visible, cap)
     # The number every row has in the printed briefing ("3 yes"), one rule for every renderer (numbered). A cockpit
-    # pass (`_whole`, every row) numbers as the printed briefing would: the profile's own style and max_items, and
-    # without what the person settled in the cockpit (`numbering_settled`), so its cards say the briefing's number.
-    printed, num_style = out["buckets"], style
+    # pass (`_whole`, every row) numbers as the printed briefing would: the view the printed briefing builds (each
+    # section within its own `max:`, the profile's own style and max_items, without what the person settled in the
+    # cockpit), its numbers carried over row by row, so its cards say the briefing's number and a row the printed
+    # briefing does not show says none.
     if profile.get("_whole"):
-        num_style = style_of(profile)
-        gone = _settled_keys(result.get("numbering_settled"), now)
-        kept = [r for r in visible if _settled_key(r) not in gone] if gone else visible
-        printed = _capped(shown, kept, _int(profile.get("_print_max"), 12, 1))[0]
-    for n, r in enumerate(numbered({**out, "style": num_style, "buckets": printed}), 1):
+        for r in visible:
+            got = printed.get(_row_ident(r))
+            if got:
+                r["nr"] = got[0]
+        return out
+    for n, r in enumerate(numbered({**out, "style": style, "buckets": out["buckets"]}), 1):
         r["nr"] = n
     return out
+
+
+def _row_ident(row: dict) -> str:
+    """A row the same in two builds of one result: its inbox item, task or ref, else its title and sources"""
+    return _settled_key(row) or f"{row.get('title')}|{','.join(map(str, row.get('sources') or []))}|{row.get('url') or ''}"
+
+
+def _printed_numbers(result: dict, profile: dict) -> dict:
+    """{row ident: (nr, bucket)} of the briefing as it is printed from this result: each section cut to the `max:` of the
+    printed run (briefing.py collect keeps it as `printed_max` in a cockpit pass), the profile without the pass's
+    max_items (its own, `_print_max`), what was settled in the cockpit left out as a printed run leaves it out"""
+    sections = []
+    for s in result.get("sections") or []:
+        cap = s.get("printed_max")
+        if _pos_int(cap) and len(s.get("items") or []) > cap:
+            s = {**s, "items": list(s.get("items") or [])[:cap]}
+        sections.append(s)
+    printed = {k: v for k, v in result.items() if k != "numbering_settled"}
+    printed.update(sections=sections, settled=result.get("numbering_settled"))
+    view = dict(profile.get("view") if isinstance(profile.get("view"), dict) else {})
+    if _pos_int(profile.get("_print_max")):
+        view["max_items"] = profile["_print_max"]
+    else:
+        view.pop("max_items", None)
+    plain = {k: v for k, v in profile.items() if k not in ("_whole", "_print_max")}
+    built = build(printed, {**plain, "view": view})
+    return {_row_ident(r): (r["nr"], r.get("bucket")) for r in numbered(built) if r.get("nr")}
 
 
 def _capped(shown: list, visible: list, cap: int) -> tuple:

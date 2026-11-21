@@ -110,7 +110,10 @@ test('Due by buckets: every row its bucket word, the bucket\'s answers, the firs
   assert.equal(rows.length, 2)
   const first = rows[0]
   assert.equal(first.$('.fb-chip').text(), 'Tun (du, heute)')
-  assert.match(first.$('.fb-chip-nr').text(), /4/)
+  // its one number is the printed briefing's, at the row's start; the bar names no second one
+  assert.match(first.$('.row-num').text(), /4$/)
+  assert.equal(first.$('.fb-chip-nr'), null)
+  assert.equal(rows[1].$('.row-num').text(), '')
   const acts = first.$('.row-acts')
   const bs = acts.$$('.fb-bar button')
   assert.equal(bs[0].text().trim(), 'Ja')

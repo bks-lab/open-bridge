@@ -18,7 +18,7 @@ import {
   tabWalkView, walkRefs, inProject, areasOff, areaKey, workspacesOn, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, prioOn, prioRows, prioLoaded, jevReady, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
-  FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace, infoPoint, pointOpen, pointViewOn,
+  FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace, infoPoint, pointOpen, pointViewOn, flowBucketsOn,
   pointBack, pointList, ghWalkAt, flowOpenKey, machineModel, restartStep, RESTART_SLOW_MS, lostRestart, helloReload, savableSettings,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
@@ -2155,7 +2155,8 @@ const ctl = {
       return false
     }
     const s = store.get()
-    const byNumber = rowByNumber(s.model, indexRows(areaScope(s).model))   // a number of a hidden row finds nothing
+    // a number of a hidden row finds nothing; with the buckets on a number is the printed briefing's
+    const byNumber = rowByNumber(s.model, indexRows(areaScope(s).model), flowBucketsOn(s))
     await runPlan(planShortcut(codes, n => byNumber.get(n)))
     return true
   },
