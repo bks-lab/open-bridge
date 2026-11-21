@@ -337,3 +337,21 @@ test('after Do it a started point stands in I\'ll do, marked as running, never o
   assert.ok(!logic.bucketAnswers(p, 'delegate', s, 'en').some(a => a.meaning === 'do'))
   assert.equal(logic.nextSentence(p, 'delegate', s, 'en'), en.nextWorking)
 })
+
+test('the menu of Later closes on a click beside it and on Escape, never covering the card', async () => {
+  // round 1 (visual): it stayed open after a click elsewhere and after Escape; only a second click on Later closed it
+  const t = task('t')
+  const el = mount(html`<${BucketBar} x=${row(t)} s=${state({ work: [t] })} c=${recorder()} />`)
+  el.$('.fb-answer-later').click()
+  await rounds()
+  assert.ok(el.$('.fb-later-menu'))
+  document.body.dispatch('pointerdown')
+  await rounds()
+  assert.equal(el.$('.fb-later-menu'), null, 'a click beside it')
+  el.$('.fb-answer-later').click()
+  await rounds()
+  assert.ok(el.$('.fb-later-menu'))
+  document.dispatch('keydown', { key: 'Escape' })
+  await rounds()
+  assert.equal(el.$('.fb-later-menu'), null, 'Escape')
+})
