@@ -439,10 +439,15 @@ export function ownerChoices(x, s) {
   const row = x?.row?.key && !x.readOnly ? x.row : null
   if (!row) return { current: null, choices: [], name: () => null }
   const key = row.key
-  const step = String(row.card?.next?.who ?? row.checkin?.who ?? x.checkin?.who ?? '').trim()
+  // an inbox item put off with someone says who (row.who); a task its step's who; a point that waits on a blocker
+  // without a name has no holder to mark (round 3: a task waiting on Jordan marked du as the current one)
+  const held = row.inbox_id ? (row.inbox_state === 'deferred' ? row.who ?? x.checkin?.who : null) : row.card?.next?.who
+  const step = String(held ?? row.checkin?.who ?? x.checkin?.who ?? '').trim()
   const low = step.toLowerCase()
-  const current = BRIDGE.has(low) ? 'bridge' : YOU.has(low) ? 'me' : step
-  const choices = isTask(row) ? ['me', 'bridge'].map(who => ({ who, run: { verb: 'task_owner', args: { key, who } } })) : []
+  const blocked = !step && (blockerOf(row) || x?.bucket === 'waiting')
+  const current = blocked ? null : BRIDGE.has(low) ? 'bridge' : YOU.has(low) ? 'me' : step
+  // you and the Bridge on every point that has an owner, an inbox item too (round 3: it offered only a name)
+  const choices = isTask(row) || row.inbox_id ? ['me', 'bridge'].map(who => ({ who, run: { verb: 'task_owner', args: { key, who } } })) : []
   const week = laterDays(s?.now || Date.now()).week
   const name = who => {
     const w = String(who ?? '').replace(/\s+/g, ' ').trim()

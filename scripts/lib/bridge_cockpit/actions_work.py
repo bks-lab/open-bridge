@@ -425,8 +425,11 @@ class WorkVerbs:
             raise bad_arg("who", "one line of 1 to 60 characters: who has the step")
         found = self.entry(key)
         row = found["row"]
-        if not row.get("task") or row.get("inbox_id"):
-            raise self.not_applicable("only a task's step has someone who takes it", "key")
+        if row.get("inbox_id"):
+            self.inbox_owner(ctx, key, row, who)
+            return
+        if not row.get("task"):
+            raise self.not_applicable("only a task or an inbox item has someone who takes it", "key")
         slug = self.slug(row)
         old_next = self.task_next_of(slug) or ((found.get("out") or {}).get("card") or {}).get("next") or {}
         old_who = old_next.get("who")
@@ -448,6 +451,34 @@ class WorkVerbs:
                                                                                 **({"check": old_check} if drop_check else {})}),
                                                                      **trace}}})
         ctx.note(self.tx["owner_set"].format(who=said, title=m.short(row["title"], 60)))
+        ctx.delta()
+        self.app.collector.request("both")
+
+    def inbox_owner(self, ctx: Ctx, key: str, row: dict, who: str) -> None:
+        """With … on an inbox item (round 3 of the four answers: it offered only a name): the Bridge puts it off with
+        the Bridge for a week (inbox.py defer --on bridge, in sight in I'll do, its undo the reopen of every defer),
+        you take it back from whoever had it (inbox.py reopen), a name is In progress with them (work_on)"""
+        low = who.lower()
+        item = self.inbox_id(row)
+        if low not in ("me", "bridge"):
+            week = (self.today() + dt.timedelta(days=7)).isoformat()
+            self.v_work_on(ctx, key, who, week)
+            return
+        if low == "me":
+            if row.get("inbox_state") != "deferred":
+                raise self.not_applicable("the item is yours already", "who")
+            run = ctx.call("inbox.reopen", item, self.inbox("reopen", item), SHORT_TIMEOUT)
+            if not run.ok:
+                ctx.note(self.tx["owner_failed"].format(err=m.short(run.err, 100)), bad=True)
+                return
+        else:
+            week = (self.today() + dt.timedelta(days=7)).isoformat()
+            run = ctx.call("inbox.defer", item, self.inbox("defer", item, "--until", week, "--on", "bridge"), SHORT_TIMEOUT)
+            if not run.ok:
+                ctx.note(self.tx["owner_failed"].format(err=m.short(run.err, 100)), bad=True)
+                return
+            ctx.history.append(history_item(row["key"], row["title"], "inbox", "with the Bridge", item))
+        ctx.note(self.tx["owner_set"].format(who=self.tx.get(f"owner_{low}", who), title=m.short(row["title"], 60)))
         ctx.delta()
         self.app.collector.request("both")
 

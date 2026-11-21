@@ -81,3 +81,16 @@ test('By source counts a row put off to a later day in no bucket', () => {
   const open = state({ now: [item] })
   assert.equal(logic.itemBucket({ key: item.key, inbox: item.inbox_id, title: item.title }, open, byKey), 'do')
 })
+
+// ---------------------------------------------------------------- With …
+
+test('With … on a waiting task names no current holder it does not have, and an inbox item with the Bridge says so', () => {
+  // round 3: a task waiting on Jordan showed du as the current, greyed choice
+  const t = task('health', { bucket: 'waiting', blocked_by: 'waiting for Jordan' })
+  const own = logic.ownerChoices({ group: 'row', id: t.key, kind: 'row', row: t }, state({ work: [t] }))
+  assert.notEqual(own.current, 'me')
+  const withBridge = ask('20261009-0900-q2', { inbox_state: 'deferred', who: 'bridge' })
+  assert.equal(logic.ownerChoices({ group: 'row', id: withBridge.key, kind: 'row', row: withBridge }, state()).current, 'bridge')
+  const withJordan = ask('20261009-0900-q3', { inbox_state: 'deferred', who: 'Jordan' })
+  assert.equal(logic.ownerChoices({ group: 'row', id: withJordan.key, kind: 'row', row: withJordan }, state()).current, 'Jordan')
+})

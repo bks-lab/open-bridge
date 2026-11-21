@@ -215,10 +215,11 @@ test('More: with you, the Bridge or a name; a task\'s step is handed over, anyth
   assert.deepEqual(own.name('Robin'), { verb: 'work_on', args: { key: t.key, who: 'Robin', until: WEEK } })
   assert.equal(own.current, 'me')
   assert.equal(logic.ownerChoices(row(task('d', { card: { next: { who: 'bridge' } } })), state()).current, 'bridge')
-  // an inbox item has no step to hand to the Bridge: Do it is that; a name puts it with someone
+  // round 3: an inbox item takes you and the Bridge too (the model: you / Bridge / a name on every point)
   const item = ask('20261009-0900-q1')
   const io = logic.ownerChoices(row(item), state())
-  assert.deepEqual(io.choices, [])
+  assert.deepEqual(io.choices.map(o => [o.who, o.run.verb]), [['me', 'task_owner'], ['bridge', 'task_owner']])
+  assert.equal(io.current, 'me')
   assert.equal(io.name('Ada').verb, 'work_on')
 })
 

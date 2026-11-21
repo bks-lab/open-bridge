@@ -212,3 +212,26 @@ def test_later_and_its_undo_on_a_task_move_the_out_of_sight_count_at_once(w):
     w.act("unhide", key="task:other-task")
     w.app.collector.rebuild()
     assert w.app.collector.model["aside"]["later"] == 0
+
+
+# ---------------------------------------------------------------- With … you or the Bridge on an inbox item
+
+def test_with_the_bridge_on_an_inbox_item_puts_it_with_the_bridge(w):
+    # round 3: With … on an inbox card offered only a name, the model offers you, the Bridge and a name on every point
+    import datetime as dt
+    w.runner.calls.clear()
+    res = w.act("task_owner", key=f"inbox:{YES_ID}", who="bridge")
+    assert res["ok"]
+    week = (dt.date.fromtimestamp(w.clock() / 1000) + dt.timedelta(days=7)).isoformat()
+    assert any(c[-6:] == ["defer", YES_ID, "--until", week, "--on", "bridge"] for c in writes(w)), writes(w)
+
+
+def test_with_you_on_an_inbox_item_with_someone_takes_it_back(w):
+    import datetime as dt
+    week = (dt.date.fromtimestamp(w.clock() / 1000) + dt.timedelta(days=7)).isoformat()
+    w.act("work_on", key=f"inbox:{YES_ID}", who="Jordan Lee", until=week)
+    w.app.collector.resolve(f"inbox:{YES_ID}")["row"]["inbox_state"] = "deferred"
+    w.runner.calls.clear()
+    res = w.act("task_owner", key=f"inbox:{YES_ID}", who="me")
+    assert res["ok"]
+    assert any(c[-3:-1] == ["reopen", YES_ID] or c[-2:] == ["reopen", YES_ID] or "reopen" in c for c in writes(w)), writes(w)
