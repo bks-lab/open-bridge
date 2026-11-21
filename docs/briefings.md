@@ -249,6 +249,7 @@ which agent renders it, and the cockpit's Work through sorts its points by the s
 | inbox report (`finding`, `result`) that is not `now`/`today`, not due within the lookahead and not `only-you` | delegate: the Bridge looks at it first |
 | inbox item otherwise | plan |
 | inbox item deferred and back within the lookahead | do if only you can or it is due within the lookahead, else plan |
+| inbox item you said yes to (`inbox.py approve`, the cockpit's Yes), not `only-you` | delegate: the Bridge runs it, it is not asked again |
 | inbox item deferred waiting on the Bridge (`inbox.py defer --on Bridge`) | delegate, or do when only you can take its next click (`only-you`: a login, a send); never waiting, also in a section forced to `bucket: waiting` |
 | inbox item the briefing filed from a tracker row (`to_inbox`) | the same row as that tracker row, not a second one |
 | inbox item waiting for a condition (`waits_for`, [inbox.md](inbox.md)) | waiting, worded "Waiting for: …" (label `waiting_for`) |

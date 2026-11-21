@@ -95,10 +95,13 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
   // a question about a task stands for that task on the classic page (flow.js R8); the briefing numbers both, so
   // here the task is a point of its own too, in its own bucket
   for (const x of flowQueue(parts, 'all')) if (x.covers && x.task?.key) push({ group: 'row', id: x.task.key, kind: 'row', row: x.task })
-  // a row put off until a later day (hidden here, deferred by inbox.py or here, ahead of its lead time, with someone
-  // until a check-in day) is no point until that day, however it was put off: an answer that puts it off moves on
+  // a row put off until a later day (hidden here, ahead of its lead time, with someone until a check-in day) is no
+  // point until that day: an answer that puts it off moves on. An inbox item the briefing lists while it is put off
+  // (it shows one coming back within its lookahead, "back on 22.11", in its bucket) stands where the briefing has it
+  // (round 2: Later took it out of the cockpit while the printed briefing kept it under Plan)
   const today = isoDate(s?.now || Date.now())
-  const off = e => !!e?.until && String(e.until).slice(0, 10) > today
+  const listed = r => !!r?.inbox_id && r.inbox_state === 'deferred' && BUCKET_IDS.includes(r.bucket)
+  const off = e => !!e?.until && String(e.until).slice(0, 10) > today && !listed(e.row)
   for (const g of parts?.leftOut?.groups ?? []) {
     for (const e of g.rows ?? []) if (e?.row?.key && !off(e)) push({ group: 'left', left: g.reason, id: e.row.key, kind: 'row', row: e.row, entry: e })
   }
@@ -177,10 +180,17 @@ export function nextSentence(x, bucket, s, lang = 'en') {
   // even names an answer the bucket does not offer: the bucket's own sentence says it whole. A task's step is the
   // person's own words and stays, however short
   const own = s2 => typeof s2 === 'string' && s2.trim() && !(x?.row?.inbox_id && s2.trim().split(/\s+/).length < 4) ? s2.trim() : null
+  // a yes given runs on the Bridge's next pass; a point an agent tab works on or one no answer reaches promises no yes
+  if (x?.row?.inbox_id && x.row.inbox_state === 'approved') return f.nextApproved
   const step = x?.row ? pointStep(x.row, s) : null
   if (own(step?.what)) return short(own(step.what), 240)
   if (own(x?.row?.next?.what)) return short(own(x.row.next.what), 240)
   if (bucket === 'drop' && isStream(x?.row)) return f.nextStream
+  if (bucket === 'do' || bucket === 'delegate') {
+    const a = bucketAnswers(x, bucket, s, lang)
+    if (!a.length) return f.nextNone
+    if (!a.some(z => z.meaning === (bucket === 'do' ? 'yes' : 'go'))) return x?.row?.tab?.live ? f.nextWorking : f.nextNone
+  } else if (!bucketAnswers(x, bucket, s, lang).length) return f.nextNone
   return f.next[bucket] ?? ''
 }
 
@@ -237,6 +247,9 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
   const later = key ? act({ verb: 'later', args: { key, until: nextBriefingDay(now) } }) : null
   // a row an agent tab already works on is never started a second time (do_it would launch another)
   const doIt = key && row.inbox_state !== 'approved' && !row.tab?.live ? act({ verb: 'do_it', args: { keys: [key] } }) : null
+  // Do's yes is the briefing's yes (control.md: inbox.py approve): an inbox item is approved, and the server starts on
+  // it only where no action of its own runs and no tab works on it; any other row is started on, as Go
+  const yesIt = key && row.inbox_id && row.inbox_state !== 'approved' ? act({ verb: 'do_it', args: { keys: [key], yes: true } }) : doIt
   const tab = x?.tab ?? null
   if (bucket === 'do' && tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) {
     // the tab's own answers win: what it asks is answered in the tab, never by a new start. Where it takes words
@@ -250,10 +263,10 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
       if (say && tab.ask?.yes_no && b.verb === 'tab_go_on') add('yes', say, f.say)
       add('yes', { kind: 'reply', verb: b.verb, args: b.args }, b.label)
     }
-    if (!own.length && !say) add('yes', doIt)
-  } else if (bucket === 'do') add('yes', doIt)
+    if (!own.length && !say) add('yes', yesIt)
+  } else if (bucket === 'do') add('yes', yesIt)
   if (bucket === 'delegate') add('go', doIt)
-  if (bucket === 'plan') add('schedule', key ? { kind: 'pick', then: day => ({ verb: 'later', args: { key, until: day } }) } : null)
+  if (bucket === 'plan') add('schedule', key ? { kind: 'pick', then: day => ({ verb: 'later', args: { key, until: day, plan: true } }) } : null)
   if (bucket === 'waiting') {
     const who = waitsOn(x)
     const blocker = blockerOf(row)
@@ -266,7 +279,9 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
   // on a tab, later and drop act only on the inbox item it asks about: on a task or a stream behind it they would put
   // off the whole task, not the question
   const own = !(tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) || !!row?.inbox_id
-  if ((bucket === 'do' || bucket === 'plan' || bucket === 'delegate') && own) add('later', later)
+  if ((bucket === 'do' || bucket === 'plan') && own) add('later', later)
+  // Not now of I'll do it leaves the point as it is (control.md: "start it, or leave it"): nothing is written
+  if (bucket === 'delegate' && own && key) add('later', { kind: 'skip' })
   if (bucket === 'do' && own) add('drop', key && !isStream(row) ? act(flowAction('drop', row, f.dropText)) : null)
   if (bucket === 'drop') {
     // park is the briefing's park (control.md: status backlog, the task stays open); a backlog task is parked already
@@ -323,7 +338,10 @@ const ASKING = new Set(['needs-you', 'waiting'])
 export function rowPoint(row, s) {
   const ref = row?.tab?.ref ?? null
   const tab = ref ? (s?.tabs?.tabs ?? []).find(x => x.ref === ref) ?? null : null
-  if (tab && !tab.is_control && ASKING.has(tab.state)) return { group: 'asks', id: row.key, kind: 'tab', tab, row }
+  // only the row the tab works on: an inbox item about its task is no answer to its dialog (round 2: "Reply to
+  // Jordan" offered the deploy dialog's Yes and approved the deploy)
+  const about = row?.inbox_id ? tab?.item === row.inbox_id : !!row?.task && (tab?.slug == null || tab.slug === row.task)
+  if (tab && !tab.is_control && ASKING.has(tab.state) && about) return { group: 'asks', id: row.key, kind: 'tab', tab, row }
   return { group: 'row', id: row?.key ?? null, kind: 'row', row }
 }
 

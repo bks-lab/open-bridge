@@ -1247,9 +1247,9 @@ by its place among the bucket's options, whatever the profile calls it:
 
 | Bucket | Answers (default words) | What goes out |
 |---|---|---|
-| do | yes · later · drop | yes: a tab's own answers win (a dialog's options, Yes and No, the ready answer of its input line, `tab_accept`); an inbox item or a task `do_it` (an item waiting for your yes is approved and run, as "3 yes" in the briefing; anything else starts an agent on its next step). later: `later` to the next briefing day. drop: `settle` not doing (an inbox item is dropped), a task `shelve` |
-| plan | schedule · later | schedule: a day picked (tomorrow, Monday, in a week, in a month, another day), then `later` to it. later: to the next briefing day |
-| delegate | go · not now | go: `do_it`. not now: `later` to the next briefing day |
+| do | yes · later · drop | yes: a tab's own answers win (a dialog's options, Yes and No, the ready answer of its input line, `tab_accept`); an inbox item `do_it` with `yes`, the briefing's yes: it is approved (not an only-you one), so the briefing puts it under delegate and never asks again, and where no action of its own runs and no tab works on it an agent starts on it too; a task `do_it`, an agent on its next step. later: `later` to the next briefing day (the briefing shows an item coming back within its lookahead under plan, "back on", and so does the page). drop: `settle` not doing (an inbox item is dropped), a task `shelve` |
+| plan | schedule · later | schedule: a day picked (tomorrow, Monday, in a week, in a month, another day), then `later` to it with `plan` (its note says "Planned for"). later: to the next briefing day |
+| delegate | go · not now | go: `do_it`, a start. not now: the point stays as it is, nothing is written (control.md: "start it, or leave it"); the walk moves on |
 | waiting | nudge · wait | nudge: `do_it` with the check-in's sentence that only drafts a message, never sends it. wait: a day picked, then `runs_on` until it, on whom it waits |
 | drop | park · keep | park: a task `task_park` (status backlog, the task stays in `work/tasks/`, as the briefing's park; undone by `task_unpark`), anything else out of sight for 30 days. keep: `task_keep` (a recommendation of the task check is dismissed; without one the task gets a dated note `Kept: stays open`, so its quiet days count from today) |
 

@@ -76,8 +76,10 @@ LIST_TIMEOUT = 20
 # verb -> {arg: (type, required)}
 SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # note: the person's sentence for this start; it goes on the item first (a live tab gets it typed in instead)
+    # yes: the briefing's yes of Do (control.md), an inbox item approved and, where it has no action of its own to
+    # run, started on as well; without it do_it is Go of I'll do it, a start
     "do_it": {"keys": ("keys", True), "target": ("target", False), "model": ("launch_model", False), "effort": ("launch_effort", False),
-              "note": ("text", False), "by": ("by", False)},
+              "note": ("text", False), "by": ("by", False), "yes": ("bool", False)},
     "advise": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False), "note": ("text", False)},
     "start_agent": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False), "note": ("text", False)},
     "collect_context": {"key": ("key", True), "model": ("launch_model", False), "effort": ("launch_effort", False),
@@ -85,8 +87,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # text: the person's sentence, kept where the row lives (WorkVerbs.write_note)
     # revisit (Work through with cockpit.flow.seen on): read now, back unread on `until` or on something new before it;
     # nothing hidden, nothing put off, the sentence a note only when there is one (actions_work.py v_later)
+    # plan: Schedule of Plan (the same defer), whose note says it is planned, never "later"
     "later": {"key": ("key", True), "until": ("date", True), "text": ("text", False), "by": ("by", False),
-              "revisit": ("bool", False)},
+              "revisit": ("bool", False), "plan": ("bool", False)},
     "hide": {"key": ("key", True), "until": ("date", True)},
     # the Work through page's "Drop because" on a task: parked as an idea with its reason (task.py shelve);
     # until: the day the idea may surface again, else task.py's own default

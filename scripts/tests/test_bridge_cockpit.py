@@ -1562,6 +1562,30 @@ def test_a_failed_shelve_leaves_the_task_and_says_so(world):
     assert res["ok"] is False and res["settled"] == [] and "other-task" not in json.dumps(world.app.history.state())
 
 
+def test_yes_is_the_briefings_yes_an_approve_and_the_bridge_starts_what_no_action_runs(world):
+    """Round 2: Do's Yes on an inbox item started a tab and left the item open, so the printed briefing still listed
+    it as "1 yes" (control.md: yes = inbox.py approve). With `yes` the item is approved, the yes of the briefing; one
+    with no action of its own the Bridge then starts on, since no runner has anything to run; only you can say yes
+    to nothing (an only-you item is started on, never approved)."""
+    world.runner.calls.clear()
+    res = world.act("do_it", keys=[f"inbox:{FILED_ID}"], yes=True)
+    # its task's tab is at work on it: the yes is given, no second agent starts
+    assert writes(world) == [I(world, "approve", FILED_ID)]
+    assert res["ok"] is True and res["settled"] == [f"inbox:{FILED_ID}"]
+    world.runner.calls.clear()
+    world.act("do_it", keys=[f"inbox:{YES_ID}"], yes=True)
+    assert writes(world) == [I(world, "approve", YES_ID)], "an action of its own runs at the runner's next pass"
+    world.runner.calls.clear()
+    world.act("do_it", keys=[f"inbox:{ONLY_ID}"], yes=True)
+    assert world.runner.of("inbox.approve") == [], "only you can do it: a yes to nothing is never recorded"
+
+
+def test_schedule_says_it_is_planned_never_later(world):
+    # Round 2: Plan's Schedule wrote the right defer, its toast called it "Later"
+    res = world.act("later", key=f"inbox:{YES_ID}", until=TOMORROW, plan=True)
+    assert world.runner.of("inbox.defer") and "Planned for" in res["note"] and "Later" not in res["note"]
+
+
 def test_do_it_with_a_sentence_never_approves_a_yes_item(world):
     # the Work through page starts every agent with a sentence, so a your-yes item is never released unseen (F3)
     world.runner.calls.clear()

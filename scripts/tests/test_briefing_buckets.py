@@ -84,6 +84,17 @@ def test_an_item_put_off_waiting_on_the_bridge_is_the_bridges_to_do():
     assert bucket_of(v, "Agency answers") == "waiting"
 
 
+def test_an_item_you_said_yes_to_is_the_bridges_to_do_never_asked_again():
+    # Round 2 (21.11.2026): after a yes (inbox.py approve, the cockpit's Yes) the item still stood in Do as "1 yes",
+    # asking for the yes it had. A yes given is the Bridge's to run (delegate); only you can do an only-you one
+    rows = [item("i1", "Fix the test plan", state="approved"), item("i2", "Send the offer", state="approved", gate="only-you"),
+            item("i3", "Decide the price list")]
+    v = bv.build(result(sec("inbox", "inbox", rows)), profile())
+    assert bucket_of(v, "Fix the test plan") == "delegate"
+    assert bucket_of(v, "Send the offer") == "do"
+    assert bucket_of(v, "Decide the price list") == "do"
+
+
 def test_a_section_of_what_waits_on_others_holds_no_row_that_waits_on_the_bridge():
     # a section of what runs on (deferred: runs, bucket: waiting) put 8 rows on the Bridge under Waiting (21.11.2026)
     rows = [deferred("i1", "Fix the probe", "Bridge"), deferred("i2", "Agency answers", "Agency"),

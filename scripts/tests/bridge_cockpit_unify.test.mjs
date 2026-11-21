@@ -124,7 +124,7 @@ test('Due by buckets: every row its bucket word, the bucket\'s answers, the firs
   assert.doesNotMatch(el.$$('.sec-title').map(x => x.text()).join(' '), new RegExp(en.section.now))
   bs[0].click()
   await rounds()
-  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: [item.key] }])
+  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: [item.key], yes: true }])
   // More holds the rest of the bucket's answers, the same acts as the card's
   acts.button(en.flow.buckets.more).click()
   await rounds()
@@ -147,7 +147,7 @@ test('Due by buckets: a day first where the answer needs one, the same day picke
   assert.ok(el.$('.fb-pick'), 'the day picker opens')
   el.$('.fb-pick').button(en.flow.buckets.pick.tomorrow).click()
   await rounds()
-  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'later', { key: 'task:plan-me', until: TOMORROW }])
+  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'later', { key: 'task:plan-me', until: TOMORROW, plan: true }])
 })
 
 test('Due by buckets: a row whose tab asks offers the tab\'s own answers, never a bare yes for a choice', async () => {

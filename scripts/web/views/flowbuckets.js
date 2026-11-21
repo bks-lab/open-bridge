@@ -97,6 +97,8 @@ export function useBucketAnswer(x, bucket, s, c, onDone = null) {
     setNote(null)
     if (a.confirm && !sure) { setPick(null); setSay(null); setConfirm(a); return }
     setConfirm(null)
+    // an answer that leaves the point as it is (Not now of I'll do it): nothing goes out, the walk moves on
+    if (a.run.kind === 'skip') { setPick(null); setSay(null); onDone?.(); return }
     if (a.run.kind === 'pick' && !day) { setSay(null); setPick(a); return }
     // an answer in words: the line opens first, `day` carries the words once they are sent (SayLine)
     if (a.run.kind === 'say' && !day) { setPick(null); setSay(a); return }
@@ -185,7 +187,10 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
   // a tab that asks is named by its tab (the way it reads in the terminal), the task it works on under it
   const title = pointTitleOf(x)
   const sub = row && isTab(x) ? t.flow.forTask(pointName(row)) : null
-  const first = answers[0]?.label ?? null
+  // the answer the briefing offers first for this point, in the bucket the briefing has it in ("8 nachfassen"), which
+  // can differ from the card's (a lost start asks in Do here): the chat answers the briefing's number
+  const briefDef = bucketDefs(s, lang).find(b => b.id === row?.bucket)
+  const first = briefDef ? briefDef.options?.[0] ?? null : answers[0]?.label ?? null
   return html`<article class="fb-card" aria-labelledby="fb-title">
     <div class="fb-marks">${marks.map(m => html`<span class="fb-mark">${m}</span>`)}</div>
     <h2 id="fb-title" class="fb-title">${title}</h2>

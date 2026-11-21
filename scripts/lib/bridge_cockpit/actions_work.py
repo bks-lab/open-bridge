@@ -111,7 +111,12 @@ class WorkVerbs:
             ctx.note(self.tx["note_failed"].format(err=m.short(run.err, 100)), bad=True)
         return run.ok
 
-    def v_do_it(self, ctx: Ctx, keys: list[str], target: str | None = None, note: str | None = None) -> None:
+    def v_do_it(self, ctx: Ctx, keys: list[str], target: str | None = None, note: str | None = None,
+                yes: bool = False) -> None:
+        """Let the AI do it: a your-yes item with an action of its own is approved, everything else started on.
+        With `yes` (Do's first answer) it is the briefing's yes (control.md: yes = inbox.py approve): every inbox item
+        but an only-you one is approved, so the briefing no longer asks for it, and the Bridge starts on the ones
+        whose yes nothing would run (no action of their own, no tab at work on them)."""
         entries = self.entries(keys)
         rows = [e["row"] for e in entries]
         self.refuse_approved(rows)
@@ -119,14 +124,19 @@ class WorkVerbs:
             # a sentence of the person's is an order for an agent, never the item's own canned action
             self.start_noted(ctx, entries, note, "go", target or self.app.cfg.target)
             return
+        working = {e["row"]["key"] for e in entries if e.get("tab") and m.is_live(e["tab"])}
         rows = [r for r in rows if m.launch_item(r) is not None] + self.file_all(ctx, rows)
-        yes = [r for r in rows if r.get("inbox_id") and r.get("gate") == "your-yes" and r.get("has_action")]
-        rest = [r for r in rows if r not in yes]
-        for row in yes:
-            self.approve(ctx, row)
+        if yes:
+            approve = [r for r in rows if r.get("inbox_id") and r.get("gate") != "only-you"]
+            rest = [r for r in rows if (r not in approve or not r.get("has_action")) and r["key"] not in working]
+        else:
+            approve = [r for r in rows if r.get("inbox_id") and r.get("gate") == "your-yes" and r.get("has_action")]
+            rest = [r for r in rows if r not in approve]
+        yes_given = [r for r in approve if self.approve(ctx, r)]
+        rest = [r for r in rest if r not in approve or r in yes_given]
         if rest:
             self.launch(ctx, rest, "go", target or self.app.cfg.target)
-        if not yes and not rest and not ctx.failed:
+        if not approve and not rest and not ctx.failed:
             ctx.note(self.tx["nothing_to_do"])
 
     def v_advise(self, ctx: Ctx, keys: list[str], note: str | None = None) -> None:
@@ -163,7 +173,8 @@ class WorkVerbs:
             return
         self.launch(ctx, [row], "context", self.app.cfg.target)
 
-    def v_later(self, ctx: Ctx, key: str, until: str, text: str | None = None, revisit: bool = False) -> None:
+    def v_later(self, ctx: Ctx, key: str, until: str, text: str | None = None, revisit: bool = False,
+                plan: bool = False) -> None:
         """Put off until a day. An inbox item records its defer itself and keeps the sentence as a note; a task, a
         stream and any other row are only hidden here, so the decision is written where the row lives
         (write_note), with the sentence when there is one. With `revisit` (Work through's Revisit ▾ while the read
@@ -185,7 +196,7 @@ class WorkVerbs:
                 return
             # like a hide, a defer can be taken back from the note and the history (inbox_reopen)
             ctx.history.append(history_item(row["key"], row["title"], "inbox", f"later until {until}", item))
-            self.settle(ctx, row, self.tx["later_back"].format(until=until))
+            self.settle(ctx, row, self.tx["planned_back" if plan else "later_back"].format(until=until))
             return
         self.write_note(ctx, row, words)
         self.hide_until(ctx, row, until)

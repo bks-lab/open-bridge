@@ -1298,6 +1298,11 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                     who_until = {"who": item.get("waiting_on"), "until": item.get("until")}
                     if bucket == "waiting":
                         why.insert(0, labels["with"].format(who=item["waiting_on"]))
+                elif item.get("state") == "approved" and item.get("gate") != "only-you":
+                    # a yes given (inbox.py approve, the cockpit's Yes) is the Bridge's to run, never asked again in Do
+                    # (round 2 of the cockpit simulation, 21.11.2026: "1 yes" stood after the yes); an only-you item
+                    # stays yours, since no runner executes it
+                    bucket = "delegate"
                 elif item.get("waits_for") is True:
                     # filed for when something has happened (inbox.py waits_for): it asks nobody yet, and says so
                     # instead of stating the hoped-for outcome as a fact (29.10.)

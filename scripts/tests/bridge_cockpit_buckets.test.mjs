@@ -113,7 +113,7 @@ test('do: yes lets the Bridge take the next step, later puts it off to the next 
   const item = ask('20261009-0900-q1')
   const a = answersOf(row(item), 'do', s)
   assert.deepEqual(a.map(x => x.label), ['Ja', 'Später', 'Streichen', en.obsolete])
-  assert.deepEqual(a[0].run, { kind: 'act', verb: 'do_it', args: { keys: [item.key] } })
+  assert.deepEqual(a[0].run, { kind: 'act', verb: 'do_it', args: { keys: [item.key], yes: true } })
   assert.deepEqual(a[1].run, { kind: 'act', verb: 'later', args: { key: item.key, until: TOMORROW } })
   assert.equal(a[2].run.verb, 'settle')
   assert.equal(a[2].run.args.outcome, 'not_doing')
@@ -139,10 +139,11 @@ test('delegate, plan, waiting, drop: go, a day picked, a nudge that only drafts,
   const t = task('t', { bucket: 'delegate' })
   const go = answersOf(row(t), 'delegate', s)
   assert.deepEqual(go.map(x => x.label), ['Los', 'Nicht jetzt', en.obsolete])
+  assert.deepEqual(go[1].run, { kind: 'skip' })
   assert.deepEqual(go[0].run, { kind: 'act', verb: 'do_it', args: { keys: [t.key] } })
   const plan = answersOf(row(t), 'plan', s)
   assert.equal(plan[0].run.kind, 'pick')
-  assert.deepEqual(plan[0].run.then('2026-10-20'), { verb: 'later', args: { key: t.key, until: '2026-10-20' } })
+  assert.deepEqual(plan[0].run.then('2026-10-20'), { verb: 'later', args: { key: t.key, until: '2026-10-20', plan: true } })
   const w = answersOf({ ...row(t), checkin: { who: 'Ada', until: '2026-10-09' }, group: 'checkin' }, 'waiting', s)
   assert.equal(w[0].run.verb, 'do_it')
   assert.match(w[0].run.args.note, /draft/i)
@@ -179,7 +180,7 @@ test('the page by buckets: the buckets left with their counts, one card with Nex
   assert.equal(el.$$('.flow-aside').length, el.$$('.fb-more .flow-aside').length)
   buttons[0].click()
   await rounds()
-  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: [item.key] }])
+  assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: [item.key], yes: true }])
   el.$$('.fb-bucket')[2].click()
   assert.deepEqual(c.calls.at(-1), ['flowBucket', 'delegate'])
 })
@@ -232,7 +233,7 @@ test('an empty bucket picked stays open with its empty state and the way on, it 
   assert.match(el.$('.fb-empty').text(), /Tun \(du, heute\)/)
 })
 
-test('a point put off until a later day stands in no bucket until then, however it was put off', () => {
+test('a point put off until a later day stands in no bucket until then, unless the briefing lists it meanwhile', () => {
   const s = state({ now: [ask('20261009-0900-q1'), ask('20261009-0901-off', { inbox_state: 'deferred', until: TOMORROW, bucket: 'plan', brief_nr: 4 }),
     ask('20261009-0902-back', { inbox_state: 'deferred', until: '2026-10-09', bucket: 'plan' })], work: [task('a')] })
   // Later on a task hides it here until the day (hide_until): it moves on, its bucket counts one less
@@ -240,7 +241,8 @@ test('a point put off until a later day stands in no bucket until then, however 
   const { all } = logic.bucketPoints(s, 'de')
   const ids = all.map(x => x.id)
   assert.ok(!ids.includes('task:put-off'), 'a task hidden until tomorrow')
-  assert.ok(!ids.includes('inbox:20261009-0901-off'), 'an item put off until tomorrow, by inbox.py or here alike')
+  // the briefing lists an item coming back within its lookahead in its bucket ("back on 10.10"): so does the page
+  assert.ok(ids.includes('inbox:20261009-0901-off'), 'an item the briefing lists while put off')
   assert.ok(ids.includes('inbox:20261009-0902-back'), 'an item whose day came is a point again')
   assert.ok(ids.includes('task:a') && ids.includes('inbox:20261009-0900-q1'))
 })
