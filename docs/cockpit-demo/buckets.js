@@ -1,25 +1,30 @@
 // SPDX-License-Identifier: MIT
 // Pure helpers of Work through by the briefing's buckets (cockpit.flow.buckets, views/flowbuckets.js). Every point
-// of the page (a task, a stream, an inbox item, an agent tab that asks, a check-in, a report, an issue) stands in
-// exactly one bucket of the briefing profile's `view.buckets`, by the server's bucket rule (briefing_view.py, the
-// row's `bucket`); the names, the order and the answer words are the profile's (model.buckets), the defaults of
-// docs/briefings.md where it names none. Each card says one next sentence and offers its bucket's answers, the first
-// one "the Bridge does the next step". An answer is the act the briefing's answer is (skills/briefing/references/
-// control.md): the meaning of an answer is its place in the bucket's options, whatever the profile calls it, and it
-// goes out as a verb of the server the rest of the page already uses (do_it, later, settle, task_park, task_keep,
-// runs_on, the tab's own answers). No DOM, no network. logic.js passes every name on.
+// answers two questions, who is on the move and when. Who: its bucket, one of the briefing's four (briefing_view.py
+// BUCKETS, the row's `bucket`): Do (you, today), Plan (you, no day yet), I'll do (the Bridge), Waiting on others
+// (anyone else). A point nobody touched for a while stays in its bucket and carries a quiet mark, resting for N days.
+// When: what is put off to a day, on the watch list or done today is out of sight and only counted under the buckets
+// (the model's `aside`). Every point takes the same four answers (lib/answers.py ANSWERS), in this order on every card,
+// every view and in the printed briefing: Do it (the Bridge takes the next step; an agent tab that asks puts its own
+// answers in this place), Later ▾ (tomorrow, Monday, in a week, a picked day, the watch list), Done, Obsolete (quiet,
+// last, asked first). Each goes out as a verb of the server the rest of the page already uses (do_it, later, runs_on,
+// task_park, settle, the tab's own answers); With … under More hands a task's step over (task_owner, work_on). No DOM,
+// no network. logic.js passes every name on.
 import { TABLES } from './text.js'
 import { DAY, actionRow, flowAction, inProject, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
   replySend, short, triageShows } from './logic.js'
 
-// the briefing's buckets, in its default order (briefing_view BUCKETS)
-export const BUCKET_IDS = ['do', 'plan', 'delegate', 'waiting', 'drop']
+// the briefing's buckets, in its order (briefing_view BUCKETS)
+export const BUCKET_IDS = ['do', 'plan', 'delegate', 'waiting']
 
-// what each answer of a bucket means, by its place (control.md: a profile may rename the options, their order keeps
-// these meanings). The first one is always the Bridge taking the next step
-export const BUCKET_MEANINGS = {
-  do: ['yes', 'later', 'drop'], plan: ['schedule', 'later'], delegate: ['go', 'later'], waiting: ['nudge', 'wait'], drop: ['park', 'keep'],
-}
+// the four answers every point takes, in their order (lib/answers.py ANSWERS); Do it is the strong one
+export const ANSWER_IDS = ['do', 'later', 'done', 'obsolete']
+
+// what Later offers, in its order (lib/answers.py LATER_CHOICES)
+export const LATER_CHOICES = ['tomorrow', 'monday', 'week', 'pick', 'list']
+
+// the day a point on the watch list is put off to: nobody reaches it, so it never comes back by itself (lib/answers.py)
+export const LIST_DAY = '9999-12-31'
 
 // the groups of the queue that are agent tabs (a tab that asks, the return card, a finished or lost start): they ask
 // the person, so they stand in Do
@@ -28,40 +33,58 @@ const TAB_GROUPS = ['asks', 'back', 'result', 'lost']
 // the inbox ids the server takes (actions_base.py INBOX_ID_RE)
 const INBOX_ID = /^[0-9]{8}-[0-9]{4}-[a-z0-9][a-z0-9-]{0,119}$/
 
-// how long a park keeps a point that is no task out of sight (a task goes to the backlog instead)
-const PARK_DAYS = 30
+// who is you on a step (task_who): any other name is someone else's move
+const YOU = new Set(['', 'me', 'you', 'self', 'ich', 'du'])
+const BRIDGE = new Set(['bridge', 'bridge_then_me'])
+
+// the English titles the server fills in where a profile names none (briefing_view BUCKET_TITLES, also the titles of
+// an older server): no words of the profile, the page says its own language's in their place
+const SERVER_TITLES = new Set(['Do (you, today)', 'Plan', 'I\'ll do', 'Waiting on others'])
 
 /** Whether Work through shows the briefing's buckets: the page on, its switch cockpit.flow.buckets on, and the
  *  owner's page (a person's page keeps Work through as it is) */
 export const flowBucketsOn = s => flowOn(s) && s?.work?.flow?.buckets?.enabled === true && !personOf(s)
 
-/** The buckets in the profile's order, each {id, title, options}: the server's (model.buckets, the profile's
- *  view.buckets), else the defaults in the page's language; a bucket without answers takes the defaults' */
+/** The buckets in the profile's order, each {id, title}: the server's (model.buckets, the profile's view.buckets),
+ *  else the defaults in the page's language. An older server's `drop` is left out, and a bucket has no answers of its
+ *  own: every point takes the four (bucketAnswers) */
 export function bucketDefs(s, lang = 'en') {
   const d = (TABLES[lang] ?? TABLES.en).flow.buckets.defaults
-  const en = TABLES.en.flow.buckets.defaults
   const given = (s?.model?.buckets ?? []).filter(b => BUCKET_IDS.includes(b?.id))
   const list = given.length ? given : BUCKET_IDS.map(id => ({ id }))
-  // the server fills what a profile leaves out with its English defaults (briefing_view DEFAULT_BUCKETS): those are
-  // no words of the profile, the page says its own language's defaults in their place
-  const same = (a, b) => Array.isArray(a) && a.length === b.length && a.every((w, i) => String(w).toLowerCase() === b[i])
-  return list.map(b => ({ id: b.id, title: b.title && b.title !== en[b.id].title ? b.title : d[b.id].title,
-    options: b.options?.length && !same(b.options, en[b.id].options) ? b.options : d[b.id].options }))
+  return list.map(b => ({ id: b.id, title: b.title && !SERVER_TITLES.has(b.title) ? b.title : d[b.id].title }))
 }
 
 /** The bucket of a row: the one the briefing put it in; a task the briefing does not list (it has no next step, or
- *  the page reads it beside the briefing) by who has its next move: the Bridge delegate, blocked waiting, resting
- *  drop, else plan; a backlog task none (null), it stands in no bucket as in the briefing */
+ *  the page reads it beside the briefing) by who has its next move: blocked or someone else's step Waiting, the
+ *  Bridge's I'll do, else Plan. A backlog task none (null): it is on the watch list, out of sight as in the briefing */
 export function rowBucket(row) {
   if (BUCKET_IDS.includes(row?.bucket)) return row.bucket
-  // a backlog task no bucket of the briefing holds is parked already (the briefing's Merkliste shows it in none)
   if (row?.status === 'backlog') return null
   // the model's own rows of resting tasks keep the blocker on the card (model.py with_tasks)
   if (row?.blocked_by || row?.card?.state?.blocked_by) return 'waiting'
-  if (row?.bucket === 'resting') return 'drop'
-  const who = String(row?.card?.next?.who ?? '').toLowerCase()
-  if (who === 'bridge' || who === 'bridge_then_me') return 'delegate'
+  const who = String(row?.card?.next?.who ?? '').trim().toLowerCase()
+  if (BRIDGE.has(who)) return 'delegate'
+  if (!YOU.has(who)) return 'waiting'
   return 'plan'
+}
+
+/** How long a point rests (the briefing's advice quiet, `resting`): its days, true where none are named (the model's
+ *  own resting rows, an older briefing's drop), else null. A mark on the card, never a bucket of its own */
+export function restingOf(row) {
+  const r = row?.resting
+  if (Number.isInteger(r) && r > 0) return r
+  if (r === true) return true
+  if ((row?.bucket === 'resting' || row?.bucket === 'drop') && !(row?.blocked_by || row?.card?.state?.blocked_by)) return true
+  return null
+}
+
+/** What is out of sight of the buckets, only counted under them (the model's `aside`, briefing.py aside_counts): put
+ *  off to a day, on the watch list, done or obsolete today; zeros where the briefing counted nothing */
+export function asideCounts(s) {
+  const a = s?.model?.aside ?? {}
+  const n = v => (Number.isInteger(v) && v > 0 ? v : 0)
+  return { later: n(a.later), list: n(a.list), done_today: n(a.done_today) }
 }
 
 /** The bucket of a point: an agent tab that asks (or finished, or got lost) Do, a check-in whose day came Waiting
@@ -214,42 +237,36 @@ export function tabWords(tab) {
   return last && !TAB_CHROME.test(String(tab?.last ?? '').trim()) ? last : ''
 }
 
-/** A point's next sentence, one line: what the tab asks, the step of its card (who does what next), a check-in's
- *  question, else the bucket's fixed sentence. No model call */
+/** A point's next sentence, one line, what Do it does: the step of its card (who does what next), a check-in's
+ *  nudge, else the bucket's fixed sentence; an asking tab gets its answer. No model call */
 export function nextSentence(x, bucket, s, lang = 'en') {
   const f = (TABLES[lang] ?? TABLES.en).flow.buckets
   const tab = x?.tab ?? null
-  if (tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) {
-    const q = tabWords(tab)
-    if (q) return short(q, 240)
-  }
-  if (x?.group === 'checkin') return f.checkin(x.checkin?.who ?? x.row?.checkin?.who ?? f.someone)
-  // an inbox card's generic step is a verb or two ("decide", "give your yes"), no sentence, and in Plan or I'll do it
-  // even names an answer the bucket does not offer: the bucket's own sentence says it whole. A task's step is the
-  // person's own words and stays, however short
+  if (tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) return f.nextTab
+  const who = waitsOn(x)
+  if (x?.group === 'checkin') return f.checkin(who ?? f.someone)
+  // an inbox card's generic step is a verb or two ("decide", "give your yes"), no sentence: the bucket's own sentence
+  // says it whole. A task's step is the person's own words and stays, however short
   const own = s2 => typeof s2 === 'string' && s2.trim() && !(x?.row?.inbox_id && s2.trim().split(/\s+/).length < 4) ? s2.trim() : null
-  // a yes given runs on the Bridge's next pass; a point an agent tab works on or one no answer reaches promises no yes
+  // a yes given runs on the Bridge's next pass
   if (x?.row?.inbox_id && x.row.inbox_state === 'approved') return f.nextApproved
+  const a = bucketAnswers(x, bucket, s, lang)
+  if (!a.length) return f.nextNone
+  if (!a.some(z => z.meaning === 'do')) return x?.row?.tab?.live ? f.nextWorking : f.nextNone
+  if (bucket === 'waiting') return f.nextWaiting(who ?? f.someone)
   const step = x?.row ? pointStep(x.row, s) : null
   if (own(step?.what)) return short(own(step.what), 240)
   if (own(x?.row?.next?.what)) return short(own(x.row.next.what), 240)
-  if (bucket === 'drop' && isStream(x?.row)) return f.nextStream
-  if (bucket === 'do' || bucket === 'delegate') {
-    const a = bucketAnswers(x, bucket, s, lang)
-    if (!a.length) return f.nextNone
-    if (!a.some(z => z.meaning === (bucket === 'do' ? 'yes' : 'go'))) return x?.row?.tab?.live ? f.nextWorking : f.nextNone
-  } else if (!bucketAnswers(x, bucket, s, lang).length) return f.nextNone
   return f.next[bucket] ?? ''
 }
 
-/** The day "later" puts a point off to: the next briefing day, tomorrow */
-export const nextBriefingDay = nowMs => isoDate(nowMs + DAY)
-
-/** The days the day picker offers (plan's schedule, waiting's wait), as [word key, YYYY-MM-DD] */
-export function pickDays(nowMs) {
-  return [['tomorrow', isoDate(nowMs + DAY)], ['monday', isoDate(nextMonday(nowMs))], ['week', isoDate(nowMs + 7 * DAY)],
-    ['month', isoDate(nowMs + PARK_DAYS * DAY)]]
+/** The days Later names, as YYYY-MM-DD: tomorrow, next Monday, in a week (lib/answers.py later_until) */
+export function laterDays(nowMs) {
+  return { tomorrow: isoDate(nowMs + DAY), monday: isoDate(nextMonday(nowMs)), week: isoDate(nowMs + 7 * DAY) }
 }
+
+/** The day "later" puts a point off to on a list without a menu (Due's Later for many): tomorrow */
+export const nextBriefingDay = nowMs => isoDate(nowMs + DAY)
 
 const upFirst = w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w)
 const isTask = row => !!row?.task && !row.inbox_id && row.key === `task:${row.task}`
@@ -262,87 +279,112 @@ function waitsOn(x) {
   if (named) return named
   if (blockerOf(x?.row)) return null
   const who = x?.row?.card?.next?.who ?? x?.row?.who
-  return who && !['me', 'you', 'self', 'bridge', 'bridge_then_me'].includes(String(who).toLowerCase()) ? who : null
+  return who && !YOU.has(String(who).toLowerCase()) && !BRIDGE.has(String(who).toLowerCase()) ? who : null
 }
 
 /** What a blocked row waits on, as its task says it (blocked_by, kept on the card for the model's own rows) */
 const blockerOf = row => row?.blocked_by || row?.card?.state?.blocked_by || null
 
-/** The answers of a point in its bucket, the first the strong one: each {id, meaning, label, run}, `run` what it
- *  sends: {kind: 'reply', verb, args} a tab's own answer (c.reply), {kind: 'act', verb, args} a verb of the server
- *  (c.act), {kind: 'pick', then} a day picked first, then `then(day)` gives the act. An answer that cannot go for this
- *  point (a stream is never dropped, a tab without a row is not put off) is left out; a tab's own answers (a dialog's
- *  options, yes and no, the ready answer of #702's tab_accept) stand for yes and come first. Last, fixed and quiet, stands
- *  Obsolete (meaning `obsolete`, `confirm` and `quiet` true: the page asks first and never shows it strong), the
- *  same on every point in every bucket (obsoleteRun) */
+/** The four answers of a point, in their order: each {id, meaning, label, run, primary?, quiet?, confirm?}. `run` is
+ *  what it sends: {kind: 'act', verb, args} a verb of the server (c.act), {kind: 'reply', verb, args} a tab's own
+ *  answer (c.reply), {kind: 'say', tab} words to a tab, {kind: 'later', choices, then(choice, day)} Later's menu,
+ *  then(choice, day) the act of a choice (LATER_CHOICES; `day` the day of a day choice). Do it (meaning do, primary)
+ *  is the Bridge taking the next step: an inbox item's yes, an agent on a task's next step, a nudge on a waiting point
+ *  written as a draft and never sent; a tab that asks puts its own answers in its place (a dialog's options, Yes and
+ *  No, the ready answer of #702's tab_accept). Later puts it off to a day (on a waiting point with the same person,
+ *  runs_on) or onto the watch list (a task to the backlog, task_park; anything else without a day, LIST_DAY). Done
+ *  settles it (a stream: done for this time, it runs on). Obsolete, quiet and last, asks first and closes it as not
+ *  done with a note. An answer that cannot go for this point is left out (a tab without a row has only its own) */
 export function bucketAnswers(x, bucket, s, lang = 'en') {
   const t = TABLES[lang] ?? TABLES.en
   const f = t.flow.buckets
-  const def = bucketDefs(s, lang).find(b => b.id === bucket) ?? { options: [] }
-  const words = def.options
-  const meanings = BUCKET_MEANINGS[bucket] ?? []
   // an inbox id the server refuses (actions_base.py INBOX_ID_RE) takes no answer: none is offered
   const row = x?.row?.key && !x.readOnly && (!x.row.inbox_id || INBOX_ID.test(x.row.inbox_id)) ? x.row : null
   const key = row?.key
   const now = s?.now || Date.now()
   const out = []
-  const add = (meaning, run, label = null) => {
-    if (!run) return
-    const i = meanings.indexOf(meaning)
-    out.push({ id: `${meaning}${out.length}`, meaning, label: label ?? upFirst(words[i] ?? meaning), run })
+  const add = (meaning, run, label, more = {}) => {
+    if (run) out.push({ id: `${meaning}${out.length}`, meaning, label, run, ...more })
   }
   const act = a => (a ? { kind: 'act', verb: a.verb, args: a.args } : null)
-  const later = key ? act({ verb: 'later', args: { key, until: nextBriefingDay(now) } }) : null
-  // a row an agent tab already works on is never started a second time (do_it would launch another)
-  const doIt = key && row.inbox_state !== 'approved' && !row.tab?.live ? act({ verb: 'do_it', args: { keys: [key] } }) : null
-  // Do's yes is the briefing's yes (control.md: inbox.py approve): an inbox item is approved, and the server starts on
-  // it only where no action of its own runs and no tab works on it; any other row is started on, as Go
-  const yesIt = key && row.inbox_id && row.inbox_state !== 'approved' ? act({ verb: 'do_it', args: { keys: [key], yes: true } }) : doIt
+  const stream = isStream(row)
   const tab = x?.tab ?? null
-  if (bucket === 'do' && tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) {
+  const isTabPoint = !!tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')
+  // on a tab, Later, Done and Obsolete act only on the inbox item it asks about: on a task or a stream behind it they
+  // would put off or close the whole task, not the question
+  const own = !isTabPoint || !!row?.inbox_id
+  // ---- Do it
+  if (isTabPoint) {
     // the tab's own answers win: what it asks is answered in the tab, never by a new start. Where it takes words
-    // (textBox), an answer in words stands among them: first where the question is no yes or no (a number, a
-    // choice, "reply by number"), so Go on is never the only way to answer it
+    // (textBox), an answer in words stands among them: first where the question is no yes or no
     const opts = replyOptions(tab, s, t)
-    const own = opts.buttons.filter(b => b.verb !== 'tab_jump')
-    // where the tab takes nothing from here (a draft in its prompt, a dialog without keys) the way to it is the answer
+    const mine = opts.buttons.filter(b => b.verb !== 'tab_jump')
     const jump = opts.buttons.find(b => b.verb === 'tab_jump') ?? null
     const say = opts.textBox ? { kind: 'say', tab } : null
-    if (say && !tab.ask?.yes_no) add('yes', say, f.say)
-    for (const b of own) {
-      if (say && tab.ask?.yes_no && b.verb === 'tab_go_on') add('yes', say, f.say)
-      add('yes', { kind: 'reply', verb: b.verb, args: b.args }, b.label)
+    if (say && !tab.ask?.yes_no) add('do', say, f.sayAnswer)
+    for (const b of mine) {
+      if (say && tab.ask?.yes_no && b.verb === 'tab_go_on') add('do', say, f.sayAnswer)
+      add('do', { kind: 'reply', verb: b.verb, args: b.args }, b.label)
     }
-    if (!own.length && !say) add('yes', yesIt ?? (jump ? { kind: 'reply', verb: jump.verb, args: jump.args } : null), yesIt ? null : jump?.label)
-  } else if (bucket === 'do') add('yes', yesIt)
-  if (bucket === 'delegate') add('go', doIt)
-  if (bucket === 'plan') add('schedule', key ? { kind: 'pick', then: day => ({ verb: 'later', args: { key, until: day, plan: true } }) } : null)
-  if (bucket === 'waiting') {
-    const who = waitsOn(x)
-    const blocker = blockerOf(row)
-    const ask = who ? t.flow.simple.chase(who, pointName(row ?? {})) : blocker ? t.flow.simple.chaseBlocked(short(blocker, 120), pointName(row ?? {}))
-      : t.flow.simple.chase(f.someone, pointName(row ?? {}))
-    add('nudge', key && row.inbox_state !== 'approved' ? act(flowAction('do', row, ask)) : null)
-    // a named person goes with the wait; without one task.py wait keeps the blocker the task has
-    add('wait', key ? { kind: 'pick', then: day => ({ verb: 'runs_on', args: { keys: [key], until: day, ...(who ? { on: String(who) } : {}) } }) } : null)
+    if (!out.length && jump) add('do', { kind: 'reply', verb: jump.verb, args: jump.args }, jump.label)
+  } else if (key && row.inbox_state !== 'approved') {
+    if (bucket === 'waiting') {
+      const who = waitsOn(x)
+      const blocker = blockerOf(row)
+      const ask = who ? t.flow.simple.chase(who, pointName(row)) : blocker ? t.flow.simple.chaseBlocked(short(blocker, 120), pointName(row))
+        : t.flow.simple.chase(f.someone, pointName(row))
+      add('do', act(flowAction('do', row, ask)), f.answers.do)
+    } else if (row.inbox_id) {
+      // the briefing's yes (control.md: inbox.py approve, then run): the server starts on it only where no action of
+      // its own runs and no tab works on it
+      add('do', act({ verb: 'do_it', args: { keys: [key], yes: true } }), f.answers.do)
+    } else if (!row.tab?.live) {
+      // a row an agent tab already works on is never started a second time (do_it would launch another)
+      add('do', act({ verb: 'do_it', args: { keys: [key] } }), f.answers.do)
+    }
   }
-  // on a tab, later and drop act only on the inbox item it asks about: on a task or a stream behind it they would put
-  // off the whole task, not the question
-  const own = !(tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) || !!row?.inbox_id
-  if ((bucket === 'do' || bucket === 'plan') && own) add('later', later)
-  // Not now of I'll do it leaves the point as it is (control.md: "start it, or leave it"): nothing is written
-  if (bucket === 'delegate' && own && key) add('later', { kind: 'skip' })
-  if (bucket === 'do' && own) add('drop', key && !isStream(row) ? act(flowAction('drop', row, f.dropText)) : null)
-  if (bucket === 'drop') {
-    // park is the briefing's park (control.md: status backlog, the task stays open); a backlog task is parked already
-    add('park', !key || isStream(row) || row.status === 'backlog' ? null
-      : isTask(row) ? act({ verb: 'task_park', args: { key, reason: f.parkText } })
-      : act({ verb: 'later', args: { key, until: isoDate(now + PARK_DAYS * DAY) } }))
-    add('keep', isTask(row) ? act({ verb: 'task_keep', args: { keys: [key] } }) : null)
+  if (out.length) out[0].primary = true
+  if (!key || !own) return out
+  // ---- Later ▾
+  const who = bucket === 'waiting' ? waitsOn(x) : null
+  const backlog = isTask(row) && row.status === 'backlog'
+  const then = (choice, day = null) => {
+    if (choice === 'list') {
+      if (backlog) return null
+      return isTask(row) && !stream ? { verb: 'task_park', args: { key, reason: f.parkText } } : { verb: 'later', args: { key, until: LIST_DAY } }
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day ?? ''))) return null
+    // on a waiting point Later keeps it with the same person (task.py wait keeps the blocker where nobody is named)
+    if (bucket === 'waiting') return { verb: 'runs_on', args: { keys: [key], until: day, ...(who ? { on: String(who) } : {}) } }
+    return { verb: 'later', args: { key, until: day, ...(bucket === 'plan' ? { plan: true } : {}) } }
   }
-  const gone = obsoleteRun(row, own, f)
-  if (gone) out.push({ id: `obsolete${out.length}`, meaning: 'obsolete', label: f.obsolete, run: gone, confirm: true, quiet: true })
+  add('later', { kind: 'later', choices: LATER_CHOICES.filter(c => c !== 'list' || !backlog), then }, f.answers.later)
+  // ---- Done
+  if (stream) add('done', act({ verb: 'later', args: { key, until: isoDate(now + DAY), text: f.doneStreamText } }), f.answers.doneStream)
+  else if (!Array.isArray(row.settle) || row.settle.includes('done')) add('done', act({ verb: 'settle', args: { keys: [key], outcome: 'done' } }), f.answers.done)
+  // ---- Obsolete
+  const gone = obsoleteRun(row, f)
+  if (gone) add('obsolete', gone, stream ? f.obsoleteStream : f.obsolete, { confirm: true, quiet: true })
   return out
+}
+
+/** Who can take a point's next step under More (With …): {current, choices, name}. `choices` are you and the Bridge
+ *  for a task's step (task_owner, task.py next --who); `name(who)` puts any point with a person until a check-in in a
+ *  week (work_on), so it waits on them; `current` who has it now (me, bridge or the name) */
+export function ownerChoices(x, s) {
+  const row = x?.row?.key && !x.readOnly ? x.row : null
+  if (!row) return { current: null, choices: [], name: () => null }
+  const key = row.key
+  const step = String(row.card?.next?.who ?? row.checkin?.who ?? x.checkin?.who ?? '').trim()
+  const low = step.toLowerCase()
+  const current = BRIDGE.has(low) ? 'bridge' : YOU.has(low) ? 'me' : step
+  const choices = isTask(row) ? ['me', 'bridge'].map(who => ({ who, run: { verb: 'task_owner', args: { key, who } } })) : []
+  const week = laterDays(s?.now || Date.now()).week
+  const name = who => {
+    const w = String(who ?? '').replace(/\s+/g, ' ').trim()
+    return w ? { verb: 'work_on', args: { key, who: w.slice(0, 60), until: week } } : null
+  }
+  return { current, choices, name }
 }
 
 // the answers that name the state the page saw (actions_base.py WAS_VERBS, POINT_STATES)
@@ -358,17 +400,22 @@ export function withWas(go, row) {
   return POINT_STATES.has(was) ? { ...go, args: { ...go.args, was } } : go
 }
 
-/** What Obsolete sends, the fixed last answer of every point: the classic "Drop because out of date" as one settle
- *  (actions_work.py v_settle) with the reason as its text, so the history keeps it. A task is closed as not done, an
- *  inbox item dropped with the note and counted as out of date under its source (inbox.py drop --reason outdated), an
- *  issue or any other row hidden here (its source, GitHub too, stays as it is), a stream ended (the page asked: the
- *  confirm). Null where it cannot go: no row, a read-only one, one the server does not settle as not done, or a tab's
- *  question about anything but an inbox item (`own` false: the tab's own answers win) */
-function obsoleteRun(row, own, f) {
-  if (!row?.key || !own) return null
+/** What Obsolete sends, the fixed last answer of every point: one settle as not done (actions_work.py v_settle) with
+ *  the note as its text, so the history keeps it. A task is closed as not done, an inbox item dropped with the note
+ *  and counted as out of date under its source (inbox.py drop --reason outdated), an issue or any other row hidden
+ *  here (its source, GitHub too, stays as it is), a stream ended (the page asked: the confirm). Null where it cannot
+ *  go: no row, or one the server does not settle as not done */
+function obsoleteRun(row, f) {
+  if (!row?.key) return null
   if (Array.isArray(row.settle) && !row.settle.includes('not_doing')) return null
   return { kind: 'act', verb: 'settle', args: { keys: [row.key], outcome: 'not_doing', text: f.obsoleteText,
     ...(row.inbox_id ? { reason: 'outdated' } : {}), ...(isStream(row) ? { stream: true } : {}) } }
+}
+
+/** Obsolete with the person's note: the note after the fixed word, so the history says both */
+export function withNote(go, note, f) {
+  const n = String(note ?? '').replace(/\s+/g, ' ').trim()
+  return n && go?.verb === 'settle' ? { ...go, args: { ...go.args, text: `${f.obsoleteText}: ${n}`.slice(0, 2000) } } : go
 }
 
 /** The kind of a point in a word (Agent tab, Inbox, Stream, Task, Issue or PR, Point) */
@@ -383,12 +430,15 @@ export function pointKindWord(x, lang = 'en') {
   return k.other
 }
 
-/** The words of the buckets by the ids other parts of the page use: the taskboard's columns (me, bridge, waiting;
- *  review stays its own) and Jev's squares (now, plan, hand, drop), {} where the buckets are off */
+/** The words of the buckets by the ids other parts of the page use, {} where the buckets are off: Jev's squares (now
+ *  Do, plan Plan, hand I'll do, drop the watch list, where what is neither urgent nor important belongs) and the task
+ *  board's columns of the Bridge's moves and of what waits on others (its own words for yours and for review: it
+ *  splits by who moves, not by day) */
 export function bucketWords(s, lang = 'en') {
   if (!flowBucketsOn(s)) return { columns: {}, quadrant: {} }
   const by = Object.fromEntries(bucketDefs(s, lang).map(b => [b.id, b.title]))
-  return { columns: { me: by.do, bridge: by.delegate, waiting: by.waiting }, quadrant: { now: by.do, plan: by.plan, hand: by.delegate, drop: by.drop } }
+  const list = upFirst((TABLES[lang] ?? TABLES.en).flow.buckets.later.list)
+  return { columns: { bridge: by.delegate, waiting: by.waiting }, quadrant: { now: by.do, plan: by.plan, hand: by.delegate, drop: list } }
 }
 
 // ---------------------------------------------------------------- the other views of the work tab
@@ -414,9 +464,9 @@ export function tabPoint(tab) {
   return tab && !tab.is_control && ASKING.has(tab.state) ? { group: 'asks', id: `tab:${tab.ref}`, kind: 'tab', tab, row: null } : null
 }
 
-/** The bucket a point stands in on a list: its bucket (pointBucket), a backlog task the briefing holds in none
- *  under drop, where its answers park or keep it, so no row of a list stands in none */
-export const viewBucket = x => pointBucket(x) ?? 'drop'
+/** The bucket a point stands in on a list: its bucket (pointBucket), a backlog task the briefing holds in none (it
+ *  is on the watch list) under Plan, you without a day, so no row of a list stands in none */
+export const viewBucket = x => pointBucket(x) ?? 'plan'
 
 /** The bucket of a page item (By source): the bucket of its row, null for an item no answer reaches */
 export function itemBucket(it, s, byKey) {
@@ -443,11 +493,11 @@ export function bucketCounts(items, s, byKey, lang = 'en') {
   return out
 }
 
-/** The word of "let the AI do it" (do_it): the delegate bucket's first answer while the buckets are on, so one act
- *  has one label on every view; else the page's own */
+/** The word of "let the AI do it" (do_it): Do it, the first of the four answers, while the buckets are on, so one
+ *  act has one label on every view; else the page's own */
 export function doWord(s, lang = 'en') {
-  if (!flowBucketsOn(s)) return (TABLES[lang] ?? TABLES.en).action.do
-  return upFirst(bucketDefs(s, lang).find(b => b.id === 'delegate')?.options?.[0] ?? (TABLES[lang] ?? TABLES.en).action.do)
+  const t = TABLES[lang] ?? TABLES.en
+  return flowBucketsOn(s) ? t.flow.buckets.answers.do : t.action.do
 }
 
 /** The number a row shows on a list (Due, By source, the start page): while the buckets are on only its number in the

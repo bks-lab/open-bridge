@@ -2272,6 +2272,15 @@ export function createMockTransport(opts = {}) {
       publish()
       return ok({ ...result, note: '' })
     }
+    // With … under More of a bucket card (actions_work.py task_owner): a task's step to you or the Bridge
+    if (verb === 'task_owner') {
+      const r = anyRow(args.key)
+      if (!r?.task) return fail(409, 'not_applicable', 'only a task')
+      const was = r.card?.next?.who ?? null
+      stepTo(r, args.who, r.card?.next?.check ?? null)
+      publish()
+      return ok({ ...result, note: `Mock: next step with ${args.who}`, undo: [{ title: r.title, kind: 'task', undo: { verb: 'task_next', args: { slug: r.task, who: was ?? 'me' } } }] })
+    }
     if (verb === 'checkin_stuck') {
       const r = anyRow(args.key)
       if (!r) return fail(409, 'stale_row', 'no such row')

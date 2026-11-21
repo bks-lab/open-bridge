@@ -572,11 +572,34 @@
 .fb-answers > .fb-confirm { margin-left: auto; }
 .fb-answers .fb-confirm .btn { min-height: 36px; font-size: var(--text-sm); }
 .fb-confirm-q { color: var(--on-surface); font-weight: 600; }
-.fb-dock { min-width: 0; }
-.fb-dock:empty { display: none; }
-.fb-pick { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); }
-.fb-pick .label-caps { margin: 0; }
-.fb-pick-own { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fb-confirm-note { flex: 1 1 16em; min-width: 0; }
+/* Later ▾ and its menu: tomorrow, Monday, in a week with their days, a picked day, the watch list */
+.fb-later { position: relative; display: inline-flex; }
+.fb-later-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; display: flex; flex-direction: column; min-width: 240px;
+  padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-float); }
+.fb-later-item { display: flex; align-items: baseline; gap: 12px; width: 100%; padding: 8px 10px; border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--on-surface); font: inherit; text-align: left; cursor: pointer; }
+.fb-later-item:hover { background: var(--surface-raised); }
+.fb-later-sub { margin-left: auto; }
+.fb-later-sep { margin: 6px 4px; border: 0; border-top: 1px solid var(--border); }
+.fb-later-pick { display: flex; gap: 8px; align-items: center; padding: 6px 8px 8px; }
+.fb-later-pick .input { flex: 1; min-width: 0; }
+.fb-done-col { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.fb-done-col small { padding-left: 4px; }
+.fb-mark-quiet { border-style: dashed; font-style: italic; }
+.fb-question { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-left: 3px solid var(--border-strong); border-radius: var(--radius-md);
+  background: var(--surface-raised); }
+.fb-question p { margin: 0; color: var(--on-surface); overflow-wrap: anywhere; }
+/* what is out of sight, only counted, under the buckets */
+.fb-aside { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--border); }
+.fb-aside .label-caps { margin: 0; color: var(--on-surface-muted); }
+.fb-aside-row { display: flex; align-items: baseline; gap: 8px; font-size: var(--text-sm); color: var(--on-surface-muted); }
+.fb-aside-n { margin-left: auto; color: var(--on-surface); font-weight: 600; }
+.fb-more-part { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.fb-more-part > h3 { margin: 0; color: var(--on-surface-muted); }
+.fb-owner .btn-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fb-owner-name { display: inline-flex; gap: 8px; align-items: center; margin: 0; }
+.fb-owner-name .input { width: 10em; min-width: 0; }
 .fb-say { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); }
 .fb-say form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0; }
 .fb-say .input { flex: 1 1 16em; min-width: 0; }
@@ -587,13 +610,12 @@
 .fb-chip { font-weight: 600; }
 .fb-chip-nr { color: var(--on-surface-muted); }
 .fb-bar-rest { display: inline-flex; flex-wrap: wrap; gap: 6px; }
-.fb-bar > .fb-pick, .fb-bar > .fb-say { flex-basis: 100%; }
+.fb-bar > .fb-say { flex-basis: 100%; }
 .fb-bar > .fb-note { flex-basis: 100%; }
 .fb-more { border-top: 1px solid var(--border); padding-top: 10px; }
 .fb-more > summary { cursor: pointer; font-weight: 600; color: var(--on-surface-muted); }
 .fb-more[open] > summary { color: var(--on-surface); }
 .fb-more-body { display: flex; flex-direction: column; gap: var(--space-md); margin-top: 12px; }
-.fb-more-body > .flow-aside { position: static; max-height: none; overflow: visible; }
 .fb-screen { margin: 0; max-height: 40vh; overflow: auto; padding: 10px; border-radius: var(--radius-md); background: var(--surface-raised); font-size: 12.5px;
   white-space: pre-wrap; overflow-wrap: anywhere; }
 .fb-empty, .fb-moved { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: var(--space-lg); border: 1px dashed var(--border);
@@ -608,4 +630,8 @@
   /* on a phone the card follows the buckets closely: a short list of the open bucket's points */
   .fb-buckets > li > .fb-points { max-height: 30vh; }
   .fb-card { padding: var(--space-md); }
+  /* Later's menu spans the card on a phone, never past the screen's edge */
+  .fb-later { position: static; }
+  .fb-later-menu { top: auto; left: 0; right: 0; min-width: 0; }
+  .fb-card { position: relative; }
 }
