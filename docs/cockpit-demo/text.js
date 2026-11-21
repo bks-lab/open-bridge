@@ -1599,7 +1599,7 @@ const en = {
       ['Later ▾', 'tomorrow, Monday, in a week, a day you pick, or the watch list. It comes back on its day by itself'],
       ['Done', 'done. On a stream: done for this time, the stream runs on'],
       ['Obsolete', 'quiet and last, asked first: closed as not done, with a note. An issue stays open on GitHub'],
-      ['More', 'With … (you, the Bridge or a name), To the tab, Fields, Ask'],
+      ['More', 'With … (you, the Bridge or a name), Go to the tab, Fields, Ask'],
     ],
     trust: [
       ['Tokens', 'only Do it, Ask, Sort it, Plan my day, End of day and every launched tab · everything else is local'],
