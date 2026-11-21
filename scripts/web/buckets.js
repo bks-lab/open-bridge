@@ -383,12 +383,14 @@ export function pointKindWord(x, lang = 'en') {
   return k.other
 }
 
-/** The words of the buckets by the ids other parts of the page use: the taskboard's columns (me, bridge, waiting;
- *  review stays its own) and Jev's squares (now, plan, hand, drop), {} where the buckets are off */
+/** The words of the buckets by the ids other parts of the page use: Jev's squares (now, plan, hand, drop), {} where
+ *  the buckets are off. The taskboard's columns keep their own words: they sort by who has the next move, not by the
+ *  briefing's buckets, and a bucket's name over them claimed what they do not hold (round 2: "Tun (du, heute)" held
+ *  tasks every other view had under Park or drop) */
 export function bucketWords(s, lang = 'en') {
   if (!flowBucketsOn(s)) return { columns: {}, quadrant: {} }
   const by = Object.fromEntries(bucketDefs(s, lang).map(b => [b.id, b.title]))
-  return { columns: { me: by.do, bridge: by.delegate, waiting: by.waiting }, quadrant: { now: by.do, plan: by.plan, hand: by.delegate, drop: by.drop } }
+  return { columns: {}, quadrant: { now: by.do, plan: by.plan, hand: by.delegate, drop: by.drop } }
 }
 
 // ---------------------------------------------------------------- the other views of the work tab

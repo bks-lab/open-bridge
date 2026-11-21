@@ -203,9 +203,10 @@ test('the switch off: Work through as it was', async () => {
   assert.ok(el.$('.flow-grid'))
 })
 
-test('bucketWords: the taskboard columns and Jev\'s squares say the buckets\' names while the switch is on', () => {
+test('bucketWords: Jev\'s squares say the buckets\' names while the switch is on; the taskboard keeps its own', () => {
   const on = logic.bucketWords(state(), 'de')
-  assert.deepEqual(on.columns, { me: 'Tun (du, heute)', bridge: 'Mache ich', waiting: 'Wartet auf andere' })
+  // round 2: the taskboard's columns sort by who has the next move, a bucket's name over them claimed otherwise
+  assert.deepEqual(on.columns, {})
   assert.deepEqual(on.quadrant, { now: 'Tun (du, heute)', plan: 'Planen', hand: 'Mache ich', drop: 'Parken oder streichen' })
   assert.deepEqual(logic.bucketWords(state({ on: false }), 'de'), { columns: {}, quadrant: {} })
 })

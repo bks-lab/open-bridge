@@ -316,3 +316,11 @@ test('once the server answers again its "does not answer" toast goes, and the he
   assert.deepEqual(logic.backOnline(toasts, de2).map(x => x.id), [2])
   assert.ok(de2.connLost.length <= 16 && !/,/.test(de2.connLost), de2.connLost)
 })
+
+test('the task board says its own words for its columns, and Hide is no Keep: one word, one act', () => {
+  // its columns sort by who has the next move, not by the briefing's buckets: they never carry a bucket's name
+  assert.deepEqual(logic.bucketWords(state(), 'de').columns, {})
+  const tb = text.TABLES.de.taskboard
+  assert.notEqual(tb.keep, 'Behalten', 'the tidy button only hides here; Behalten is the briefing\'s keep')
+  assert.doesNotMatch(tb.tidyHint, /Behalten/)
+})
