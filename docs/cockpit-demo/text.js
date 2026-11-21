@@ -204,7 +204,7 @@ const en = {
   prioPrefix: 'Priority',
   startTitle: 'Start',
   btnDoOwnWs: 'Let AI do it in its own workspace',
-  btnCollect: 'let it collect',
+  btnCollect: 'Let it gather information',
   teamTitle: 'Team',
   teamStart: label => `Team ${label}`,
   teamProgress: (label, started, all) => `Team ${label}: ${started} of ${all} roles started`,

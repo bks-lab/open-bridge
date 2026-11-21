@@ -20,8 +20,9 @@ import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from '../
 import { clamp, countTo, flash, flowAlpha, noise1, nowSec, o3, ramp, reducedMotion, ripples, spring, track, trackAt, tracking, typed, win } from './motion.js'
 import { CORE, H, QUADS, W, X0, X1, Y0, Y1, checkWins, costLine, cursorShown, cutWords, launch, layoutMatrix, liveItems, matrixWords, orderPlan,
   pendingTitles, place, planOpen, playFor, quadWordRects, readingFor, rowJump, tokenText, trimCut } from './logic.js'
-import { indexRows, itemRow, triageKey } from '../logic.js'
+import { flowBucketsOn, indexRows, itemRow, rowPoint, triageKey } from '../logic.js'
 import { KindTag, OriginTag } from '../views/day.js'
+import { BucketBar } from '../views/flowbuckets.js'
 import { T as dashText, language } from '../text.js'
 import { bucketWords } from '../buckets.js'
 
@@ -230,9 +231,12 @@ export function planRow(it, row, pageItems = null) {
   return m ? { key: it.key, [m[1] === 'inbox' ? 'inbox_id' : 'task']: m[2] } : { key: it.key }
 }
 
-function PlanList({ items, byKey, s, c, emph, setHover, listRef, extra, pageItems, onOpen, words }) {
+export function PlanList({ items, byKey, s, c, emph, setHover, listRef, extra, pageItems, onOpen, words }) {
   const t = tx()
   const d = dashText()
+  // with the briefing's buckets on a row offers its bucket's answers, as on every view of the work tab; Jev's own
+  // words for who and square stand in the matrix, a row says its bucket once (its chip)
+  const buckets = flowBucketsOn(s)
   return html`<ol class="jev-plan" ref=${listRef}>
     ${items.map((it, i) => {
       const row = byKey.get(it.key)
@@ -251,14 +255,15 @@ function PlanList({ items, byKey, s, c, emph, setHover, listRef, extra, pageItem
             : html`<span class="jev-row-title">${title}</span>`}
           <span class="jev-row-meta">
             <${KindTag} row=${planRow(it, row, pageItems)} s=${s} /><${OriginTag} row=${planRow(it, row, pageItems)} />
-            <span class=${`jev-pill jev-${it.who}`}>${it.who === 'me' ? words.me : words.delegate}</span>
+            ${buckets ? null : html`<span class=${`jev-pill jev-${it.who}`}>${it.who === 'me' ? words.me : words.delegate}</span>`}
             <span class="jev-pill">${t.effort[Math.min(3, Math.round(it.effort * 3))]}</span>
-            <span class="jev-pill">${words.quads[it.quadrant] ?? t.quads[it.quadrant]}</span>
+            ${buckets ? null : html`<span class="jev-pill">${words.quads[it.quadrant] ?? t.quads[it.quadrant]}</span>`}
             ${it.confidence != null ? html`<span class="jev-conf mono" title=${t.legendRing}><span data-pct=${i} data-to=${Math.round(it.confidence * 100)}></span> % ${t.sure}</span>` : null}
           </span>
           <span class="jev-bar"><span class=${`jev-bar-fill jev-${it.who}`} data-bar=${i} style=${{ transform: `scaleX(${(it.priority ?? 0).toFixed(4)})` }}></span></span>
+          ${buckets && row ? html`<span class="jev-row-bar"><${BucketBar} x=${rowPoint(row, s)} s=${s} c=${c} /></span>` : null}
         </span>
-        ${jump ? html`<button type="button" class=${`btn btn-ghost btn-xs jev-row-act${jump.verb === 'advise' ? ' is-quiet' : ''}`} aria-busy=${String(!!s.ui.busy[jump.busy])}
+        ${buckets ? null : jump ? html`<button type="button" class=${`btn btn-ghost btn-xs jev-row-act${jump.verb === 'advise' ? ' is-quiet' : ''}`} aria-busy=${String(!!s.ui.busy[jump.busy])}
             disabled=${!!s.ui.busy[jump.busy]} onFocus=${() => setHover(it.key)} onBlur=${() => setHover(null)}
             onClick=${() => c.act(jump.verb, jump.args)}><span class="btn-label">${jump.verb === 'tab_jump' ? d.btnToTab : d.action.advise}</span></button>` : null}
       </li>`

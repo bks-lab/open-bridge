@@ -1262,6 +1262,24 @@ Waiting on others) and the squares of Jev in a point's fields then say the
 buckets' names too (do, delegate, waiting; do, plan, delegate, drop). With the
 switch off Work through is as it was. A person's page keeps it as it is.
 
+The other views of the work tab follow the same switch, so they differ from Work
+through only in order and grouping, never in words or answers. Every row of
+**Due**, **By source** and **By Jev**, the detail of a row and the cards of the
+agent tabs column show the row's bucket as a chip (with its number in the printed
+briefing) and the bucket's answers: the first one strong, the rest under one
+**More**, each the same act as the card's (`views/flowbuckets.js` BucketBar, one
+`useBucketAnswer` for the card and every bar). A row whose agent tab asks is
+answered in the tab (its dialog's options, the ready answer with `tab_accept`,
+yes and no only where the server takes them), and a row an agent already works
+on is never started a second time. Due keeps its sections under neutral titles
+(Now and today, From the inbox, ...), and a selection there offers the delegate
+bucket's answers for every picked row. By source keeps its grouping by source;
+its strip filters by the bucket words (the triage's own words, can go, the AI can
+do it, needs you, step back; its gist stays). By Jev shows the bar under each row
+of the plan; Jev's own words for who and square stay in the matrix. A backlog
+task no bucket of the briefing holds stands under drop there. The mock takes
+`?buckets=1` to show it.
+
 #### Read marks
 
 With `cockpit.flow.seen.enabled: true` Work through remembers which points you

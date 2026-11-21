@@ -6,11 +6,12 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/ht
 import {
   attentionTabs, duration, formatDay, indexRows, pageWarnings, sectionRows, short, stateToken, canTab, actionRow,
   pageItemActs, workPageOf, workViews, flowOn, startMode, parseDate, isoDate, launchChoice, rowKind, repoGroups, originOf, ORIGIN_CATEGORIES,
-  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey, personOf
+  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey, personOf, flowBucketsOn, rowPoint, tabPoint, doWord, nextBriefingDay
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ItemCardLine, titleOf } from './card.js'
 import { CheckButton } from './check.js'
+import { BucketBar } from './flowbuckets.js'
 import { AlarmBanner } from './header.js'
 import { PinStar, ReturnChip } from './home.js'
 import { LaunchPick } from './launch.js'
@@ -186,7 +187,9 @@ function RowPanel({ rows, s, c, part, close, anchor, seed }) {
     ${one ? group(t.grp.ask, html`${one.bucket === 'waiting' ? item(t.action.follow_up, () => done(() => c.ask('follow_up', { key: one.key }))) : null}
       ${item(t.askChat, () => done(() => c.ask('row', { key: one.key })))}`) : null}`
   const person = !!personOf(s)      // what is no verb of theirs stands out of the panel (access.py)
-  const settlePart = () => html`${group(t.grp.close, html`${item(t.settleDone, () => settle('done'), { token: 'success', ref: first })}
+  // an issue or PR closes nowhere from here, done only hides it on this page: its word says so
+  const hides = rows.every(r => r.ref && !r.task && !r.inbox_id)
+  const settlePart = () => html`${group(t.grp.close, html`${item(hides ? t.flow.hide : t.settleDone, () => settle('done'), { token: 'success', ref: first })}
       ${item(t.settleNot, discard, { token: 'on-surface-muted' })}
       ${streams ? html`<span class="settle-hint muted small">${t.streamHint}</span>` : null}
       ${rows.some(r => r.task && r.tab?.live) ? html`<span class="settle-hint muted small">${t.taskDoneLiveTab}</span>` : null}`)}
@@ -298,8 +301,15 @@ export function SettleMenu({ rows, s, c, size = 'xs', seed }) {
  *  row's task in the tab list, when the row itself names none */
 export function RowBar({ row, s, c, pin = true, size = 'xs', tab = null }) {
   const r = tab && !row.tab ? { ...row, tab: { ref: tab.ref, state: tab.state, live: tab.live ?? tab.state !== 'shell' } } : row
+  if (flowBucketsOn(s)) return html`<${BucketRowBar} row=${r} s=${s} c=${c} size=${size} pin=${pin} />`
   return html`<${StartMenu} row=${r} s=${s} c=${c} size=${size} /><${SettleMenu} rows=${[r]} s=${s} c=${c} size=${size} />${pin
     ? html`<${PinStar} rowKey=${r.key} s=${s} c=${c} />` : null}`
+}
+
+/** A row's bar with the briefing's buckets on (cockpit.flow.buckets): its bucket's answers, as the card of Work
+ *  through offers them, so one view differs from another only in order and grouping, never in words or answers */
+function BucketRowBar({ row, s, c, size, pin }) {
+  return html`<${BucketBar} x=${rowPoint(row, s)} s=${s} c=${c} size=${size} />${pin ? html`<${PinStar} rowKey=${row.key} s=${s} c=${c} />` : null}`
 }
 
 /** The buttons of a page row that is no inbox item or task but a person can hand on: the same bar as a work row.
@@ -359,7 +369,7 @@ function SectionBody({ section, s, c, byKey, budget }) {
     ? (section.rows ?? rows).map(r => r.key).filter(k => (s.model?.approvable ?? []).includes(k)) : []
   return html`<section class="sec" aria-labelledby=${`sec-${section.id}`}>
     <header class="sec-head">
-      <h2 class="sec-title" id=${`sec-${section.id}`}>${t.section[section.id] ?? section.id}
+      <h2 class="sec-title" id=${`sec-${section.id}`}>${(flowBucketsOn(s) ? t.flow.buckets.section : t.section)[section.id] ?? section.id}
         <span class="sec-count mono">${section.total}</span></h2>
       <span class="sec-tools">
         ${section.id === 'work' ? html`<${CheckButton} s=${s} c=${c} size="xs" />` : null}
@@ -392,7 +402,8 @@ function TabMini({ tab, s, c }) {
       ${tab.long ? html`<span class="chip chip-warn-outline">${t.tabLong}</span>` : null}
     </span>
     <span class="tabmini-acts">
-      ${tab.state === 'needs-you' && canTab(s, 'key') ? html`
+      ${flowBucketsOn(s) && tabPoint(tab) ? html`<${BucketBar} x=${tabPoint(tab)} s=${s} c=${c} />`
+        : tab.state === 'needs-you' && canTab(s, 'key') ? html`
         <${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('tab_yes', { tab_ref: tab.ref })}>${t.btnYes}<//>
         <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_no', { tab_ref: tab.ref })}>${t.btnNo}<//>` : null}
       ${canTab(s, 'focus') ? html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>` : null}
@@ -418,6 +429,21 @@ function WaitingTabs({ s, c }) {
   </section>`
 }
 
+/** A selection with the briefing's buckets on: the delegate bucket's answers for every picked row, go (do_it, the
+ *  Bridge starts) and not now (later, to the next briefing day), the same acts as the card's answers */
+function BucketMany({ rows, s, c }) {
+  const lang = language()
+  const f = T().flow.buckets
+  const go = rows.filter(r => (r.inbox_id || r.task) && r.inbox_state !== 'approved' && !r.tab?.live)
+  const until = nextBriefingDay(s.now || Date.now())
+  const words = (s.model?.buckets ?? []).find(b => b.id === 'delegate')?.options ?? f.defaults.delegate.options
+  const later = words[1] ? words[1].charAt(0).toUpperCase() + words[1].slice(1) : f.defaults.delegate.options[1]
+  const busy = rows.some(r => s.ui.busy[r.key])
+  return html`${go.length ? html`<${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('do_it', { keys: go.map(r => r.key) })}>
+      ${f.many(doWord(s, lang), go.length)}<//>` : null}
+    <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => rows.forEach(r => c.act('later', { key: r.key, until }))}>${f.many(later, rows.length)}<//>`
+}
+
 function SelectionBar({ s, c }) {
   const t = T()
   // the picks the page shows (under a filter the model holds only those): the count and the acts agree
@@ -428,8 +454,8 @@ function SelectionBar({ s, c }) {
   return html`<div class="selbar" role="region" aria-label=${t.picked(n)}>
     <strong>${t.picked(n)}</strong>
     <span class="selbar-acts">
-      <${StartMany} rows=${rows} s=${s} c=${c} />
-      <${SettleMenu} rows=${rows} s=${s} c=${c} />
+      ${flowBucketsOn(s) ? html`<${BucketMany} rows=${rows} s=${s} c=${c} />` : html`<${StartMany} rows=${rows} s=${s} c=${c} />
+      <${SettleMenu} rows=${rows} s=${s} c=${c} />`}
       <${Btn} size="xs" variant="ghost" onClick=${c.clearPicks}>${t.btnClear}<//>
     </span>
   </div>`

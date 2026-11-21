@@ -9,8 +9,8 @@
 // goes out as a verb of the server the rest of the page already uses (do_it, later, settle, shelve, task_keep,
 // runs_on, the tab's own answers). No DOM, no network. logic.js passes every name on.
 import { TABLES } from './text.js'
-import { DAY, flowAction, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
-  short } from './logic.js'
+import { DAY, actionRow, flowAction, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
+  short, triageShows } from './logic.js'
 
 // the briefing's buckets, in its default order (briefing_view BUCKETS)
 export const BUCKET_IDS = ['do', 'plan', 'delegate', 'waiting', 'drop']
@@ -188,7 +188,8 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
   }
   const act = a => (a ? { kind: 'act', verb: a.verb, args: a.args } : null)
   const later = key ? act({ verb: 'later', args: { key, until: nextBriefingDay(now) } }) : null
-  const doIt = key && row.inbox_state !== 'approved' ? act({ verb: 'do_it', args: { keys: [key] } }) : null
+  // a row an agent tab already works on is never started a second time (do_it would launch another)
+  const doIt = key && row.inbox_state !== 'approved' && !row.tab?.live ? act({ verb: 'do_it', args: { keys: [key] } }) : null
   const tab = x?.tab ?? null
   if (bucket === 'do' && tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) {
     // the tab's own answers win: what it asks is answered in the tab, never by a new start
@@ -233,4 +234,60 @@ export function bucketWords(s, lang = 'en') {
   if (!flowBucketsOn(s)) return { columns: {}, quadrant: {} }
   const by = Object.fromEntries(bucketDefs(s, lang).map(b => [b.id, b.title]))
   return { columns: { me: by.do, bridge: by.delegate, waiting: by.waiting }, quadrant: { now: by.do, plan: by.plan, hand: by.delegate, drop: by.drop } }
+}
+
+// ---------------------------------------------------------------- the other views of the work tab
+
+// the states of an agent tab that ask the person: a dialog, or a prompt waiting for an answer
+const ASKING = new Set(['needs-you', 'waiting'])
+
+/** A row of any view (Due, By source, By Jev, the detail) as a point of the buckets: a row whose agent tab asks
+ *  stands as that tab, answered in the tab as on the card of Work through; any other row as itself */
+export function rowPoint(row, s) {
+  const ref = row?.tab?.ref ?? null
+  const tab = ref ? (s?.tabs?.tabs ?? []).find(x => x.ref === ref) ?? null : null
+  if (tab && !tab.is_control && ASKING.has(tab.state)) return { group: 'asks', id: row.key, kind: 'tab', tab, row }
+  return { group: 'row', id: row?.key ?? null, kind: 'row', row }
+}
+
+/** An agent tab of the tabs column as a point: one that asks stands in Do with its own answers; one that works or
+ *  is the control session is no decision (null) */
+export function tabPoint(tab) {
+  return tab && !tab.is_control && ASKING.has(tab.state) ? { group: 'asks', id: `tab:${tab.ref}`, kind: 'tab', tab, row: null } : null
+}
+
+/** The bucket a point stands in on a list: its bucket (pointBucket), a backlog task the briefing holds in none
+ *  under drop, where its answers park or keep it, so no row of a list stands in none */
+export const viewBucket = x => pointBucket(x) ?? 'drop'
+
+/** The bucket of a page item (By source): the bucket of its row, null for an item no answer reaches */
+export function itemBucket(it, s, byKey) {
+  const row = actionRow(it, byKey)
+  return row ? viewBucket(rowPoint(row, s)) : null
+}
+
+/** Whether a page item stays under the strip's filter: with the buckets on a filter `b:<bucket>` keeps that
+ *  bucket's items, without them the triage's; a filter of the other mode (left from before the switch moved) keeps
+ *  all */
+export function workShows(it, s, byKey, f) {
+  const bucket = typeof f === 'string' && f.startsWith('b:') ? f.slice(2) : null
+  if (flowBucketsOn(s)) return !bucket || itemBucket(it, s, byKey) === bucket
+  return bucket ? true : triageShows(it, s?.triage?.items, f)
+}
+
+/** How many page items each bucket holds, `all` every item */
+export function bucketCounts(items, s, byKey, lang = 'en') {
+  const out = { all: (items ?? []).length, ...Object.fromEntries(bucketDefs(s, lang).map(b => [b.id, 0])) }
+  for (const it of items ?? []) {
+    const b = itemBucket(it, s, byKey)
+    if (b && b in out) out[b] += 1
+  }
+  return out
+}
+
+/** The word of "let the AI do it" (do_it): the delegate bucket's first answer while the buckets are on, so one act
+ *  has one label on every view; else the page's own */
+export function doWord(s, lang = 'en') {
+  if (!flowBucketsOn(s)) return (TABLES[lang] ?? TABLES.en).action.do
+  return upFirst(bucketDefs(s, lang).find(b => b.id === 'delegate')?.options?.[0] ?? (TABLES[lang] ?? TABLES.en).action.do)
 }

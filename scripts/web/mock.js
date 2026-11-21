@@ -1296,7 +1296,9 @@ export function buildState(now = Date.now(), opts = {}) {
         summary: { enabled: opts.flow !== false, budget_per_day: 10, model: null },
         instruct: { enabled: opts.flow !== false, budget_per_day: 30, model: null },
         attach: { enabled: opts.flow !== false, max_mb: 10 },
-        seen: { enabled: seenOn, open_reads: 'auto', active_days: 7 } } },
+        seen: { enabled: seenOn, open_reads: 'auto', active_days: 7 },
+        // the briefing's buckets on every view of the work tab (cockpit.flow.buckets): ?buckets=1
+        buckets: { enabled: opts.buckets === true } } },
     seen: { marks: seenRead, focus: [] },
     // what the day's budgets of Work through still hold (server.py state_payload flow_ai)
     flow_ai: { summary_left: 10, instruct_left: 30, instruct_running: false },

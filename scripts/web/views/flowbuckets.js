@@ -15,8 +15,8 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  answerMark, bucketAnswers, bucketPoints, detailNeedsLoad, errorText, focusIndex, formatDay, nextSentence, openBucket, parseDate, pickDays,
-  pointArea, pointKindWord, pointName, short,
+  answerMark, bucketAnswers, bucketDefs, bucketPoints, detailNeedsLoad, errorText, focusIndex, formatDay, nextSentence, openBucket, parseDate, pickDays,
+  pointArea, pointKindWord, pointName, short, viewBucket,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { WorkSwitch } from './day.js'
@@ -38,7 +38,7 @@ function useItemDetail(x, s, c) {
 }
 
 /** The day picker of an answer that needs a day first (plan's schedule, waiting's wait): a few days, another one */
-function DayPick({ s, onPick, onCancel, busy }) {
+function DayPick({ s, onPick, onCancel, busy, uid = 'fb-pick-day' }) {
   const f = T().flow.buckets.pick
   const [own, setOwn] = useState('')
   const now = s.now || Date.now()
@@ -50,25 +50,26 @@ function DayPick({ s, onPick, onCancel, busy }) {
         onClick=${() => onPick(iso)}>${f[k]}<//>`)}
     </div>
     <div class="field-row fb-pick-own">
-      <label class="sr-only" for="fb-pick-day">${f.own}</label>
-      <input id="fb-pick-day" class="input" type="date" value=${own} placeholder=${f.own} onInput=${e => setOwn(e.currentTarget.value)} />
+      <label class="sr-only" for=${uid}>${f.own}</label>
+      <input id=${uid} class="input" type="date" value=${own} placeholder=${f.own} onInput=${e => setOwn(e.currentTarget.value)} />
       <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!day} onClick=${() => day && onPick(day)}>${f.set}<//>
       <${Btn} size="sm" variant="ghost" onClick=${onCancel}>${f.cancel}<//>
     </div>
   </div>`
 }
 
-/** One point as a card: its marks, its title, Next, the bucket's answers, its number in the briefing, More */
-export function BucketCard({ x, bucket, s, c }) {
+/** The answers of a point in its bucket and what a click on one does, the one place every view sends an answer
+ *  from (the card here, the bar of a row on Due, By source, By Jev and the tabs column): a tab's own answer goes
+ *  to the tab (c.reply) and is marked answered, a verb of the server goes out as c.act, an answer that needs a
+ *  day opens the day picker first. `onDone` runs once an answer went through (the card moves on) */
+export function useBucketAnswer(x, bucket, s, c, onDone = null) {
   const lang = language()
   const t = T()
-  const f = t.flow.buckets
   const [pick, setPick] = useState(null)
   const [note, setNote] = useState(null)
-  useItemDetail(x, s, c)
-  const row = x.row ?? null
-  const tab = x.tab ?? null
-  const answers = bucketAnswers(x, bucket, s, lang)
+  const row = x?.row ?? null
+  const tab = x?.tab ?? null
+  const answers = x ? bucketAnswers(x, bucket, s, lang) : []
   const busy = !!(s.ui?.busy?.[row?.key] || (tab && s.ui?.busy?.[tab.ref]))
   const run = async (a, day = null) => {
     setNote(null)
@@ -78,16 +79,60 @@ export function BucketCard({ x, bucket, s, c }) {
       if (r?.refused) { setNote(errorText(r.error, t)); return }
       if (!r?.ok) { if (r?.note) setNote(r.note); return }
       c.markAnswered?.(tab.ref, answerMark(tab, a.label, Date.now()))
-      c.flowDecided?.()
+      onDone?.()
       return
     }
     const go = a.run.kind === 'pick' ? a.run.then(day) : a.run
     const r = await c.act(go.verb, go.args)
     setPick(null)
     if (Array.isArray(r?.manual) && r.manual.length) { setNote(r.manual.join('\n')); return }
-    if (r?.ok) c.flowDecided?.()
+    if (r?.ok) onDone?.()
     else if (r?.note) setNote(r.note)
   }
+  return { answers, run, pick, setPick, note, busy }
+}
+
+/** A point's bucket as one small chip, the bucket's title, with its number in the printed briefing beside it */
+export function BucketChip({ x, bucket, s }) {
+  const lang = language()
+  const f = T().flow.buckets
+  const def = bucketDefs(s, lang).find(b => b.id === bucket)
+  if (!def) return null
+  const nr = x?.row?.brief_nr
+  return html`<span class="fb-chips"><span class=${`chip fb-chip fb-chip-${bucket}`} title=${f.sub[bucket]}>${def.title}</span>${Number.isInteger(nr)
+    ? html`<span class="chip fb-chip-nr mono" title=${f.inBriefing(nr, null)}>${f.nr(nr)}</span>` : null}</span>`
+}
+
+/** The answers of a point on a row of a list: its bucket chip, the first answer strong, the rest under one More,
+ *  the same answers and acts as the card (BucketCard). `chip` false leaves the chip out where the row shows it */
+export function BucketBar({ x, s, c, size = 'xs', bucket = null, chip = true }) {
+  const f = T().flow.buckets
+  const b = bucket ?? viewBucket(x)
+  const { answers, run, pick, setPick, note, busy } = useBucketAnswer(x, b, s, c)
+  const [more, setMore] = useState(false)
+  const [first, ...rest] = answers
+  const btn = (a, strong) => html`<${Btn} key=${a.id} size=${size} variant=${strong ? 'primary' : 'secondary'} busy=${busy}
+    pressed=${pick?.id === a.id ? true : undefined} title=${a.label} cls=${`fb-answer fb-answer-${a.meaning}`} onClick=${() => run(a)}>${short(a.label, 40)}<//>`
+  const uid = `fb-pick-${String(x?.id ?? 'x').replace(/[^\w-]/g, '-')}`
+  return html`<span class="fb-bar">
+    ${chip ? html`<${BucketChip} x=${x} bucket=${b} s=${s} />` : null}
+    ${first ? btn(first, true) : null}
+    ${rest.length ? html`<${Btn} size=${size} variant="ghost" pressed=${more} cls="fb-bar-more" onClick=${() => setMore(!more)}>${f.more}<//>` : null}
+    ${more ? html`<span class="fb-bar-rest">${rest.map(a => btn(a, false))}</span>` : null}
+    ${pick ? html`<${DayPick} s=${s} busy=${busy} uid=${uid} onPick=${day => run(pick, day)} onCancel=${() => setPick(null)} />` : null}
+    ${note ? html`<span class="fb-note small" role="status">${note}</span>` : null}
+  </span>`
+}
+
+/** One point as a card: its marks, its title, Next, the bucket's answers, its number in the briefing, More */
+export function BucketCard({ x, bucket, s, c }) {
+  const lang = language()
+  const t = T()
+  const f = t.flow.buckets
+  useItemDetail(x, s, c)
+  const row = x.row ?? null
+  const tab = x.tab ?? null
+  const { answers, run, pick, setPick, note, busy } = useBucketAnswer(x, bucket, s, c, () => c.flowDecided?.())
   const marks = [pointKindWord(x, lang), pointArea(x), row?.due ? f.due(formatDay(String(row.due).slice(0, 10), lang)) : null,
     row?.gate === 'only-you' ? f.onlyYou : null, bucket === 'waiting' && (x.checkin?.who ?? row?.checkin?.who) ? f.with(x.checkin?.who ?? row.checkin.who) : null]
     .filter(Boolean)

@@ -41,6 +41,8 @@ export const FLOW = {
       dropText: 'Dropped in Work through', parkText: 'Parked in Work through', someone: 'them',
       kind: { tab: 'Agent tab', inbox: 'Inbox', task: 'Task', issue: 'Issue or PR', other: 'Point' },
       onlyYou: 'only you', due: d => `due ${d}`, with: who => `with ${who}`,
+      nr: n => `no. ${n}`, many: (word, n) => `${word} (${n})`,
+      section: { now: 'Now and today', give: 'From the inbox', work: 'Tasks and streams', track: 'From boards and trackers', later: 'After that' },
     },
     count: (n, r, m) => [`${n} point${n === 1 ? '' : 's'}`, r ? `${r} running` : null, `${m} not now`].filter(Boolean).join(' · '),
     side: {
@@ -412,6 +414,8 @@ export const FLOW = {
       dropText: 'Beim Abarbeiten gestrichen', parkText: 'Beim Abarbeiten geparkt', someone: 'die andere Seite',
       kind: { tab: 'Agent-Tab', inbox: 'Posteingang', task: 'Aufgabe', issue: 'Issue oder PR', other: 'Punkt' },
       onlyYou: 'nur du', due: d => `fällig ${d}`, with: who => `bei ${who}`,
+      nr: n => `Nr. ${n}`, many: (word, n) => `${word} (${n})`,
+      section: { now: 'Jetzt und heute', give: 'Aus dem Posteingang', work: 'Aufgaben und Streams', track: 'Aus Boards und Trackern', later: 'Danach' },
     },
     count: (n, r, m) => [`${n} ${n === 1 ? 'Punkt' : 'Punkte'}`, r ? `${r} ${r === 1 ? 'läuft' : 'laufen'}` : null, `${m} nicht dran`].filter(Boolean).join(' · '),
     side: {

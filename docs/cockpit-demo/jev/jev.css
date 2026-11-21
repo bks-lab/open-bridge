@@ -115,6 +115,7 @@ button.jev-row-title:hover { color: var(--secondary); }
 .jev-pill.jev-quick { border-color: var(--jev-quick); color: var(--on-surface); }
 .jev-conf { font-size: 11px; color: var(--on-surface-faint); }
 .jev-bar { display: block; height: 4px; border-radius: var(--radius-full); background: var(--surface-muted); overflow: hidden; }
+.jev-row-bar { display: block; margin-top: 2px; }
 .jev-bar-fill { display: block; height: 100%; width: 100%; transform-origin: left center; transform: scaleX(0); border-radius: inherit; }
 .jev-bar-fill.jev-me { background: var(--jev-me); }
 .jev-bar-fill.jev-delegate { background: var(--jev-give); }
