@@ -362,8 +362,11 @@ def test_a_deferred_item_coming_back_within_the_lookahead_is_shown(tmp_path):
     r = bf.collect(root, p, bf.Context(root, now=NOW, cfg={}))
     titles = [i["title"] for i in r["sections"][0]["items"]]
     assert "Post the launch note" in titles and "Far away" not in titles
-    row = next(i for b in bv.build(r, p)["buckets"] for i in b["items"] if i["title"] == "Post the launch note")
-    assert any("06.10" in w for w in row["why"])
+    # a view with buckets keeps it out of sight all the same until its day, counted as later (round 1 of the four
+    # answers); the view names it as away, so the cockpit leaves it out too
+    built = bv.build(r, p)
+    assert all(i["title"] != "Post the launch note" for b in built["buckets"] for i in b["items"])
+    assert [a["until"] for a in built["away"]] == ["2026-10-06"]
     # Without a view asking for it the inbox section stays what it was: open items only.
     plain = bf.collect(root, {"id": "p", "sections": [{"kind": "inbox"}]}, bf.Context(root, now=NOW, cfg={}))
     assert plain["sections"][0]["items"] == []

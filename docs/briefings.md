@@ -198,7 +198,7 @@ view:
   overview: inline         # inline | file: Boards and Activity below the buckets, or in a file
   agenda: true             # Calendar block: every event from now through the lookahead, overlaps marked
   since_last: true         # "since 07:18: 2 new, 1 changed"
-  lookahead_days: 1        # due within today + 1 day counts as now; deferred items coming back show
+  lookahead_days: 1        # due within today + 1 day counts as now (a view with buckets keeps put-off items out of sight)
   max_items: 12            # the whole briefing, then "+N more" and an explicit end
   answer_keys: true        # one line below the buckets says the four answers: "3 do", "3 later monday"
   hygiene: bottom          # bottom | hide
@@ -247,7 +247,7 @@ which agent renders it, and the cockpit's Work through sorts its points by the s
 | inbox item, urgency `now`/`today`, or due within the lookahead | do |
 | inbox report (`finding`, `result`) that is not `now`/`today`, not due within the lookahead and not `only-you` | delegate: the Bridge looks at it first |
 | inbox item otherwise | plan |
-| inbox item deferred and back within the lookahead | do if only you can or it is due within the lookahead, else plan |
+| inbox item deferred to a day after today (Later), tomorrow too | none: out of sight until that day, counted as later (one deferred waiting on someone or on the Bridge stands in its bucket, below) |
 | inbox item you said yes to (`inbox.py approve`, the cockpit's Yes), not `only-you` | delegate: the Bridge runs it, it is not asked again |
 | inbox item deferred waiting on the Bridge (`inbox.py defer --on Bridge`) | delegate, or do when only you can take its next click (`only-you`: a login, a send); never waiting, also in a section forced to `bucket: waiting` |
 | inbox item the briefing filed from a tracker row (`to_inbox`) | the same row as that tracker row, not a second one |
@@ -297,9 +297,10 @@ section with `bucket: drop`, validates; that bucket shows nothing and its rows t
 their own rule gives them. A bucket's `options` validate and are ignored.
 
 **Out of sight, counted.** Below the buckets one line counts what no bucket shows (label
-`aside`, empty when all are zero): **later** (put off to a day past the lookahead, it comes
-back on that day by itself: an inbox item deferred without anyone it waits on, a row hidden
-in the cockpit until a day), **watch list** (parked without a day: a task with status
+`aside`, empty when all are zero): **later** (put off to a day after today, also tomorrow, it
+comes back on that day by itself: an inbox item deferred without anyone it waits on, a row
+hidden in the cockpit until a day; the view names these inbox items as `away`, so the cockpit
+leaves them out of its buckets too), **watch list** (parked without a day: a task with status
 `backlog`, an inbox item or a row put off to the watch list's day `9999-12-31`) and **done
 today** (an inbox item closed or dropped today, a task closed today, a row settled in the
 cockpit today). `collect --json` carries the counts as `view.aside`

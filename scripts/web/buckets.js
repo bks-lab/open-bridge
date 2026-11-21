@@ -119,13 +119,12 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
   // a question about a task stands for that task on the classic page (flow.js R8); the briefing numbers both, so
   // here the task is a point of its own too, in its own bucket
   for (const x of flowQueue(parts, 'all')) if (x.covers && x.task?.key) push({ group: 'row', id: x.task.key, kind: 'row', row: x.task })
-  // a row put off until a later day (hidden here, ahead of its lead time, with someone until a check-in day) is no
-  // point until that day: an answer that puts it off moves on. An inbox item the briefing lists while it is put off
-  // (it shows one coming back within its lookahead, "back on 22.11", in its bucket) stands where the briefing has it
-  // (round 2: Later took it out of the cockpit while the printed briefing kept it under Plan)
+  // a row put off until a later day (hidden here, ahead of its lead time, put off to tomorrow too) is no point until
+  // that day, out of sight and counted as later, as in the printed briefing (briefing_view away): an answer that puts
+  // it off moves on. One with someone until a check-in day (With … > a name) waits on them: it stands in Waiting on
+  // others, where the briefing has it (round 1 of the four answers: a hand-over left every bucket)
   const today = isoDate(s?.now || Date.now())
-  const listed = r => !!r?.inbox_id && r.inbox_state === 'deferred' && BUCKET_IDS.includes(r.bucket)
-  const off = e => !!e?.until && String(e.until).slice(0, 10) > today && !listed(e.row)
+  const off = e => !!e?.until && String(e.until).slice(0, 10) > today && e.kind !== 'checkin'
   for (const g of parts?.leftOut?.groups ?? []) {
     for (const e of g.rows ?? []) if (e?.row?.key && !off(e)) push({ group: 'left', left: g.reason, id: e.row.key, kind: 'row', row: e.row, entry: e })
   }

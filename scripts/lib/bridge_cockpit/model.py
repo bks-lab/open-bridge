@@ -717,6 +717,9 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
         # what no bucket shows, only counted under them (briefing_view aside): later, the watch list, done today;
         # None where the briefing counted nothing
         "aside": aside_of(v.get("aside")),
+        # put off to a day and out of sight until it (briefing_view away): no point of the buckets, not even beside
+        # the briefing (with_tasks)
+        "away": away_of(v.get("away")),
         "agenda": agenda,
         "status": status,
         "pages": parse_pages(data, tx),
@@ -748,6 +751,17 @@ def aside_of(value: Any) -> dict | None:
         return None
     return {k: value[k] if isinstance(value.get(k), int) and not isinstance(value.get(k), bool) and value[k] > 0 else 0
             for k in ASIDE_KEYS}
+
+
+def away_of(value: Any) -> list[dict]:
+    """[{key, until}] of the view's `away`: a key of an inbox item or a task, a day YYYY-MM-DD"""
+    out = []
+    for a in (_dict(x) for x in _list(value)):
+        key, until = a.get("key"), a.get("until")
+        if isinstance(key, str) and re.fullmatch(r"(?:inbox|task):\S+", key) and isinstance(until, str) \
+                and re.fullmatch(r"\d{4}-\d{2}-\d{2}", until):
+            out.append({"key": key, "until": until})
+    return out
 
 
 def resting_of(value: Any) -> int | bool | None:
@@ -893,7 +907,9 @@ def with_tasks(view: dict, tasks: list[dict], tx: dict = EN) -> dict:
         base["key"] = row_key(base)
         return base
 
-    rest = [t for t in tasks if t["slug"] not in seen]
+    # a task put off to a day (Later on a waiting task) is out of sight until then, beside the briefing too
+    away = {a["key"] for a in view.get("away") or []}
+    rest = [t for t in tasks if t["slug"] not in seen and f"task:{t['slug']}" not in away]
     active = [to_row(t, "tasks") for t in rest if not t["blocked_by"] and not t["stale"]]
     resting = [to_row(t, "resting") for t in rest if t["blocked_by"] or t["stale"]]
     if active:
@@ -1097,6 +1113,9 @@ def merge_view(base: dict, fresh: dict) -> dict:
         "pages": pages,
         # a section a run left out still names its kind for the rows kept from the earlier run
         "section_info": {**(base.get("section_info") or {}), **(fresh.get("section_info") or {})},
+        # what is out of sight: a run that left a section out keeps what the earlier one put away from it
+        "away": list(fresh.get("away") or []) + ([a for a in base.get("away") or [] if a not in (fresh.get("away") or [])]
+                                                if fresh_is_partial else []),
     }
 
 

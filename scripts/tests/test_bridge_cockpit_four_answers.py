@@ -133,3 +133,19 @@ def test_an_inbox_item_a_page_lists_names_its_task_but_is_no_task_of_its_own():
         {"id": "tasks", "kind": "tasks", "view": "table", "items": [{"title": "Plan the move", "task": "move"}]},
         {"id": "board", "kind": "tasks", "view": "taskboard", "items": [{"title": "Board card", "task": "board"}]}]}]}
     assert m.page_tasks(view) == [("move", "Plan the move")]
+
+
+def test_a_task_put_off_to_a_day_is_no_point_until_then():
+    # a task the briefing puts out of sight until a day it names in `away`, and the cockpit's tasks beside the
+    # briefing leave it out the same way
+    raw = {"view": {"buckets": [], "away": [{"key": "task:quiet", "until": "2026-11-28"}, {"key": "bad"}, "x"]}}
+    v = m.parse_view(raw, True, 0)
+    assert v["away"] == [{"key": "task:quiet", "until": "2026-11-28"}]
+    tasks = [{"slug": s, "label": s, "title": s, "area": "A", "area_names": ["A"], "priority": None, "blocked_by": "Robin" if s == "quiet" else None,
+              "stale": False, "age": 0, "type": None, "status": "doing", "next": None, "updated": None, "origin": None}
+             for s in ("quiet", "open")]
+    got = m.with_tasks(v, tasks)
+    assert [r["task"] for b in got["buckets"] for r in b["rows"]] == ["open"]
+    # a quick pass that left the tasks out keeps what the full pass put away
+    quick = m.parse_view({"view": {"buckets": [], "away": []}, "sections": []}, False, 0)
+    assert m.merge_view(v, {**quick, "skipped": ["tasks"]})["away"] == v["away"]

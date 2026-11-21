@@ -227,18 +227,24 @@ test('an empty bucket picked stays open with its empty state and the way on, it 
   assert.match(el.$('.fb-empty').text(), /Tun \(du, heute\)/)
 })
 
-test('a point put off until a later day stands in no bucket until then, unless the briefing lists it meanwhile', () => {
+test('a point put off until a later day stands in no bucket until then, tomorrow too; one with someone stands in Waiting', () => {
   const s = state({ now: [ask('20261009-0900-q1'), ask('20261009-0901-off', { inbox_state: 'deferred', until: TOMORROW, bucket: 'plan', brief_nr: 4 }),
-    ask('20261009-0902-back', { inbox_state: 'deferred', until: '2026-10-09', bucket: 'plan' })], work: [task('a')] })
+    ask('20261009-0902-back', { inbox_state: 'deferred', until: '2026-10-09', bucket: 'plan' }),
+    ask('20261009-0903-with', { inbox_state: 'deferred', until: '2026-10-16', bucket: 'waiting', checkin: { who: 'Noa', until: '2026-10-16' } })],
+  work: [task('a'), task('handed', { bucket: 'waiting', checkin: { who: 'Noa', until: '2026-10-16' } })] })
   // Later on a task hides it here until the day (hide_until): it moves on, its bucket counts one less
   s.model.hidden = [task('put-off', { bucket: 'do', hidden_until: TOMORROW, section: 'work' })]
   const { all } = logic.bucketPoints(s, 'de')
   const ids = all.map(x => x.id)
   assert.ok(!ids.includes('task:put-off'), 'a task hidden until tomorrow')
-  // the briefing lists an item coming back within its lookahead in its bucket ("back on 10.10"): so does the page
-  assert.ok(ids.includes('inbox:20261009-0901-off'), 'an item the briefing lists while put off')
+  // round 1 of the four answers: put off to tomorrow is out of sight and counted as later, as in the briefing
+  assert.ok(!ids.includes('inbox:20261009-0901-off'), 'an item put off to tomorrow')
   assert.ok(ids.includes('inbox:20261009-0902-back'), 'an item whose day came is a point again')
   assert.ok(ids.includes('task:a') && ids.includes('inbox:20261009-0900-q1'))
+  // With … > a name: the point waits on them until the check-in day, in Waiting on others (the briefing's too)
+  const bucket = id => all.find(x => x.id === id)?.bucket
+  assert.equal(bucket('inbox:20261009-0903-with'), 'waiting')
+  assert.equal(bucket('task:handed'), 'waiting')
 })
 
 test('an answer moves on to the next point, also where the point answered stays in its bucket', async () => {

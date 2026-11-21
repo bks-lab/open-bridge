@@ -1146,6 +1146,13 @@ def task_who(item: dict, you) -> dict:
     return {"lane": "waiting", "who": _text(nxt.get("who")) or None, "until": _text(nxt.get("check")) or None}
 
 
+def in_sight_deferred(on) -> bool:
+    """Whether an inbox item put off stays in sight in a bucket: one that waits on someone or something (inbox.py defer
+    --on: runs on, With … until a check-in day) waits on them, or on the Bridge. A plain Later is out of sight until its
+    day, tomorrow too, and counted as later (briefing.py aside_counts)"""
+    return bool(on)
+
+
 def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetime) -> dict:
     sections_cfg = {}
     for s in profile.get("sections") or []:
@@ -1161,6 +1168,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             nudge_days = _int(b.get("nudge_after_days"), nudge_days, 1)
 
     out = {"rows": {}, "order": [], "hygiene": [], "tend": [], "no_next": [], "muted": 0, "settled": 0, "events": [], "workplace": None,
+           "away": [],
            "activity": [], "boards": [], "clear": [], "status": []}
 
     def tend(kind: str, text: str, **facts) -> None:
@@ -1315,6 +1323,13 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 continue
             iid = str(item.get("id"))
             if kind == "inbox":
+                back = _when(item.get("until")) if item.get("state") == "deferred" else None
+                if back is not None and back.date() > now.date() and cfg.get("deferred") != "all" \
+                        and not in_sight_deferred(item.get("waiting_on")):
+                    # put off to a day is out of sight until that day, also within the lookahead: counted as later
+                    # (round 1 of the four answers: the cockpit hid it, the printed briefing kept it in Do)
+                    out["away"].append({"key": f"inbox:{iid}", "until": str(item.get("until"))[:10]})
+                    continue
                 due = _when(item.get("due"))
                 why = []
                 own = forced           # the section's forced bucket, unless the item is no row of it
@@ -1719,6 +1734,8 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
            # (briefing.py aside_counts; none when the caller did not count)
            "aside": _aside(result.get("aside")),
            "workplace": data["workplace"], "more": 0, "titles": titles,
+           # put off to a day, out of sight until it (counted as later): the cockpit leaves these out of its buckets
+           "away": data["away"],
            "answer_keys": view.get("answer_keys", True) is not False,
            "show_hygiene": view.get("hygiene", "bottom") != "hide",
            "color": view.get("color", "auto"), "width": width if _pos_int(width) and width >= 40 else 100,

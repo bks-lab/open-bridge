@@ -57,11 +57,12 @@ test('Do it on an inbox item is the briefing\'s yes, on a task in I\'ll do a sta
   assert.equal(answers(row(worked), 'do', s)[0].run.args.yes, true)
 })
 
-test('an inbox item put off to a day the briefing still shows stands in the briefing\'s bucket, back on that day', () => {
+test('an inbox item put off to a day stands in no bucket until then, tomorrow too, as in the briefing', () => {
+  // round 1 of the four answers: the briefing keeps it out of sight until its day too, counted as later
   const later = ask('20261009-0901-off', { inbox_state: 'deferred', until: TOMORROW, bucket: 'plan', brief_nr: 4 })
   const s = state({ now: [ask('20261009-0900-q1')], later: [later] })
-  const { buckets } = logic.bucketPoints(s, 'de')
-  assert.ok(buckets.find(b => b.id === 'plan').points.some(p => p.id === later.key))
+  const { all } = logic.bucketPoints(s, 'de')
+  assert.ok(!all.some(p => p.id === later.key))
 })
 
 test('an inbox row about a task whose tab asks keeps its own answers; only the tab\'s own item stands as the tab', () => {

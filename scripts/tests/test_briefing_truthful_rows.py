@@ -116,16 +116,20 @@ def test_render_reads_the_settled_record(tmp_path):
 # ---------------------------------------------------------------- put off, waiting
 
 
-def test_a_row_put_off_past_the_lookahead_does_not_stand_in_do_for_being_only_yours():
+def test_a_row_put_off_to_a_day_is_out_of_sight_until_then_also_when_only_you_can():
+    # round 1 of the four answers: put off is out of sight until its day, also tomorrow and also when it is due then;
+    # it comes back on that day by itself and is counted as later meanwhile
     r = result(sec("inbox", "inbox", [ask("i1", "Keep the raise or object", state="deferred", until="2026-10-06",
                                           gate="only-you", due="2026-10-30"),
+                                      ask("i3", "Post the note", state="deferred", until="2026-10-06",
+                                          gate="only-you", due="2026-10-06"),
                                       ask("i2", "Open today", urgency="today")]))
     got = titles(bv.build(r, profile()))
-    assert got["do"] == ["Open today"] and got["plan"] == ["Keep the raise or object"]
+    assert got == {"do": ["Open today"]}
 
 
-def test_a_row_put_off_and_due_within_the_lookahead_stays_in_do():
-    r = result(sec("inbox", "inbox", [ask("i1", "Post the note", state="deferred", until="2026-10-06",
+def test_a_row_whose_day_came_stands_in_its_bucket_again():
+    r = result(sec("inbox", "inbox", [ask("i1", "Post the note", state="deferred", until="2026-10-05",
                                           gate="only-you", due="2026-10-06")]))
     assert titles(bv.build(r, profile()))["do"] == ["Post the note"]
 

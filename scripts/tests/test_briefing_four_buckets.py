@@ -245,13 +245,15 @@ def test_aside_counts_later_the_watch_list_and_done_today(tmp_path):
     root = _root(tmp_path)
     box = inbox.Inbox(root / "work" / "inbox", actor="t", clock=lambda: NOW)
     near = box.add(source="t", kind="decision", summary="Back tomorrow")
-    box.event(near, "defer", until="2026-11-21")          # within the lookahead: it is in the view
+    box.event(near, "defer", until="2026-11-21")          # within the lookahead, out of sight all the same
     far = box.add(source="t", kind="decision", summary="Back in a week")
     box.event(far, "defer", until="2026-11-27")
     shelf = box.add(source="t", kind="idea", summary="Some day")
     box.event(shelf, "defer", until="9999-12-31")
     runs = box.add(source="t", kind="decision", summary="Ada answers")
-    box.event(runs, "defer", until="2026-11-27", waits_on="Ada")   # waits on someone: no later of yours
+    box.event(runs, "defer", until="2026-11-27", waits_on="Ada")   # waits on someone: in Waiting, theirs
+    handed = box.add(source="t", kind="decision", summary="With Ada")
+    box.event(handed, "defer", until="2026-11-27", waits_on="Ada", check=True)
     done = box.add(source="t", kind="finding", summary="Closed today")
     box.close(done)
     gone = box.add(source="t", kind="finding", summary="Dropped today")
@@ -263,7 +265,7 @@ def test_aside_counts_later_the_watch_list_and_done_today(tmp_path):
     settled = {"dismissed": ["ref:o/r#1"], "dismissed_on": {"ref:o/r#1": "2026-11-20"},
                "hidden": {"ref:o/r#2": "2026-11-30", "ref:o/r#3": "9999-12-31"}}
     got = bf.aside_counts(root, NOW, 1, settled)
-    assert got == {"later": 2, "list": 3, "done_today": 4}
+    assert got == {"later": 3, "list": 3, "done_today": 4}
 
 
 def test_collect_json_carries_the_counts_in_the_view(tmp_path, capsys):
@@ -308,3 +310,22 @@ def test_no_row_asks_a_question_of_the_answers_that_are_gone():
         for word in ("nudge?", "nachfassen?", "park?", "parken?", "untouched", "unberührt"):
             assert word not in text, (lang, word, text)
         assert ("resting for 55 days" if lang == "en" else "ruht seit 55 Tagen") in text
+
+
+
+# ---------------------------------------------------------------- Later is out of sight, and counted
+
+def test_a_point_put_off_to_a_day_is_out_of_sight_also_within_the_lookahead():
+    # round 1 of the four answers: Later > tomorrow took a point out of the cockpit, the printed briefing kept it in Do
+    # as "(back on 22.11)" and nothing counted it. Put off to a day is out of sight in both, and counted as later; one
+    # that waits on someone (runs on, With … until a check-in) waits on them, in sight
+    items = [item("20261120-0900-back", "Back tomorrow", state="deferred", until="2026-11-21"),
+             item("20261120-0901-runs", "Ada answers", state="deferred", until="2026-11-21", waiting_on="Ada"),
+             item("20261120-0902-with", "With Ada", state="deferred", until="2026-11-27", waiting_on="Ada", check=True),
+             item("20261120-0903-open", "Open")]
+    v = bv.build(result(sec("inbox", "inbox", items)), profile({"style": "triage", "lookahead_days": 1}))
+    rows = rows_of(v)
+    assert set(rows) == {"Ada answers", "With Ada", "Open"}
+    assert rows["With Ada"][0] == "waiting" and rows["Ada answers"][0] == "waiting"
+    # the cockpit hides what is out of sight by the same rule: the view names it
+    assert v["away"] == [{"key": "inbox:20261120-0900-back", "until": "2026-11-21"}]

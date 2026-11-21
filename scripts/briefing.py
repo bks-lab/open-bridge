@@ -796,7 +796,8 @@ def sec_inbox(section: dict, ctx: Context) -> list:
             if not deferral or not deferral.get("on"):
                 continue
             items.append({"id": item.id, "title": item.summary, "state": "deferred", "until": str(deferral["until"]),
-                          "waiting_on": deferral["on"], "urgency": item.urgency, "kind": item.kind, "gate": item.gate,
+                          "waiting_on": deferral["on"], **({"check": True} if deferral.get("check") else {}),
+                          "urgency": item.urgency, "kind": item.kind, "gate": item.gate,
                           "task": item.task, "due": item.due, "key": item.key, "changed_at": str(item.created or ""),
                           "has_action": bool(item.action), "area": item.area, "from": item.source})
     elif ctx.lookahead is not None or section.get("deferred") == "all":
@@ -817,7 +818,8 @@ def sec_inbox(section: dict, ctx: Context) -> list:
                               "urgency": item.urgency, "kind": item.kind, "gate": item.gate, "task": item.task,
                               "due": item.due, "key": item.key, "changed_at": str(item.created or ""),
                               "has_action": bool(item.action), "area": item.area, "from": item.source,
-                              **({"waiting_on": item.deferral["on"]} if (item.deferral or {}).get("on") else {})})
+                              **({"waiting_on": item.deferral["on"]} if (item.deferral or {}).get("on") else {}),
+                              **({"check": True} if (item.deferral or {}).get("check") else {})})
     # what has a date comes first within its urgency: a section's `max` cuts after this
     items.sort(key=lambda i: (order.get(i["urgency"], 3), str(i.get("due") or "9999"), i["id"]))
     return items
@@ -2259,8 +2261,8 @@ def settled_record(root: Path, now: dt.datetime) -> dict:
 
 def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | None) -> dict:
     """What is out of sight of the buckets, only counted below them (docs/briefings.md § Views):
-      later       put off to a day past the lookahead, and comes back on it by itself: an inbox item deferred
-                  without anyone it waits on, a row hidden in the cockpit until a day
+      later       put off to a day after today, tomorrow too, and comes back on it by itself: an inbox item
+                  deferred without anyone it waits on, a row hidden in the cockpit until a day
       list        the watch list, parked without a day: a task with status backlog, an inbox item or a row
                   put off to the watch list's day (lib/answers.py LIST_DAY)
       done_today  done or obsolete today: an inbox item closed or dropped, a task closed, a row settled in
@@ -2268,7 +2270,6 @@ def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | N
     A source that cannot be read counts nothing; a briefing never fails for it."""
     answers = _view().answers
     today = now.date()
-    horizon = today + dt.timedelta(days=max(0, int(lookahead or 0)))
     out = {"later": 0, "list": 0, "done_today": 0}
     if (root / "work" / "inbox").is_dir():
         ib = _inbox()
@@ -2280,8 +2281,8 @@ def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | N
             state = item.state
             if state == "deferred":
                 deferral = item.deferral or {}
-                if deferral.get("on"):
-                    continue                    # waits on someone: theirs, not a later of yours
+                if _view().in_sight_deferred(deferral.get("on")):
+                    continue                    # waits on someone or the Bridge: in its bucket, theirs
                 if answers.is_list_day(deferral.get("until")):
                     out["list"] += 1
                     continue
@@ -2289,7 +2290,7 @@ def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | N
                     back = ib._local_date(ib._parse_when(deferral.get("until")))
                 except (TypeError, ValueError):
                     continue
-                if back > horizon:
+                if back > today:
                     out["later"] += 1
             elif state in ("done", "dropped"):
                 end = next((e for e in reversed(item.events) if e.verb in ib.TERMINAL), None)
@@ -2299,7 +2300,9 @@ def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | N
                 except (TypeError, ValueError):
                     pass
     for status in (root / "work" / "tasks").glob("*/STATUS.md"):
-        if not status.parent.name.startswith("_") and _frontmatter(status.read_text(encoding="utf-8")).get("status") == "backlog":
+        if status.parent.name.startswith("_"):
+            continue
+        if _frontmatter(status.read_text(encoding="utf-8")).get("status") == "backlog":
             out["list"] += 1
     for status in (root / "work" / "done" / f"{today:%Y-%m}").glob("*/STATUS.md"):
         if str(_frontmatter(status.read_text(encoding="utf-8")).get("closed") or "")[:10] == today.isoformat():
@@ -2310,7 +2313,7 @@ def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | N
             continue                            # an inbox item is put off in the inbox, counted above
         if answers.is_list_day(until):
             out["list"] += 1
-        elif str(until) > horizon.isoformat():
+        elif str(until) > today.isoformat():
             out["later"] += 1
     out["done_today"] += sum(1 for key, day in (record.get("dismissed_on") or {}).items()
                              if not str(key).startswith("inbox:") and str(day)[:10] == today.isoformat())
