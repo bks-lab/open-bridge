@@ -1394,7 +1394,8 @@ def test_calm_reads_as_a_few_plain_lines():
     lines = text.splitlines()
     assert lines[0] == "**Monday, 5 October**"
     assert "1 for you today, 1 waiting on others." in text
-    assert "**Today**" in text and "**Next days**" in text and "**Waiting on others**" in text
+    # round 2 of the four answers: the buckets' own titles, as every style says them
+    assert "**Do (you, today)**" in text and "**Plan**" in text and "**Waiting on others**" in text
     assert "1. Sign the contract" in text
     assert "2. Until 30.10: Object to the raise" in text
     for noise in ("·", "*(", "only you", "(a yes", "…)", "### "):

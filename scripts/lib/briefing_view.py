@@ -2389,8 +2389,12 @@ def draw_calm(view: dict) -> str:
         out.append(labels["calm_failed"].format(items=", ".join(st["title"] for st in failed)))
     n = 0
     first = None
+    # the four buckets' own titles, as every other style and the cockpit say them (round 2 of the four answers: calm said
+    # Today, Next days and "I'll do it if you want"); the calm words only where a view names no title
     heads = {"do": labels["calm_today"], "plan": labels["calm_next"], "delegate": labels["calm_delegate"],
              "waiting": labels["calm_waiting"]}
+    heads.update({b["id"]: b["title"] for b in (view.get("bucket_defs") or view.get("buckets") or [])
+                  if isinstance(b, dict) and b.get("id") in heads and b.get("title")})
     for bid, rows in parts:
         if not rows:
             continue

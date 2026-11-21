@@ -196,7 +196,7 @@ def test_calm_numbers_in_the_order_of_the_buckets_the_cockpit_shows():
     text = bv.draw(v)
     # the printed numbers are the row numbers: I'll do comes before waiting, as in the cockpit
     assert text.index("3. ") < text.index("4. Ada")
-    assert text.index("I'll do it if you want") < text.index("Waiting on others")
+    assert text.index("**I'll do**") < text.index("Waiting on others")
 
 
 def test_calm_follows_the_profiles_bucket_order():
