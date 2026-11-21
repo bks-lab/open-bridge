@@ -271,6 +271,7 @@ OBSOLETE_NOTE = "veraltet"
 OBSOLETE_REASON = "Wird nicht gemacht: veraltet"
 
 
+PREPARE_NOTE = "Do it: prepare it, the person does the last step"
 NUDGE_NOTE = ("Write a short, friendly follow-up to the person this waits on, as a DRAFT only with the mail-draft "
               "skill. Never send it: the person sends it.")
 
@@ -312,6 +313,12 @@ def effect(answer: str, row: dict, until: str | None = None, today: str | None =
             out["ready"] = "do"
             out["running"] = True
             return be("do_it", "delegate", note=NUDGE_NOTE)
+        if item and row.get("gate") == "only-you":
+            # only the person does its last step (send, publish, pay): no yes, the Bridge prepares it as the cockpit
+            # does (round 3: "5 mach" approved an only-you item the page's Do it left open)
+            out["prepare_only"] = True
+            out["running"] = True
+            return be("do_it", "delegate", [f'inbox.py note {item} "{PREPARE_NOTE}"'], yes=True)
         if item:
             return be("do_it", "delegate", [f"inbox.py approve {item}", "inbox.py run"], yes=True)
         out["running"] = True

@@ -183,6 +183,16 @@ def test_do_it_on_an_inbox_item_is_its_yes_and_the_run():
     assert e["cli"] == ["inbox.py approve i1", "inbox.py run"] and e["then"] == "delegate"
 
 
+def test_do_it_on_an_only_you_item_prepares_it_and_gives_no_yes():
+    # round 3: "5 mach" on an only-you item approved it (inbox.py approve), the cockpit's Do it gave no yes and
+    # started an agent to prepare it: one word, two acts
+    e = ans.effect("do", {"inbox_id": "i1", "gate": "only-you"})
+    assert not any("approve" in c or c == "inbox.py run" for c in e["cli"])
+    assert e["cli"] == ['inbox.py note i1 "Do it: prepare it, the person does the last step"']
+    assert e["cockpit"] == {"verb": "do_it", "args": {"yes": True}}
+    assert e["prepare_only"] is True and e["running"] is True and e["then"] == "delegate"
+
+
 def test_do_it_on_a_waiting_point_writes_a_nudge_as_a_draft_never_sent():
     e = ans.effect("do", {"task": "a", "bucket": "waiting", "who": "Ada"})
     # a verb the server has (round 1: "nudge" was none, the page sent do_it): an agent writes the draft, never sends
