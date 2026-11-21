@@ -54,7 +54,7 @@ import {
   activityWhen, adoptStepOf, basicVerbs, canTab, DAY, rankerName, errorText, flowAction, flowDriver, flowFields, flowLive, flowModes,
   flowRunning, flowSettings, flowSuggestion, flowTabOf, formatDay, isoDate, leftPlan, meterLevel, pageStepsOf, pointFacts,
   pointViewOn, probeText, refOfUrl, replySend, reportsTicked, short, sinceText, tabCloseOffer, triageRunning, workPageOf, workViewsIn, personOf,
-  fieldsSplit, pointName, pointsIn, whoBrief, readMark, seenOn, bucketWords,
+  fieldsSplit, pointName, pointsIn, whoBrief, readMark, seenOn, bucketWords, flowBucketsOn,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ReviewBlock } from './check.js'
@@ -71,6 +71,7 @@ import { Btn, PrioChip, WhoChip } from './parts.js'
 import { VerbBar } from './verbbar.js'
 import { OrderMenu, SimpleActs } from './flowsimple.js'
 import { activeWords, markWords, SideCount } from './flowmarks.js'
+import { BucketBar } from './flowbuckets.js'
 
 /** The words of a side: its theme or area name, else All or None in the words of the mode */
 export function sideName(side, mode) {
@@ -784,7 +785,11 @@ export function FlowAside({ x, s, c }) {
     <section class="flow-can flow-aside-part" aria-labelledby="flow-can">
       <h3 id="flow-can" class="label-caps">${f.fields.can}</h3>
       ${sug && !pointViewOn(s) ? html`<p class="flow-can-sug"><span class="label-caps">${f.list.cols.suggestion}</span> <${Suggestion} sug=${sug} s=${s} /></p>` : null}
-      ${x.readOnly ? html`<p class="muted small flow-readonly">${f.one.readOnly}</p>` : html`<${PointActs} key=${x.id} x=${x} s=${s} c=${c} sug=${sug} />`}
+      ${x.readOnly ? html`<p class="muted small flow-readonly">${f.one.readOnly}</p>`
+        // with the briefing's buckets every page that shows a point offers its four answers, the record of the Files
+        // tab too (round 3 of the four answers: it offered Give it to the AI, In progress and Drop with its reasons)
+        : flowBucketsOn(s) && row?.key ? html`<${BucketBar} key=${x.id} x=${x} s=${s} c=${c} size="sm" />`
+        : html`<${PointActs} key=${x.id} x=${x} s=${s} c=${c} sug=${sug} />`}
       ${row?.key && !pointViewOn(s) ? html`<p class="flow-can-more"><${DetailsLink} row=${row} c=${c} /></p>` : null}
     </section>
     <${Fields} x=${x} s=${s} c=${c} />

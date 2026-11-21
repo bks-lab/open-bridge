@@ -11,7 +11,7 @@
 // task_park, settle, the tab's own answers); With … under More hands a task's step over (task_owner, work_on). No DOM,
 // no network. logic.js passes every name on.
 import { TABLES } from './text.js'
-import { DAY, actionRow, flowAction, inProject, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
+import { DAY, tabHeld, actionRow, flowAction, inProject, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
   replySend, short, triageShows } from './logic.js'
 
 // the briefing's buckets, in its order (briefing_view BUCKETS)
@@ -115,10 +115,14 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
     if (r?.key && (r.settled_as != null || String(r.hidden_until ?? '').slice(0, 10) > today0)) away.add(r.key)
   }
   const tabRowGone = tab => (tab?.item && away.has(`inbox:${tab.item}`)) || (tab?.slug && away.has(`task:${tab.slug}`))
+  // a row the briefing holds away until a later day is no point until then, also one whose blocker would put it in
+  // Waiting on others (round 3: Later > Monday on a waiting task was counted as later and stood on in Waiting)
+  const awayNow = new Set((s?.model?.away ?? []).filter(a => a?.key && String(a.until ?? '').slice(0, 10) > today0).map(a => a.key))
   const push = x => {
     const id = x.id
     if (!id || seen.has(id) || gone.has(id)) return
     if (x.tab && tabRowGone(x.tab)) return
+    if (!x.running && x.row?.key && awayNow.has(x.row.key)) return
     const bucket = pointBucket(x)
     if (!bucket) return
     seen.add(id)
@@ -386,7 +390,8 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
       add('do', { kind: 'reply', verb: b.verb, args: b.args }, b.label)
     }
     if (!out.length && jump) add('do', { kind: 'reply', verb: jump.verb, args: jump.args }, jump.label)
-  } else if (key && row.inbox_state !== 'approved') {
+  } else if (key && (row.inbox_state !== 'approved' || (!row.tab?.live && !x.running))) {
+    // an item whose yes is given takes Do it too in I'll do: it starts now instead of on the next pass (round 3)
     if (bucket === 'waiting') {
       const who = waitsOn(x)
       const blocker = blockerOf(row)
@@ -435,10 +440,15 @@ export function ownerChoices(x, s) {
   const row = x?.row?.key && !x.readOnly ? x.row : null
   if (!row) return { current: null, choices: [], name: () => null }
   const key = row.key
-  const step = String(row.card?.next?.who ?? row.checkin?.who ?? x.checkin?.who ?? '').trim()
+  // an inbox item put off with someone says who (row.who); a task its step's who; a point that waits on a blocker
+  // without a name has no holder to mark (round 3: a task waiting on Jordan marked du as the current one)
+  const held = row.inbox_id ? (row.inbox_state === 'deferred' ? row.who ?? x.checkin?.who : null) : row.card?.next?.who
+  const step = String(held ?? row.checkin?.who ?? x.checkin?.who ?? '').trim()
   const low = step.toLowerCase()
-  const current = BRIDGE.has(low) ? 'bridge' : YOU.has(low) ? 'me' : step
-  const choices = isTask(row) ? ['me', 'bridge'].map(who => ({ who, run: { verb: 'task_owner', args: { key, who } } })) : []
+  const blocked = !step && (blockerOf(row) || x?.bucket === 'waiting')
+  const current = blocked ? null : BRIDGE.has(low) ? 'bridge' : YOU.has(low) ? 'me' : step
+  // you and the Bridge on every point that has an owner, an inbox item too (round 3: it offered only a name)
+  const choices = isTask(row) || row.inbox_id ? ['me', 'bridge'].map(who => ({ who, run: { verb: 'task_owner', args: { key, who } } })) : []
   const week = laterDays(s?.now || Date.now()).week
   const name = who => {
     const w = String(who ?? '').replace(/\s+/g, ' ').trim()
@@ -517,7 +527,7 @@ export function rowPoint(row, s) {
   // only the row the tab works on: an inbox item about its task is no answer to its dialog (round 2: "Reply to
   // Jordan" offered the deploy dialog's Yes and approved the deploy)
   const about = row?.inbox_id ? tab?.item === row.inbox_id : !!row?.task && (tab?.slug == null || tab.slug === row.task)
-  if (tab && !tab.is_control && ASKING.has(tab.state) && about) return { group: 'asks', id: row.key, kind: 'tab', tab, row }
+  if (tab && !tab.is_control && ASKING.has(tab.state) && about && !tabHeld(tab, s?.model)) return { group: 'asks', id: row.key, kind: 'tab', tab, row }
   return { group: 'row', id: row?.key ?? null, kind: 'row', row }
 }
 
@@ -526,7 +536,7 @@ export function rowPoint(row, s) {
  *  the four answers had only the tab's own answer in the column and in Chat); one that works or is the control
  *  session is no decision (null) */
 export function tabPoint(tab, s = null) {
-  if (!tab || tab.is_control || !ASKING.has(tab.state)) return null
+  if (!tab || tab.is_control || !ASKING.has(tab.state) || tabHeld(tab, s?.model)) return null
   // its item's row wherever the model holds it (a section, the rows put off, the ones past the briefing's window): a
   // column card has Later, Done and Obsolete as the card in Work through has (round 2: one with a ready answer had none)
   const m = s?.model ?? {}
@@ -549,8 +559,30 @@ export function itemBucket(it, s, byKey) {
  *  into an inbox line (that line is its point), a stream the briefing does not list. By source keeps it among its
  *  source's rows but counts it in no bucket (round 2: its chips counted Plan 62 where Work through had 55) */
 function noPoint(row, s) {
+  // put off to a later day: out of sight until it, as in Work through (round 3: By source listed such an item under Do)
+  const today = isoDate(s?.now || Date.now())
+  if (row?.key && (s?.model?.away ?? []).some(a => a?.key === row.key && String(a.until ?? '').slice(0, 10) > today)) return true
   if (!row?.inbox_id && row?.task && (s?.model?.sections ?? []).some(x => (x.rows ?? []).some(r => (r?.folded_tasks ?? []).includes(row.task)))) return true
   return !row?.inbox_id && !!(row?.stream || row?.work_kind === 'stream') && !BUCKET_IDS.includes(row?.bucket)
+}
+
+/** Whether a page item is an advice about a task that is a point of its own (an advise section's "resting for 55
+ *  days" on a task the page lists): with the buckets on that advice is a mark on the point, never a row beside it
+ *  (round 3: By source counted 195 rows where every other view had 113 points) */
+export function adviceFolded(it, sec, s, byKey) {
+  if (!flowBucketsOn(s) || sec?.kind === 'tasks' || sec?.kind === 'inbox') return false
+  return !!it?.task && (sec?.kind === 'advise' || /advi[cs]e/.test(String(sec?.id ?? ''))) && !!byKey?.get(`task:${it.task}`)
+}
+
+/** A page's sections as By source counts them while the buckets are on: an advice folded into its point is no row
+ *  (adviceFolded), so the strip's "All" and each source say the points shown */
+export function sourceSections(sections, s, byKey) {
+  if (!flowBucketsOn(s)) return sections
+  return (sections ?? []).map(sec => {
+    const items = sec.items ?? []
+    const gone = items.filter(it => adviceFolded(it, sec, s, byKey)).length
+    return gone ? { ...sec, items: items.filter(it => !adviceFolded(it, sec, s, byKey)), total: Math.max(0, (sec.total ?? items.length) - gone) } : sec
+  })
 }
 
 /** Whether a page item stays under the strip's filter: with the buckets on a filter `b:<bucket>` keeps that
@@ -558,7 +590,13 @@ function noPoint(row, s) {
  *  all */
 export function workShows(it, s, byKey, f) {
   const bucket = typeof f === 'string' && f.startsWith('b:') ? f.slice(2) : null
-  if (flowBucketsOn(s)) return !bucket || itemBucket(it, s, byKey) === bucket
+  if (flowBucketsOn(s)) {
+    // a task the briefing folded into its inbox line is that line, one matter one row (round 3: By source listed it
+    // beside its line, unnumbered, in another bucket); one put off to a later day is out of sight here too
+    const row = actionRow(it, byKey)
+    if (row && noPoint(row, s) && !(row.stream || row.work_kind === 'stream')) return false
+    return !bucket || itemBucket(it, s, byKey) === bucket
+  }
   return bucket ? true : triageShows(it, s?.triage?.items, f)
 }
 

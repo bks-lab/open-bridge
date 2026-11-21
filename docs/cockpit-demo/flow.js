@@ -1358,13 +1358,32 @@ export function flowFields(x, s, feed = null, detail = null) {
 // flowFields stands in the fold Details at their foot
 export const SIMPLE_FIELDS = ['theme', 'area', 'who', 'due', 'readmark', 'active']
 
+const OWN_WORDS = new Set(['', 'me', 'you', 'self', 'ich', 'du', 'bridge', 'bridge_then_me'])
+
+/** Who has a point by its bucket of Work through (x.bucket, buckets.js bucketPoints): me, bridge, or the person or the
+ *  blocker it waits on; null for a point outside the buckets */
+export function bucketHolder(x, row) {
+  const b = x?.bucket
+  if (b === 'do' || b === 'plan') return 'me'
+  if (b === 'delegate') return 'bridge'
+  if (b !== 'waiting') return null
+  const named = [x?.checkin?.who, row?.checkin?.who, row?.inbox_id ? row?.who : null, row?.card?.next?.who]
+    .map(w => String(w ?? '').trim()).find(w => w && !OWN_WORDS.has(w.toLowerCase()))
+  const blocker = String(row?.blocked_by ?? row?.card?.state?.blocked_by ?? '').trim()
+  return named || (blocker ? blocker.slice(0, 60) : null)
+}
+
 /** The fields of a point split for the one point view (stage 4): {top, rest}. `top` Theme, Area, Who (who works on it,
  *  and the step's who where nobody does: `step`) and Due, or the day it asks again where a check-in is set (`ask`);
  *  `rest`, for the fold Details, the original title where the name shown is another, then every other field in its
  *  order (Prio with its picker, Urgency with its picker, Jev's bars, Team, Task check, Source, Created, Moved) */
 export function fieldsSplit(fields, x, s) {
   const row = x?.kind === 'reports' ? null : x?.row ?? null
-  const step = row?.card?.next?.what ? { who: row.card.next.who ?? null } : null
+  // with the briefing's buckets the bucket says who has it: you in Do and Plan, the Bridge in I'll do, the one it waits
+  // on in Waiting on others (round 3 of the four answers: Who said the Bridge on a card in Do, you on one in I'll do,
+  // and named nobody on a point that waits on Jordan)
+  const holder = bucketHolder(x, row)
+  const step = holder ? { who: holder } : row?.card?.next?.what ? { who: row.card.next.who ?? null } : null
   const check = row?.checkin?.until ?? row?.card?.next?.check ?? null
   const top = fields.filter(f => SIMPLE_FIELDS.includes(f.id)).map(f => (f.id === 'who' ? { ...f, step }
     : f.id === 'due' && check ? { id: 'ask', value: check } : f))
