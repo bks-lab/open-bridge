@@ -431,15 +431,14 @@ function WaitingTabs({ s, c }) {
   </section>`
 }
 
-/** A selection with the briefing's buckets on: the delegate bucket's answers for every picked row, go (do_it, the
- *  Bridge starts) and not now (later, to the next briefing day), the same acts as the card's answers */
+/** A selection with the briefing's buckets on: Do it (do_it, the Bridge starts) and Later (to tomorrow) for every
+ *  picked row, the same acts as the card's answers */
 function BucketMany({ rows, s, c }) {
   const lang = language()
   const f = T().flow.buckets
   const go = rows.filter(r => (r.inbox_id || r.task) && r.inbox_state !== 'approved' && !r.tab?.live)
   const until = nextBriefingDay(s.now || Date.now())
-  const words = (s.model?.buckets ?? []).find(b => b.id === 'delegate')?.options ?? f.defaults.delegate.options
-  const later = words[1] ? words[1].charAt(0).toUpperCase() + words[1].slice(1) : f.defaults.delegate.options[1]
+  const later = f.answers.laterPlain
   const busy = rows.some(r => s.ui.busy[r.key])
   return html`${go.length ? html`<${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('do_it', { keys: go.map(r => r.key) })}>
       ${f.many(doWord(s, lang), go.length)}<//>` : null}

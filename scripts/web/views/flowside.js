@@ -679,7 +679,7 @@ function FieldPick({ label, value, choices, none = null, busy = false, onPick })
 
 /** The fields of the point, like an issue tracker's sidebar (logic.js flowFields); with the one point view (stage 1)
  *  the drawer's facts folded under Details at their foot */
-function Fields({ x, s, c }) {
+export function Fields({ x, s, c }) {
   const t = T()
   const f = t.flow.fields
   const lang = language()

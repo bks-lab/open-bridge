@@ -15,11 +15,10 @@ const MIN = 60000
 const TOMORROW = '2026-10-10'
 
 const PROFILE = [
-  { id: 'do', title: 'Tun (du, heute)', options: ['ja', 'später', 'streichen'] },
-  { id: 'plan', title: 'Planen', options: ['einplanen', 'später'] },
-  { id: 'delegate', title: 'Mache ich', options: ['los', 'nicht jetzt'] },
-  { id: 'waiting', title: 'Wartet auf andere', options: ['nachfassen', 'warten'] },
-  { id: 'drop', title: 'Parken oder streichen', options: ['parken', 'behalten'] },
+  { id: 'do', title: 'Tun (du, heute)' },
+  { id: 'plan', title: 'Planen' },
+  { id: 'delegate', title: 'Mache ich' },
+  { id: 'waiting', title: 'Wartet auf andere' },
 ]
 
 const task = (slug, over = {}) => ({ key: `task:${slug}`, task: slug, title: `Task ${slug}`, status: 'doing', bucket: 'plan',
@@ -45,31 +44,17 @@ const deploy = { ref: '%3', name: 'fix-route-planner-eta', state: 'needs-you', s
   item: null, live: true, ask: { text: './deploy.sh --env staging route-planner\nDo you want to proceed?\n❯ 1. Yes\n2. Yes, and don\'t ask again\n3. No',
     hash: 'd1', options: [{ n: 1, label: 'Yes' }, { n: 2, label: 'Yes, and don\'t ask again' }, { n: 3, label: 'No' }] } }
 
-test('Do\'s Yes is the briefing\'s yes: the item approved, and Go of I\'ll do it stays a start', () => {
+test('Do it on an inbox item is the briefing\'s yes, on a task in I\'ll do a start', () => {
   const s = state()
   const item = ask('20261009-0900-q1')
   const [yes] = answers(row(item), 'do', s)
   assert.deepEqual(yes.run, { kind: 'act', verb: 'do_it', args: { keys: [item.key], yes: true } })
-  const [go] = answers(row({ ...item, bucket: 'delegate' }), 'delegate', s)
-  assert.deepEqual(go.run, { kind: 'act', verb: 'do_it', args: { keys: [item.key] } })
+  const t = task('t', { bucket: 'delegate' })
+  const [go] = answers(row(t), 'delegate', s)
+  assert.deepEqual(go.run, { kind: 'act', verb: 'do_it', args: { keys: [t.key] } })
   // an inbox item a tab works on still takes the yes (the tab is not started twice: the server only approves)
   const worked = ask('20261009-0901-q2', { tab: { ref: '%9', live: true } })
   assert.equal(answers(row(worked), 'do', s)[0].run.args.yes, true)
-})
-
-test('Not now of I\'ll do it leaves the point as it is: nothing is written, the walk moves on', async () => {
-  const s = state()
-  const t = task('t', { bucket: 'delegate' })
-  const notNow = answers(row(t), 'delegate', s)[1]
-  assert.equal(notNow.meaning, 'later')
-  assert.deepEqual(notNow.run, { kind: 'skip' })
-  const calls = []
-  const c = new Proxy({}, { get: (_, p) => (p === 'then' || typeof p === 'symbol' ? undefined : (...a) => { calls.push([p, ...a]) }) })
-  const el = mount(html`<${views.flowbuckets.BucketCard} x=${row(t)} bucket="delegate" s=${s} c=${c} onDone=${() => calls.push(['done'])} />`)
-  el.$$('.fb-answers button').find(b => b.text() === 'Nicht jetzt').click()
-  await rounds()
-  assert.ok(!calls.some(x => x[0] === 'act'), 'no act')
-  assert.ok(calls.some(x => x[0] === 'done'), 'the walk moves on')
 })
 
 test('an inbox item put off to a day the briefing still shows stands in the briefing\'s bucket, back on that day', () => {
@@ -103,16 +88,17 @@ test('Next never promises a Yes the card does not offer', () => {
   assert.equal(logic.nextSentence(row(bad), 'do', s, 'de'), de.nextNone)
   // a task an agent tab works on: no second start
   const busy = task('busy', { bucket: 'do', tab: { ref: '%7', live: true } })
-  assert.ok(!answers(row(busy), 'do', s).some(a => a.meaning === 'yes'))
+  assert.ok(!answers(row(busy), 'do', s).some(a => a.meaning === 'do'))
   assert.equal(logic.nextSentence(row(busy), 'do', s, 'de'), de.nextWorking)
 })
 
-test('a card quotes the briefing\'s own answer of the bucket the briefing has the point in', async () => {
-  // a start got lost: the cockpit asks in Do, the briefing still has no. 8 under Waiting on others
+test('a card names its number in the briefing with the answer words every row takes there', async () => {
+  // a start got lost: the cockpit asks in Do, the briefing still has no. 8 under Waiting on others; the words are the same
   const t = task('price-list', { bucket: 'waiting', brief_nr: 8 })
   const el = mount(html`<${views.flowbuckets.BucketCard} x=${{ ...row(t), group: 'lost' }} bucket="do" s=${state()} c=${recorder()} />`)
-  assert.match(el.$('.fb-nr').text(), /„8 nachfassen“|"8 nachfassen"|8 nachfassen/)
-  assert.doesNotMatch(el.$('.fb-nr').text(), /8 ja/)
+  assert.match(el.$('.fb-nr').text(), /no\. 8/)
+  assert.match(el.$('.fb-nr').text(), /"8 do"/)
+  assert.doesNotMatch(el.$('.fb-nr').text(), /nachfassen|8 ja/)
   await rounds()
 })
 
@@ -162,7 +148,7 @@ test('an answer names the state the page saw the point in, so the server refuses
   const item = ask('20261009-0900-q1')
   assert.deepEqual(logic.withWas({ verb: 'later', args: { key: item.key, until: TOMORROW } }, item),
     { verb: 'later', args: { key: item.key, until: TOMORROW, was: 'open' } })
-  const t = task('t', { bucket: 'drop', status: 'doing' })
+  const t = task('t', { bucket: 'plan', status: 'doing' })
   assert.equal(logic.withWas({ verb: 'task_park', args: { key: t.key } }, t).args.was, 'doing')
   // a verb that does not take it, or a row without a state, goes as it was
   assert.deepEqual(logic.withWas({ verb: 'tab_jump', args: { tab_ref: '%1' } }, item), { verb: 'tab_jump', args: { tab_ref: '%1' } })
@@ -171,7 +157,9 @@ test('an answer names the state the page saw the point in, so the server refuses
   const c = new Proxy({}, { get: (_, p) => (p === 'then' || typeof p === 'symbol' ? undefined
     : (...a) => { calls.push([p, ...a]); return p === 'act' ? Promise.resolve({ ok: true }) : undefined }) })
   const el = mount(html`<${views.flowbuckets.BucketCard} x=${row(item)} bucket="do" s=${state()} c=${c} />`)
-  el.$$('.fb-answers button').find(b => b.text() === 'Später').click()
+  el.$('.fb-answer-later').click()
+  await rounds()
+  el.$('.fb-later-menu [data-choice="tomorrow"]').click()
   await rounds()
   assert.equal(calls.find(x => x[0] === 'act')[2].was, 'open')
   assert.ok(text.TABLES.de.errors.point_moved && text.TABLES.en.errors.point_moved)
@@ -207,7 +195,7 @@ test('a card another browser answered stays in place with a word and the way on,
 })
 
 test('a bucket says it is done only after something was answered in it, else that it holds nothing today', async () => {
-  const s = state({ work: [task('quiet', { bucket: 'drop' })], ui: { flowView: 'buckets', flowBucket: 'delegate' } })
+  const s = state({ work: [task('quiet', { bucket: 'resting' })], ui: { flowView: 'buckets', flowBucket: 'delegate' } })
   const el = mount(html`<${views.flow.FlowPage} s=${s} c=${recorder()} />`)
   await rounds()
   assert.match(el.$('.fb-empty').text(), new RegExp(text.TABLES.en.flow.buckets.empty))
@@ -216,12 +204,13 @@ test('a bucket says it is done only after something was answered in it, else tha
   assert.match(done.$('.fb-empty').text(), new RegExp(text.TABLES.en.flow.buckets.cleared))
 })
 
-test('the walk stands right under the card, above the free line, never sticky under it', async () => {
+test('the walk stands right under the card, never sticky; the free line is under More', async () => {
   const s = state({ now: [ask('20261009-0900-a'), ask('20261009-0901-b')], ui: { flowView: 'buckets' } })
   const el = mount(html`<${views.flow.FlowPage} s=${s} c=${recorder()} />`)
   await rounds()
   const kids = el.$('.fb-main').childNodes.map(k => k.getAttribute?.('class') ?? '')
-  assert.ok(kids.findIndex(k => /fb-walk/.test(k)) < kids.findIndex(k => /fb-dock/.test(k)), kids.join(' | '))
+  assert.ok(kids.findIndex(k => /fb-card/.test(k)) < kids.findIndex(k => /fb-walk/.test(k)), kids.join(' | '))
+  assert.ok(el.$('.fb-more .fb-ask'), 'Ask under More')
   const { readFileSync } = await import('node:fs')
   const css = readFileSync(new URL('../web/flow.css', import.meta.url), 'utf8')
   assert.doesNotMatch(css.match(/\.fb-walk \{[^}]*\}/)[0], /sticky/)
@@ -317,9 +306,9 @@ test('once the server answers again its "does not answer" toast goes, and the he
   assert.ok(de2.connLost.length <= 16 && !/,/.test(de2.connLost), de2.connLost)
 })
 
-test('the task board says its own words for its columns, and Hide is no Keep: one word, one act', () => {
-  // its columns sort by who has the next move, not by the briefing's buckets: they never carry a bucket's name
-  assert.deepEqual(logic.bucketWords(state(), 'de').columns, {})
+test('the task board\'s columns of the Bridge and of others say the buckets, and Hide is no Keep: one word, one act', () => {
+  // the Bridge's moves are I'll do, what waits on others its bucket; yours and To review keep the board's words
+  assert.deepEqual(logic.bucketWords(state(), 'de').columns, { bridge: 'Mache ich', waiting: 'Wartet auf andere' })
   const tb = text.TABLES.de.taskboard
   assert.notEqual(tb.keep, 'Behalten', 'the tidy button only hides here; Behalten is the briefing\'s keep')
   assert.doesNotMatch(tb.tidyHint, /Behalten/)

@@ -1,28 +1,30 @@
 // SPDX-License-Identifier: MIT
 // The cockpit, Work through by the briefing's buckets (cockpit.flow.buckets, on by default; docs/bridge-cockpit.md,
-// Buckets): the page's behaviour once its switch is on, in place of the overview and the right column. Left the
-// briefing's buckets in the profile's order, each with its count, the open one with its points under it. The middle
-// shows the open bucket's head (its title, what it means, what its answers do) and one card at a time: its kind and
-// facts as small marks, its title, one sentence Next (logic.js nextSentence: what the tab asks, the card's step, a
-// fixed sentence per bucket), the bucket's answers as big buttons with the first one strong (logic.js bucketAnswers:
-// the same acts as the briefing's answers, a tab's own answers first), its number in the printed briefing, and under
-// More everything else the page offers on a point (views/flowside.js FlowAside: the states, Hand over, the fields;
-// views/flowtabs.js PointTabs: Description, Steps, Activity). An answer moves on to the next point by itself (the card
-// is held by its id, logic.js focusIndex); the walk bar under it only goes back and forth, it never decides. After the
-// last point of a bucket the page offers the next bucket that holds one.
-// Every point ends with the fixed, quiet answer Obsolete (buckets.js bucketAnswers), which asks first in place; under
-// the card stands the free line (views/flowinstruct.js InstructLine: Instruct and Ask) for what the buttons do not cover.
+// Buckets): the page's behaviour once its switch is on, in place of the overview and the right column. Every point
+// answers who is on the move and when. Left, under "Who is on the move", the four buckets in the profile's order, each
+// with who it means and its count, the open one with its points under it, then what is out of sight, only counted
+// (later, the watch list, done today), then what runs. The middle shows the open bucket's head (its title and what Do
+// it does there) and one card at a time: its kind and facts as small marks (a resting point says so, quietly), its
+// title, what a tab asks, one sentence Next (logic.js nextSentence: what Do it does), the four answers every point
+// takes (logic.js bucketAnswers: Do it strong, a tab's own answers in its place; Later ▾ with tomorrow, Monday, in a
+// week, a picked day and the watch list; Done; Obsolete quiet and last, asked first in place with a note), its number
+// in the printed briefing with the words the chat takes, and under More only: With … (you, the Bridge, a name), To
+// the tab, Ask (views/flowinstruct.js InstructLine) and the fields (views/flowside.js Fields, views/flowtabs.js
+// PointTabs). An answer moves on to the next point by itself (the card is held by its id, logic.js focusIndex); the
+// walk bar under it only goes back and forth, it never decides. After the last point of a bucket the page offers the
+// next bucket that holds one. Every answer goes out through c.act or c.reply, so the toast offers its undo.
 // For the mouse: no text names a key.
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  answerMark, bucketAnswers, bucketDefs, bucketPoints, detailNeedsLoad, errorText, flowParts, focusIndex, formatDay, instructScope, nextSentence, openBucket, parseDate,
-  pickDays, pointArea, pointKindWord, pointName, replySend, runningOf, short, viewBucket, withWas,
+  answerMark, askQuestion, asideCounts, bucketAnswers, bucketDefs, bucketPoints, detailNeedsLoad, errorText, flowParts, focusIndex, formatDay, instructScope,
+  isoDate, laterDays, nextSentence, openBucket, ownerChoices, parseDate, pointArea, pointKindWord, pointName, replySend, restingOf, runningOf, short, viewBucket,
+  withNote, withWas,
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { WorkSwitch } from './day.js'
-import { FlowAside } from './flowside.js'
+import { Fields } from './flowside.js'
 import { InstructLine } from './flowinstruct.js'
 import { PointTabs } from './flowtabs.js'
 import { PointCard } from './flowpoint.js'
@@ -41,24 +43,31 @@ function useItemDetail(x, s, c) {
   useEffect(() => { if (id && detailNeedsLoad(entry, ver)) c.loadInbox(id) }, [id, ver, entry?.stale])
 }
 
-/** The day picker of an answer that needs a day first (plan's schedule, waiting's wait): a few days, another one */
-function DayPick({ s, onPick, onCancel, busy, uid = 'fb-pick-day' }) {
-  const f = T().flow.buckets.pick
-  const [own, setOwn] = useState('')
+/** Later's menu: tomorrow, Monday, in a week (each with its day), a picked day, the watch list. `onChoose(choice,
+ *  day)` sends the answer; a picked day must lie after today */
+function LaterMenu({ a, s, busy, onChoose, uid = 'fb-later-day' }) {
+  const f = T().flow.buckets
+  const lang = language()
   const now = s.now || Date.now()
-  const day = parseDate(own, now)
-  return html`<div class="fb-pick" role="group" aria-label=${f.title}>
-    <p class="label-caps">${f.title}</p>
-    <div class="btn-row">
-      ${pickDays(now).map(([k, iso]) => html`<${Btn} key=${k} size="sm" variant="secondary" busy=${busy} title=${iso}
-        onClick=${() => onPick(iso)}>${f[k]}<//>`)}
-    </div>
-    <div class="field-row fb-pick-own">
-      <label class="sr-only" for=${uid}>${f.own}</label>
-      <input id=${uid} class="input" type="date" value=${own} placeholder=${f.own} onInput=${e => setOwn(e.currentTarget.value)} />
-      <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!day} onClick=${() => day && onPick(day)}>${f.set}<//>
-      <${Btn} size="sm" variant="ghost" onClick=${onCancel}>${f.cancel}<//>
-    </div>
+  const days = laterDays(now)
+  const today = isoDate(now)
+  const [picking, setPicking] = useState(false)
+  const [own, setOwn] = useState('')
+  const picked = parseDate(own, now)
+  const day = picked && picked > today ? picked : null
+  const has = k => a.run.choices.includes(k)
+  return html`<div class="fb-later-menu" role="group" aria-label=${f.later.label}>
+    ${['tomorrow', 'monday', 'week'].filter(has).map(k => html`<button type="button" key=${k} class="fb-later-item" data-choice=${k} disabled=${busy}
+      onClick=${() => onChoose(k, days[k])}><span>${f.later[k]}</span><span class="fb-later-sub muted small">${formatDay(days[k], lang)}</span></button>`)}
+    ${has('pick') ? html`<button type="button" class="fb-later-item" data-choice="pick" aria-expanded=${String(picking)} disabled=${busy}
+      onClick=${() => setPicking(!picking)}><span>${f.later.pick}</span><span class="fb-later-sub muted small">${f.later.pickSub}</span></button>` : null}
+    ${picking ? html`<div class="fb-later-pick field-row">
+      <label class="sr-only" for=${uid}>${f.later.pick}</label>
+      <input id=${uid} class="input" type="date" min=${days.tomorrow} value=${own} onInput=${e => setOwn(e.currentTarget.value)} />
+      <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!day} onClick=${() => day && onChoose('pick', day)}>${f.later.set}<//>
+    </div>` : null}
+    ${has('list') ? html`<hr class="fb-later-sep" /><button type="button" class="fb-later-item" data-choice="list" disabled=${busy}
+      onClick=${() => onChoose('list', null)}><span>${f.later.list}</span><span class="fb-later-sub muted small">${f.later.listSub}</span></button>` : null}
   </div>`
 }
 
@@ -78,15 +87,16 @@ function SayLine({ onSend, onCancel, busy, uid = 'fb-say-text' }) {
   </div>`
 }
 
-/** The answers of a point in its bucket and what a click on one does, the one place every view sends an answer
- *  from (the card here, the bar of a row on Due, By source, By Jev and the tabs column): a tab's own answer goes
- *  to the tab (c.reply) and is marked answered, a verb of the server goes out as c.act, an answer that needs a
- *  day opens the day picker first, one that asks first (Obsolete) its confirm in place (`confirm`, sent by `run(a,
- *  null, true)`). `onDone` runs once an answer went through (the card moves on) */
+/** The four answers of a point and what a click on one does, the one place every view sends an answer from (the
+ *  card here, the bar of a row on Due, By source, By Jev and the tabs column): a tab's own answer goes to the tab
+ *  (c.reply) and is marked answered, a verb of the server goes out as c.act, Later opens its menu first (`menu`, sent
+ *  by `run(a, {choice, day})`), Obsolete its confirm in place (`confirm`, sent by `run(a, note, true)`). `onDone`
+ *  runs once an answer went through (the card moves on) */
 export function useBucketAnswer(x, bucket, s, c, onDone = null) {
   const lang = language()
   const t = T()
-  const [pick, setPick] = useState(null)
+  const f = t.flow.buckets
+  const [menu, setMenu] = useState(null)
   const [confirm, setConfirm] = useState(null)
   const [note, setNote] = useState(null)
   const [say, setSay] = useState(null)
@@ -94,48 +104,72 @@ export function useBucketAnswer(x, bucket, s, c, onDone = null) {
   const tab = x?.tab ?? null
   const answers = x ? bucketAnswers(x, bucket, s, lang) : []
   const busy = !!(s.ui?.busy?.[row?.key] || (tab && s.ui?.busy?.[tab.ref]))
-  const run = async (a, day = null, sure = false) => {
-    setNote(null)
-    if (a.confirm && !sure) { setPick(null); setSay(null); setConfirm(a); return }
-    setConfirm(null)
-    // an answer that leaves the point as it is (Not now of I'll do it): nothing goes out, the walk moves on
-    if (a.run.kind === 'skip') { setPick(null); setSay(null); onDone?.(); return }
-    if (a.run.kind === 'pick' && !day) { setSay(null); setPick(a); return }
-    // an answer in words: the line opens first, `day` carries the words once they are sent (SayLine)
-    if (a.run.kind === 'say' && !day) { setPick(null); setSay(a); return }
-    if (a.run.kind === 'reply' || a.run.kind === 'say') {
-      const go = a.run.kind === 'say' ? replySend(a.run.tab, day) : a.run
-      const r = await c.reply(go.verb, go.args)
-      if (r?.refused) { setNote(errorText(r.error, t)); return }
-      if (!r?.ok) { if (r?.note) setNote(r.note); return }
-      setSay(null)
-      c.markAnswered?.(tab.ref, answerMark(tab, a.run.kind === 'say' ? day : a.label, Date.now()))
-      onDone?.(a)
-      return
-    }
-    const go = withWas(a.run.kind === 'pick' ? a.run.then(day) : a.run, row)
+  const closeAll = () => { setMenu(null); setSay(null); setConfirm(null) }
+  const send = async (go, a) => {
     const r = await c.act(go.verb, go.args)
-    setPick(null)
+    closeAll()
     if (Array.isArray(r?.manual) && r.manual.length) { setNote(r.manual.join('\n')); return }
     if (r?.ok) onDone?.(a)
     else if (r?.note) setNote(r.note)
   }
-  return { answers, run, pick, setPick, confirm, setConfirm, note, busy, say, setSay }
+  const run = async (a, arg = null, sure = false) => {
+    setNote(null)
+    if (a.confirm && !sure) { setMenu(null); setSay(null); setConfirm(a); return }
+    if (a.run.kind === 'later' && !arg) { setSay(null); setConfirm(null); setMenu(menu?.id === a.id ? null : a); return }
+    // an answer in words: the line opens first, `arg` carries the words once they are sent (SayLine)
+    if (a.run.kind === 'say' && !arg) { setMenu(null); setConfirm(null); setSay(a); return }
+    if (a.run.kind === 'reply' || a.run.kind === 'say') {
+      const go = a.run.kind === 'say' ? replySend(a.run.tab, arg) : a.run
+      const r = await c.reply(go.verb, go.args)
+      if (r?.refused) { setNote(errorText(r.error, t)); return }
+      if (!r?.ok) { if (r?.note) setNote(r.note); return }
+      closeAll()
+      c.markAnswered?.(tab.ref, answerMark(tab, a.run.kind === 'say' ? arg : a.label, Date.now()))
+      onDone?.(a)
+      return
+    }
+    const raw = a.run.kind === 'later' ? a.run.then(arg.choice, arg.day) : a.meaning === 'obsolete' ? withNote(a.run, arg, f) : a.run
+    if (!raw) return
+    await send(withWas(raw, row), a)
+  }
+  // With … under More: the step to you or the Bridge, or the point to a person (logic.js ownerChoices)
+  const give = async go => { if (go) await send(go, { meaning: 'owner' }) }
+  return { answers, run, menu, setMenu, confirm, setConfirm, note, busy, say, setSay, give }
 }
 
-/** The answers as buttons, in their order: the strong one where `strong` says so, a quiet one (Obsolete) a ghost,
- *  one whose confirm is open its question in place, Yes and Cancel */
-function AnswerButtons({ list, strong, size, busy, pick, confirm, run, setConfirm, max }) {
+/** Obsolete's question in place: a note why, optional, then Yes or Cancel */
+function ObsoleteConfirm({ a, size, busy, run, onCancel }) {
   const f = T().flow.buckets
-  return list.map(a => (confirm?.id === a.id
-    ? html`<span key=${a.id} class="fb-confirm" role="group" aria-label=${f.obsoleteAsk}>
-        <span class="fb-confirm-q small">${f.obsoleteAsk}</span>
-        <${Btn} size=${size} variant="secondary" busy=${busy} cls="fb-confirm-yes" onClick=${() => run(a, null, true)}>${f.obsoleteYes}<//>
-        <${Btn} size=${size} variant="ghost" cls="fb-confirm-no" onClick=${() => setConfirm(null)}>${f.obsoleteNo}<//>
-      </span>`
-    : html`<${Btn} key=${a.id} size=${size} variant=${strong(a) ? 'primary' : a.quiet ? 'ghost' : 'secondary'} busy=${busy}
-        pressed=${pick?.id === a.id ? true : undefined} title=${a.quiet ? f.obsoleteTip : a.label} cls=${`fb-answer fb-answer-${a.meaning}${a.quiet ? ' fb-quiet' : ''}`}
-        onClick=${() => run(a)}>${short(a.label, max)}<//>`))
+  const [why, setWhy] = useState('')
+  const ask = a.label === f.obsoleteStream ? f.obsoleteAskStream : f.obsoleteAsk
+  return html`<span class="fb-confirm" role="group" aria-label=${ask}>
+    <span class="fb-confirm-q small">${ask}</span>
+    <input class="input fb-confirm-note" type="text" value=${why} placeholder=${f.obsoleteNote} aria-label=${f.obsoleteNote}
+      onInput=${e => setWhy(e.currentTarget.value)} />
+    <${Btn} size=${size} variant="secondary" busy=${busy} cls="fb-confirm-yes" onClick=${() => run(a, why, true)}>${f.obsoleteYes}<//>
+    <${Btn} size=${size} variant="ghost" cls="fb-confirm-no" onClick=${onCancel}>${f.obsoleteNo}<//>
+  </span>`
+}
+
+/** The answers as buttons, in their order: the strong one (`primary`), Later with its menu under it, Done (on a
+ *  stream with the word that it runs on), Obsolete a quiet ghost whose click opens its question in place */
+function AnswerButtons({ list, size, busy, menu, confirm, run, setConfirm, max, s, uid }) {
+  const f = T().flow.buckets
+  return list.map(a => {
+    const cls = `fb-answer fb-answer-${a.meaning}${a.quiet ? ' fb-quiet' : ''}`
+    if (confirm?.id === a.id) return html`<${ObsoleteConfirm} key=${a.id} a=${a} size=${size} busy=${busy} run=${run} onCancel=${() => setConfirm(null)} />`
+    const btn = html`<${Btn} key=${a.id} size=${size} variant=${a.primary ? 'primary' : a.quiet ? 'ghost' : 'secondary'} busy=${busy}
+      pressed=${a.run.kind === 'later' ? menu?.id === a.id : undefined} title=${a.quiet ? f.obsoleteTip : a.label} cls=${cls}
+      onClick=${() => run(a)}>${short(a.label, max)}<//>`
+    if (a.run.kind === 'later') {
+      return html`<span key=${a.id} class="fb-later">${btn}${menu?.id === a.id
+        ? html`<${LaterMenu} a=${a} s=${s} busy=${busy} uid=${`${uid}-day`} onChoose=${(choice, day) => run(a, { choice, day })} />` : null}</span>`
+    }
+    if (a.meaning === 'done' && a.label === f.answers.doneStream) {
+      return html`<span key=${a.id} class="fb-done-col">${btn}<small class="muted">${f.doneStreamSub}</small></span>`
+    }
+    return btn
+  })
 }
 
 /** A point's bucket as one small chip, the bucket's title, with its number in the printed briefing beside it */
@@ -146,34 +180,55 @@ export function BucketChip({ x, bucket, s, nr: withNr = true }) {
   if (!def) return null
   const nr = withNr ? x?.row?.brief_nr : null
   return html`<span class="fb-chips"><span class=${`chip fb-chip fb-chip-${bucket}`} title=${f.sub[bucket]}>${def.title}</span>${Number.isInteger(nr)
-    ? html`<span class="chip fb-chip-nr mono" title=${f.inBriefing(nr, null)}>${f.nr(nr)}</span>` : null}</span>`
+    ? html`<span class="chip fb-chip-nr mono" title=${f.inBriefing(nr, f.say)}>${f.nr(nr)}</span>` : null}</span>`
 }
 
-/** The answers of a point on a row of a list: its bucket chip, the first answer strong, the rest under one More,
- *  the same answers and acts as the card (BucketCard). `chip` false leaves the chip out where the row shows it */
+/** The answers of a point on a row of a list: its bucket chip, the strong one, the rest under one More, the same
+ *  answers and acts as the card (BucketCard). `chip` false leaves the chip out where the row shows it */
 export function BucketBar({ x, s, c, size = 'xs', bucket = null, chip = true, nr = true }) {
   const f = T().flow.buckets
   const b = bucket ?? viewBucket(x)
-  const { answers, run, pick, setPick, confirm, setConfirm, note, busy, say, setSay } = useBucketAnswer(x, b, s, c)
+  const { answers, run, menu, confirm, setConfirm, note, busy, say, setSay } = useBucketAnswer(x, b, s, c)
   const [more, setMore] = useState(false)
-  // the strong one is the first the bucket offers, never the quiet Obsolete, which stands last under More
-  const first = answers[0] && !answers[0].quiet ? answers[0] : null
-  const rest = first ? answers.slice(1) : answers
-  const btns = (list, strong) => html`<${AnswerButtons} list=${list} strong=${() => strong} size=${size} busy=${busy} pick=${pick}
-    confirm=${confirm} run=${run} setConfirm=${setConfirm} max=${40} />`
-  const uid = `fb-pick-${String(x?.id ?? 'x').replace(/[^\w-]/g, '-')}`
+  const first = answers.find(a => a.primary) ?? null
+  const rest = answers.filter(a => a !== first)
+  const uid = `fb-bar-${String(x?.id ?? 'x').replace(/[^\w-]/g, '-')}`
+  const btns = list => html`<${AnswerButtons} list=${list} size=${size} busy=${busy} menu=${menu} confirm=${confirm} run=${run}
+    setConfirm=${setConfirm} max=${40} s=${s} uid=${uid} />`
   return html`<span class="fb-bar">
     ${chip ? html`<${BucketChip} x=${x} bucket=${b} s=${s} nr=${nr} />` : null}
-    ${first ? btns([first], true) : null}
+    ${first ? btns([first]) : null}
     ${rest.length ? html`<${Btn} size=${size} variant="ghost" pressed=${more} cls="fb-bar-more" onClick=${() => setMore(!more)}>${f.more}<//>` : null}
-    ${more ? html`<span class="fb-bar-rest">${btns(rest, false)}</span>` : null}
-    ${pick ? html`<${DayPick} s=${s} busy=${busy} uid=${uid} onPick=${day => run(pick, day)} onCancel=${() => setPick(null)} />` : null}
+    ${more ? html`<span class="fb-bar-rest">${btns(rest)}</span>` : null}
     ${say ? html`<${SayLine} busy=${busy} uid=${`${uid}-say`} onSend=${words => run(say, words)} onCancel=${() => setSay(null)} />` : null}
     ${note ? html`<span class="fb-note small" role="status">${note}</span>` : null}
   </span>`
 }
 
-/** One point as a card: its marks, its title, Next, the bucket's answers, its number in the briefing, More */
+/** With … under More: you and the Bridge for a task's step, a name for anyone; the one who has it now marked */
+function OwnerPick({ x, s, give, busy }) {
+  const f = T().flow.buckets
+  const own = ownerChoices(x, s)
+  const [name, setName] = useState('')
+  const go = own.name(name)
+  const words = { me: f.owner.me, bridge: f.owner.bridge }
+  return html`<section class="fb-owner fb-more-part">
+    <h3 class="label-caps">${f.owner.head}</h3>
+    <div class="btn-row">
+      ${own.choices.map(o => html`<${Btn} key=${o.who} size="sm" variant="secondary" busy=${busy} pressed=${own.current === o.who}
+        disabled=${own.current === o.who} cls=${`fb-owner-${o.who}`} onClick=${() => give(o.run)}>${words[o.who]}<//>`)}
+      <form class="field-row fb-owner-name" onSubmit=${e => { e.preventDefault?.(); give(go) }}>
+        <label class="sr-only" for="fb-owner-name">${f.owner.name}</label>
+        <input id="fb-owner-name" class="input" type="text" maxlength="60" value=${name} placeholder=${f.owner.name}
+          onInput=${e => setName(e.currentTarget.value)} />
+        <${Btn} size="sm" variant="secondary" busy=${busy} disabled=${!go} onClick=${() => give(go)}>${f.owner.give}<//>
+      </form>
+    </div>
+  </section>`
+}
+
+/** One point as a card: its marks, its title, what a tab asks, Next, the four answers, its number in the briefing,
+ *  and under More: With …, To the tab, Ask, the fields */
 export function BucketCard({ x, bucket, s, c, onDone = null }) {
   const lang = language()
   const t = T()
@@ -181,42 +236,51 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
   useItemDetail(x, s, c)
   const row = x.row ?? null
   const tab = x.tab ?? null
-  // an answer that went out takes its point out of the bucket at once (answeredHere); Not now leaves it where it is
-  const { answers, run, pick, setPick, confirm, setConfirm, note, busy, say, setSay } = useBucketAnswer(x, bucket, s, c, a => {
+  // an answer that went out takes its point out of the bucket at once (answeredHere)
+  const { answers, run, menu, confirm, setConfirm, note, busy, say, setSay, give } = useBucketAnswer(x, bucket, s, c, () => {
     c.flowDecided?.()
-    if (a?.run?.kind !== 'skip') c.flowAnswered?.(x.id, bucket)
+    c.flowAnswered?.(x.id, bucket)
     onDone?.()
   })
-  const marks = [pointKindWord(x, lang), pointArea(x), row?.due ? f.due(formatDay(String(row.due).slice(0, 10), lang)) : null,
-    row?.gate === 'only-you' ? f.onlyYou : null, bucket === 'waiting' && (x.checkin?.who ?? row?.checkin?.who) ? f.with(x.checkin?.who ?? row.checkin.who) : null]
-    .filter(Boolean)
+  const rest = row ? restingOf(row) : null
+  const who = bucket === 'waiting' ? x.checkin?.who ?? row?.checkin?.who ?? null : null
+  const marks = [[pointKindWord(x, lang)], [pointArea(x)], [row?.due ? f.due(formatDay(String(row.due).slice(0, 10), lang)) : null],
+    [row?.gate === 'only-you' ? f.onlyYou : null], [who ? f.with(who) : null], [rest ? f.resting(rest) : null, 'fb-mark-quiet', f.restingTip]]
+    .filter(m => m[0])
   // a tab that asks is named by its tab (the way it reads in the terminal), the task it works on under it
   const title = pointTitleOf(x)
   const sub = row && isTab(x) ? t.flow.forTask(pointName(row)) : null
-  // the answer the briefing offers first for this point, in the bucket the briefing has it in ("8 nachfassen"), which
-  // can differ from the card's (a lost start asks in Do here): the chat answers the briefing's number
-  const briefDef = bucketDefs(s, lang).find(b => b.id === row?.bucket)
-  const first = briefDef ? briefDef.options?.[0] ?? null : answers[0]?.label ?? null
+  const question = isTab(x) && tab.ask?.text ? short(askQuestion(tab.ask.text), 400) : null
+  const tabRef = tab?.ref ?? row?.tab?.ref ?? null
+  // the free line for what the buttons do not cover, scoped to the point (views/flowinstruct.js), under More
+  const scope = !x.readOnly ? instructScope(x, [], new Set(), null, s) : null
   return html`<article class="fb-card" aria-labelledby="fb-title">
-    <div class="fb-marks">${marks.map(m => html`<span class="fb-mark">${m}</span>`)}</div>
+    <div class="fb-marks">${marks.map(([m, cls, tip]) => html`<span class=${`fb-mark${cls ? ` ${cls}` : ''}`} title=${tip}>${m}</span>`)}</div>
     <h2 id="fb-title" class="fb-title">${title}</h2>
     ${sub ? html`<p class="fb-sub muted">${sub}</p>` : null}
+    ${question ? html`<div class="fb-question"><span class="label-caps">${f.asks}</span><p>${question}</p></div>` : null}
     <div class="fb-next"><span class="label-caps">${f.nextLabel}</span><p>${nextSentence(x, bucket, s, lang)}</p></div>
     ${answers.length ? html`<div class="fb-answers" role="group" aria-label=${f.nextLabel}>
-      <${AnswerButtons} list=${answers} strong=${a => a === answers[0] && !a.quiet} size="sm" busy=${busy} pick=${pick} confirm=${confirm}
-        run=${run} setConfirm=${setConfirm} max=${60} />
+      <${AnswerButtons} list=${answers} size="sm" busy=${busy} menu=${menu} confirm=${confirm} run=${run} setConfirm=${setConfirm}
+        max=${60} s=${s} uid="fb-card" />
     </div>` : null}
-    ${pick ? html`<${DayPick} s=${s} busy=${busy} onPick=${day => run(pick, day)} onCancel=${() => setPick(null)} />` : null}
     ${say ? html`<${SayLine} busy=${busy} onSend=${words => run(say, words)} onCancel=${() => setSay(null)} />` : null}
     ${note ? html`<p class="fb-note small" role="status">${note}</p>` : null}
     ${isTab(x) && tab.ask?.draft ? html`<p class="fb-note fb-draft muted small">${tab.ask.suggestion ? t.reply.draft : t.reply.typed}</p>` : null}
-    ${Number.isInteger(row?.brief_nr) ? html`<p class="fb-nr muted small">${f.inBriefing(row.brief_nr, first && !tab ? first.toLowerCase() : null)}</p>` : null}
+    ${Number.isInteger(row?.brief_nr) ? html`<p class="fb-nr muted small">${f.inBriefing(row.brief_nr, f.say)}</p>` : null}
     <details class="fb-more">
       <summary>${f.more}</summary>
       <div class="fb-more-body">
-        ${tab?.ask?.text ? html`<pre class="fb-screen mono">${tab.ask.text}</pre>` : null}
-        <${FlowAside} x=${x} s=${s} c=${c} />
-        ${row ? html`<${PointTabs} x=${x} s=${s} c=${c} />` : null}
+        ${row && !x.readOnly ? html`<${OwnerPick} key=${x.id} x=${x} s=${s} give=${give} busy=${busy} />` : null}
+        ${tabRef ? html`<section class="fb-tab fb-more-part"><h3 class="label-caps">${f.tabHead}</h3>
+          <${Btn} size="sm" variant="secondary" cls="fb-to-tab" onClick=${() => c.act('tab_jump', { tab_ref: tabRef })}>${f.toTab}<//></section>` : null}
+        ${row?.key ? html`<section class="fb-ask fb-more-part"><h3 class="label-caps">${f.askHead}</h3>
+          <${InstructLine} key=${x.id} scope=${scope} x=${x} s=${s} c=${c} /></section>` : null}
+        <section class="fb-fields fb-more-part"><h3 class="label-caps">${f.fieldsHead}</h3>
+          ${tab?.ask?.text ? html`<pre class="fb-screen mono">${tab.ask.text}</pre>` : null}
+          ${x.kind !== 'reports' && row ? html`<${Fields} x=${x} s=${s} c=${c} />` : null}
+          ${row ? html`<${PointTabs} x=${x} s=${s} c=${c} />` : null}
+        </section>
       </div>
     </details>
   </article>`
@@ -261,11 +325,8 @@ export function BucketBody({ s, c }) {
   // an answer moves on to the next point, also where the point stays in its bucket (Wait on a task that waits, a
   // tab's own answer): the next one is held by its id, at the place the answered one leaves free
   const onwardsAfter = () => c.flowBucketGo(points[i + 1]?.id ?? null, i)
-  // what each answer of the open bucket does, and the fixed last one every point has
-  const legend = open ? [f.legend[open.id]?.(...open.options.map(o => o.charAt(0).toUpperCase() + o.slice(1))), f.obsoleteLegend(f.obsolete)]
-    .filter(Boolean).join(' ') : ''
-  // the free line under the card for what the buttons do not cover, scoped to the point (views/flowinstruct.js)
-  const scope = x && !x.readOnly ? instructScope(x, [], new Set(), null, s) : null
+  // what is out of sight, only counted (the model's aside): later, the watch list, done today
+  const aside = asideCounts(s)
   return html`<div class="col col-page flow flow-buckets">
     <header class="page-head flow-head">
       <${WorkSwitch} s=${s} c=${c} />
@@ -285,6 +346,11 @@ export function BucketBody({ s, c }) {
               title=${pointTitleOf(p)} onClick=${() => { c.flowBucketGo(p.id, k); cardIntoView() }}>${short(pointTitleOf(p), 70)}</button>
           </li>`)}</ul>` : null}
         </li>`)}</ul>
+        <div class="fb-aside">
+          <p class="label-caps">${f.aside.head}</p>
+          ${[['later', aside.later, f.aside.laterTip], ['list', aside.list, f.aside.listTip], ['done', aside.done_today, f.aside.doneTip]].map(([k, n, tip]) => html`
+            <div key=${k} class=${`fb-aside-row fb-aside-${k}`} title=${tip}><span>${f.aside[k]}</span><b class="fb-aside-n mono">${n}</b></div>`)}
+        </div>
         ${running.length || reads.length ? html`<div class="fb-running">
           ${running.length ? html`<h3 class="label-caps">${t.flow.lane.label}</h3>
             <ul class="fb-points">${running.map(e => html`<li key=${e.id}><button type="button" class="fb-point" title=${e.title} onClick=${e.open}>${short(e.title, 70)}</button></li>`)}</ul>` : null}
@@ -295,7 +361,7 @@ export function BucketBody({ s, c }) {
       <section class="fb-main" aria-label=${open?.title ?? f.label}>
         ${open ? html`<header class="fb-head">
           <h2 class="fb-head-title">${open.title}</h2><span class="fb-head-sub muted">${f.sub[open.id]}</span>
-          ${legend ? html`<p class="fb-legend muted small">${legend}</p>` : null}
+          <p class="fb-legend muted small">${f.rule[open.id] ?? ''}</p>
         </header>` : null}
         ${runEntry ? html`<div class="fb-run"><${Btn} size="sm" variant="secondary" icon="back" onClick=${() => c.flowBucket(open?.id ?? null)}>${f.back(open?.title ?? f.label)}<//>
             <${PointCard} x=${runEntry} s=${s} c=${c} /></div>`
@@ -310,7 +376,6 @@ export function BucketBody({ s, c }) {
           <span class="fb-pos muted small">${f.pos(i + 1, points.length)}</span>
           <${Btn} size="sm" variant="secondary" disabled=${i >= points.length - 1} onClick=${() => c.flowBucketGo(points[i + 1].id, i + 1)}>${f.next2}<//>
         </div>` : null}
-        ${x && !runEntry ? html`<div class="fb-dock flow-dock"><${InstructLine} key=${x.id} scope=${scope} x=${x} s=${s} c=${c} /></div>` : null}
       </section>
     </div>
   </div>`

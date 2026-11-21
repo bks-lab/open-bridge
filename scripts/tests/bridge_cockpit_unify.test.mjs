@@ -17,11 +17,10 @@ const MIN = 60000
 const TOMORROW = '2026-10-10'
 
 const PROFILE = [
-  { id: 'do', title: 'Tun (du, heute)', options: ['ja', 'später', 'streichen'] },
-  { id: 'plan', title: 'Planen', options: ['einplanen', 'später'] },
-  { id: 'delegate', title: 'Mache ich', options: ['los', 'nicht jetzt'] },
-  { id: 'waiting', title: 'Wartet auf andere', options: ['nachfassen', 'warten'] },
-  { id: 'drop', title: 'Parken oder streichen', options: ['parken', 'behalten'] },
+  { id: 'do', title: 'Tun (du, heute)' },
+  { id: 'plan', title: 'Planen' },
+  { id: 'delegate', title: 'Mache ich' },
+  { id: 'waiting', title: 'Wartet auf andere' },
 ]
 
 const task = (slug, over = {}) => ({ key: `task:${slug}`, task: slug, title: `Task ${slug}`, status: 'doing', bucket: 'plan',
@@ -62,8 +61,8 @@ test('rowPoint: a row whose tab asks stands as that tab, answered in it; any oth
   assert.equal(logic.viewBucket(p), 'do')
   const plain = logic.rowPoint(task('x'), s)
   assert.deepEqual([plain.kind, plain.id, logic.viewBucket(plain)], ['row', 'task:x', 'plan'])
-  // a backlog task no bucket of the briefing holds stands under drop in a list, never in none
-  assert.equal(logic.viewBucket(logic.rowPoint(task('b', { status: 'backlog', bucket: 'tasks' }), s)), 'drop')
+  // a backlog task no bucket of the briefing holds (it is on the watch list) stands under Plan in a list, never in none
+  assert.equal(logic.viewBucket(logic.rowPoint(task('b', { status: 'backlog', bucket: 'tasks' }), s)), 'plan')
 })
 
 test('bucketAnswers: a row an agent tab already works on is never started a second time', () => {
@@ -71,7 +70,7 @@ test('bucketAnswers: a row an agent tab already works on is never started a seco
   const r = task('build', { bucket: 'delegate', tab: { ref: 'surface:5', live: true, state: 'working' } })
   const a = logic.bucketAnswers(logic.rowPoint(r, s), 'delegate', s, 'en')
   assert.ok(a.every(x => x.run.verb !== 'do_it'), 'no do_it on a live tab')
-  assert.deepEqual(a.map(x => x.meaning), ['later', 'obsolete'])
+  assert.deepEqual(a.map(x => x.meaning), ['later', 'done', 'obsolete'])
 })
 
 test('workShows: the bucket filter of By source keeps the rows of that bucket, a stale filter of the other mode keeps all', () => {
@@ -89,8 +88,8 @@ test('workShows: the bucket filter of By source keeps the rows of that bucket, a
   assert.equal(counts.plan, 1)
 })
 
-test('one act, one label: Let the AI do it says the delegate answer in bucket mode, Open a tab is no new start, an issue is hidden', () => {
-  assert.equal(logic.doWord(state(), 'de'), 'Los')
+test('one act, one label: Let the AI do it says Do it in bucket mode, Open a tab is no new start, an issue is hidden', () => {
+  assert.equal(logic.doWord(state(), 'de'), 'Mach das')
   assert.equal(logic.doWord(state({ on: false }), 'de'), de.action.do)
   // collect_context starts a tab that reads up: its word is the panel's, never "open a tab"
   assert.equal(de.taskboard.act.openTab, de.btnCollect)
@@ -100,7 +99,7 @@ test('one act, one label: Let the AI do it says the delegate answer in bucket mo
 
 // ---------------------------------------------------------------- Due
 
-test('Due by buckets: every row its bucket word, the bucket\'s answers, the first strong, the rest under one More', async () => {
+test('Due by buckets: every row its bucket word, the four answers, Do it strong, the rest under one More', async () => {
   const c = recorder()
   const item = ask('20261009-0900-q1', { brief_nr: 4 })
   const s = state({ now: [item], work: [task('bridges', { bucket: 'delegate' })] })
@@ -116,36 +115,40 @@ test('Due by buckets: every row its bucket word, the bucket\'s answers, the firs
   assert.equal(rows[1].$('.row-num').text(), '')
   const acts = first.$('.row-acts')
   const bs = acts.$$('.fb-bar button')
-  assert.equal(bs[0].text().trim(), 'Ja')
+  assert.equal(bs[0].text().trim(), 'Do it')
   assert.ok(bs[0].hasClass('btn-primary'))
-  assert.deepEqual(buttonsOf(acts).filter(x => x !== '☆' && x !== '★'), ['Ja', en.flow.buckets.more])
+  assert.deepEqual(buttonsOf(acts).filter(x => x !== '☆' && x !== '★'), ['Do it', en.flow.buckets.more])
   // none of the old doors and their words
   assert.doesNotMatch(el.text(), /Let AI do it|Close ▾|AI machen lassen|Abhaken/)
   assert.doesNotMatch(el.$$('.sec-title').map(x => x.text()).join(' '), new RegExp(en.section.now))
   bs[0].click()
   await rounds()
   assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: [item.key], yes: true, was: 'open' }])
-  // More holds the rest of the bucket's answers, the same acts as the card's
+  // More holds the rest of the four answers, the same acts as the card's
   acts.button(en.flow.buckets.more).click()
   await rounds()
-  assert.deepEqual(buttonsOf(acts).filter(x => !['☆', '★', en.flow.buckets.more].includes(x)), ['Ja', 'Später', 'Streichen', en.flow.buckets.obsolete])
-  acts.button('Später').click()
+  assert.deepEqual(buttonsOf(acts).filter(x => !['☆', '★', en.flow.buckets.more].includes(x)), ['Do it', 'Later ▾', 'Done', en.flow.buckets.obsolete])
+  acts.button('Later ▾').click()
+  await rounds()
+  acts.$('.fb-later-menu [data-choice="tomorrow"]').click()
   await rounds()
   assert.deepEqual(c.calls.filter(x => x[0] === 'act').at(-1), ['act', 'later', { key: item.key, until: TOMORROW, was: 'open' }])
   assert.equal(rows[1].$('.fb-chip').text(), 'Mache ich')
-  assert.equal(rows[1].$('.row-acts .btn-primary').text().trim(), 'Los')
+  assert.equal(rows[1].$('.row-acts .btn-primary').text().trim(), 'Do it')
   assert.doesNotMatch(el.text(), KEYS)
 })
 
-test('Due by buckets: a day first where the answer needs one, the same day picker as the card', async () => {
+test('Due by buckets: Later opens the same menu as the card, a day of it is the answer', async () => {
   const c = recorder()
   const s = state({ work: [task('plan-me')] })
   const el = mount(html`<${views.day.DayColumn} s=${s} c=${c} byKey=${logic.indexRows(s.model)} />`)
   await rounds()
-  el.$('.row-acts .btn-primary').click()
+  el.$('.row-acts .fb-bar-more').click()
   await rounds()
-  assert.ok(el.$('.fb-pick'), 'the day picker opens')
-  el.$('.fb-pick').button(en.flow.buckets.pick.tomorrow).click()
+  el.$('.row-acts .fb-answer-later').click()
+  await rounds()
+  assert.ok(el.$('.fb-later-menu'), 'the menu of Later opens')
+  el.$('.fb-later-menu [data-choice="tomorrow"]').click()
   await rounds()
   assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'later', { key: 'task:plan-me', until: TOMORROW, plan: true, was: 'doing' }])
 })
@@ -162,7 +165,7 @@ test('Due by buckets: a row whose tab asks offers the tab\'s own answers, never 
   assert.deepEqual(c.calls.find(x => x[0] === 'reply'), ['reply', 'tab_option', { tab_ref: 'surface:3', n: 1, seen: 'd1', name: 'Deploy' }])
 })
 
-test('Due by buckets: the selection offers the delegate bucket\'s answers for every picked row', async () => {
+test('Due by buckets: the selection offers Do it and Later for every picked row', async () => {
   const c = recorder()
   const s = state({ work: [task('a'), task('b')], ui: { picked: ['task:a', 'task:b'] } })
   const el = mount(html`<${views.day.DayColumn} s=${s} c=${c} byKey=${logic.indexRows(s.model)} />`)
@@ -170,7 +173,7 @@ test('Due by buckets: the selection offers the delegate bucket\'s answers for ev
   const bar = el.$('.selbar') ?? el.$('.selection-bar')
   assert.ok(bar, 'the selection bar')
   assert.doesNotMatch(bar.text(), /Let AI do it|Close/)
-  bar.button('Los (2)').click()
+  bar.button('Do it (2)').click()
   await rounds()
   assert.deepEqual(c.calls.find(x => x[0] === 'act'), ['act', 'do_it', { keys: ['task:a', 'task:b'] }])
 })
