@@ -1897,3 +1897,17 @@ def test_a_label_two_things_share_names_neither_and_a_launch_opens_under_a_uniqu
     driver.tabs = lambda: [{"name": t["label"], "workspace": "W", "ref": "surface:3", "state": "working"}]
     (row,) = wp.status_rows(repo, {}, driver)
     assert row["slug"] == "fix-the-cost-report-for-fabrikam-retail" and row["item"] is None
+
+
+def test_a_tab_of_an_open_item_is_never_bound_to_a_done_task_of_the_same_name(lrepo):
+    # round 2 of the four answers: a done task's cut heading equal to an open item's tab name bound that tab to the
+    # done task, the cockpit showed it as finished, and Done closed the open item while its tab still asked
+    name = next(n for n in wp.inbox_tab_index(lrepo) if wp.inbox_tab_index(lrepo)[n] == INBOX_ID)
+    d = lrepo / "work" / "done" / "2026-10" / "old-thing"
+    d.mkdir(parents=True)
+    (d / "STATUS.md").write_text("---\nslug: old-thing\nstatus: done\n---\n\n# Old thing\n", encoding="utf-8")
+    cfg = {"tab_names": {"old-thing": name}}
+    driver = wp.NoneDriver()
+    driver.tabs = lambda: [{"name": name, "workspace": "W", "ref": "surface:16", "state": "waiting"}]
+    (row,) = wp.status_rows(lrepo, cfg, driver)
+    assert row["item"] == INBOX_ID and row["slug"] is None

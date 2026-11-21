@@ -1213,10 +1213,13 @@ def status_rows(root: Path, cfg: dict, driver) -> list | None:
         return None
     tasks = collect_tasks(root)
     index = slug_index(tasks, cfg)
-    # a tab of a task that moved to work/done/ keeps its slug, so the cockpit can tell it is done
-    for name, slug in slug_index(done_tasks(root), cfg).items():
-        index.setdefault(name, slug)
     items = inbox_tab_index(root)
+    # a tab of a task that moved to work/done/ keeps its slug, so the cockpit can tell it is done; never under a name
+    # an open inbox item's tab has (round 2 of the four answers: such a tab was shown as finished, and Done closed
+    # the open item while its tab still asked)
+    for name, slug in slug_index(done_tasks(root), cfg).items():
+        if name not in items and unicodedata.normalize("NFC", name) not in items:
+            index.setdefault(name, slug)
     # a label a task and an inbox item share names neither: only the slug or the item's own name binds then
     shared = shared_labels(root, cfg, tasks)
     roles: dict = {}
