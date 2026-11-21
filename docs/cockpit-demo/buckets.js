@@ -9,7 +9,7 @@
 // goes out as a verb of the server the rest of the page already uses (do_it, later, settle, task_park, task_keep,
 // runs_on, the tab's own answers). No DOM, no network. logic.js passes every name on.
 import { TABLES } from './text.js'
-import { DAY, actionRow, flowAction, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
+import { DAY, actionRow, flowAction, inProject, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
   replySend, short, triageShows } from './logic.js'
 
 // the briefing's buckets, in its default order (briefing_view BUCKETS)
@@ -130,6 +130,22 @@ export function answeredHere(s) {
   const at = s?.model?.collected_ms ?? 0
   const now = s?.now || Date.now()
   return new Set(Object.entries(s?.ui?.flowAnswered ?? {}).filter(([, a]) => a && a.ms > at && now - a.ms < ANSWERED_HOLD_MS).map(([k]) => k))
+}
+
+/** What waits on you while the buckets are on: the rows of the points of Do (you, today), under an area its own;
+ *  the start page's tile, its shelf, the work tab's badge and the head of Due all count these, so one label carries one
+ *  count (round 2: "warten auf dich" was 45 on the tile and 22 in the list it opened) */
+export function waitingRows(s, area = null) {
+  const base = { ...s, ui: { ...(s?.ui ?? {}), page: '@flow', area: null } }
+  const doBucket = bucketPoints(base, 'en').buckets.find(b => b.id === 'do')
+  const seen = new Set()
+  const rows = []
+  for (const x of doBucket?.points ?? []) {
+    if (!x.row?.key || seen.has(x.row.key)) continue
+    seen.add(x.row.key)
+    rows.push(x.row)
+  }
+  return area ? rows.filter(r => inProject(r, area)) : rows
 }
 
 /** The bucket open: the one picked (ui.flowBucket), also while it is empty (its empty state offers the next bucket

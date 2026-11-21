@@ -297,3 +297,15 @@ test('Jev after a failed daily order says so on every visit that day, in plain w
     assert.match(said, /401/)
   }
 })
+
+test('"waiting on you" is one count everywhere while the buckets are on: the points of Do (you, today)', () => {
+  const a = ask('20261009-0900-a')
+  const b = ask('20261009-0901-b', { area: 'Ops' })
+  const later = ask('20261009-0902-c', { bucket: 'plan' })
+  const s = state({ now: [a, b, later], work: [task('t', { bucket: 'do' })] })
+  const rows = logic.waitingRows(s)
+  assert.deepEqual(rows.map(r => r.key).sort(), [a.key, b.key, 'task:t'].sort())
+  assert.equal(logic.startWaiting(s), 3)
+  assert.equal(logic.flowWaiting(s), 3)
+  assert.equal(logic.startWaiting(s, 'Ops'), 1)
+})

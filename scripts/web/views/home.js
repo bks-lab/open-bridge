@@ -4,7 +4,7 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, tabLines, tabWords, shownNumber, flowBucketsOn, doWord, workPageOf, homeCatalog, homeChosen,
+  attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, tabLines, tabWords, shownNumber, flowBucketsOn, waitingRows, doWord, workPageOf, homeCatalog, homeChosen,
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
   rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv, askMark,
@@ -705,7 +705,8 @@ function HomeBoard({ s, c }) {
     .find(p => p.toLowerCase() === String(s.ui.area ?? '').trim().toLowerCase()) ?? null
   const cont = homeContinue(tabs, project)
   // the shelf is named waiting on you: the asks of Now, as the tile beside it counts them (an idea asks nothing)
-  const waiting = waitingAll.filter(r => asksYou(r) && inProject(r, project))
+  // with the buckets on: the rows of Do (you, today), the same the tile and the badge count (buckets.js waitingRows)
+  const waiting = flowBucketsOn(s) ? waitingRows(s, project) : waitingAll.filter(r => asksYou(r) && inProject(r, project))
   const tasks = tasksAll.filter(r => inProject(r, project))
   const now = new Date(s.now || Date.now())
   const day = dayLabel(now, lang)

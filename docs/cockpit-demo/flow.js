@@ -12,7 +12,7 @@
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
 import { TABLES } from './text.js'
 import { areaScope, canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, pointName, pointOriginal, projectTone, replyOptions, replySend,
-  rowOverdue, restingIn, rowProject, tabOfTask, wantsYou, workPageOf, personOf, workViewIn, formatDay } from './logic.js'
+  rowOverdue, restingIn, rowProject, tabOfTask, wantsYou, workPageOf, personOf, workViewIn, formatDay, flowBucketsOn, waitingRows } from './logic.js'
 
 // the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
 export const FLOW_PAGE = '@flow'
@@ -1700,6 +1700,7 @@ export const flowWaiting = s => startWaiting(s)
  *  through is off */
 export function startWaiting(s, area = null) {
   if (!flowOn(s)) return null
+  if (flowBucketsOn(s)) return waitingRows(s, area).length
   const { areas, all } = flowAreas(s)
   if (!area) return all.waiting
   const want = String(area).trim().toLowerCase()
