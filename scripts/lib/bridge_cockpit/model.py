@@ -665,6 +665,8 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
                 # the row's number in the printed briefing ("3 yes", briefing_view.numbered), None where it prints none
                 brief_nr=i["nr"] if isinstance(i.get("nr"), int) and not isinstance(i.get("nr"), bool) and i["nr"] > 0 else None,
                 resting=resting_of(i.get("resting")),
+                # the tasks the briefing folded into this line (briefing_view _fold): no point of their own
+                folded_tasks=[x for x in _list(i.get("folded_tasks")) if isinstance(x, str) and x][:ALSO_MAX],
             )
             # Same key twice (same number from two trackers): the second gets the block added.
             key = row_key(base)
@@ -881,9 +883,11 @@ def with_tasks(view: dict, tasks: list[dict], tx: dict = EN) -> dict:
             if not t:
                 rows.append(r)
                 continue
-            # An inbox entry is a part of its task, never the task itself: the task keeps its own row.
+            # An inbox entry is a part of its task, never the task itself: the task keeps its own row, unless the
+            # briefing folded the task into this line (one matter, one line: the line stands for both)
             if r.get("inbox_id"):
                 inbox_count[t["slug"]] = inbox_count.get(t["slug"], 0) + 1
+                seen.update(r.get("folded_tasks") or [])
             else:
                 seen.add(t["slug"])
             # An inbox entry shows the area of its task, but not its priority.

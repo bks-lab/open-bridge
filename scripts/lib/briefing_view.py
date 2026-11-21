@@ -1562,6 +1562,9 @@ def _fold(out: dict, view: dict, labels: dict) -> None:
                 have[k] = row[k]
         if row.get("inbox_id"):
             have.setdefault("also_inbox", []).append(row["inbox_id"])
+        if key.startswith("task:") and row.get("origin_section_kind") == "tasks":
+            # the task's own row is part of this line now: the cockpit shows it once, as this line (round 1)
+            have.setdefault("folded_tasks", []).append(key[len("task:"):])
         have["new"] = have["new"] or row["new"]
         have["changed"] = have["changed"] or row["changed"]
 

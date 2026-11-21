@@ -234,3 +234,28 @@ def test_a_yes_given_keeps_the_point_so_it_stands_in_ill_do(tmp_path):
         assert res["ok"] and f"inbox:{YES_ID}" not in w.app.collector.settled
     finally:
         w.close()
+
+
+def test_a_task_the_briefing_folds_into_its_inbox_line_is_one_point():
+    # round 1 of the four answers: the briefing folded "Decide on the power contract" (the task) into its inbox line
+    # "Keep or cancel the power contract", the cockpit showed both, sometimes in two buckets
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("briefing_view_fold", Path(__file__).resolve().parents[1] / "lib" / "briefing_view.py")
+    bv = importlib.util.module_from_spec(spec)
+    sys.modules["briefing_view_fold"] = bv
+    spec.loader.exec_module(bv)
+    items = [{"id": "20260929-1900-keep-or-cancel", "title": "Keep or cancel the power contract", "state": "open", "urgency": "today",
+              "kind": "decision", "gate": "only-you", "task": "power"}]
+    tasks = [{"id": "power", "title": "Decide on the power contract", "state": "doing", "next": {"what": "decide"},
+              "changed_at": "2026-11-01", "url": "work/tasks/power/STATUS.md"}]
+    sec = lambda sid, kind, it: {"id": sid, "kind": kind, "title": sid, "status": "ok", "items": it, "all": it, "total": len(it)}
+    built = bv.build({"profile": "m", "title": "M", "collected_at": "2026-11-21T08:00",
+                      "sections": [sec("inbox", "inbox", items), sec("tasks", "tasks", tasks)]},
+                     {"id": "m", "sections": [{"kind": "inbox"}, {"kind": "tasks"}], "view": {"style": "triage"}})
+    rows = [r for b in built["buckets"] for r in b["items"]]
+    assert len(rows) == 1 and rows[0]["folded_tasks"] == ["power"]
+    view = m.parse_view({"view": built}, True, 0)
+    t = [{"slug": "power", "label": "power", "title": "Decide on the power contract", "area": "A", "area_names": ["A"], "priority": None,
+          "blocked_by": None, "stale": False, "age": 0, "type": None, "status": "doing", "next": "decide", "updated": None, "origin": None}]
+    got = m.with_tasks(view, t)
+    assert [r["key"] for b in got["buckets"] for r in b["rows"]] == ["inbox:20260929-1900-keep-or-cancel"]
