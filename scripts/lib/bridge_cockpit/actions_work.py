@@ -428,17 +428,25 @@ class WorkVerbs:
         if not row.get("task") or row.get("inbox_id"):
             raise self.not_applicable("only a task's step has someone who takes it", "key")
         slug = self.slug(row)
-        old_who = (((found.get("out") or {}).get("card") or {}).get("next") or {}).get("who")
+        old_next = self.task_next_of(slug) or ((found.get("out") or {}).get("card") or {}).get("next") or {}
+        old_who = old_next.get("who")
+        old_check = str(old_next.get("check") or "")[:10] if DATE_RE.match(str(old_next.get("check") or "")[:10]) else ""
+        # a check-in asks someone else how the step stands: a step that comes to you or the Bridge drops it (round 3:
+        # With … du kept "In progress with me, check-in 2026-11-29"); the undo gives it back
+        drop_check = bool(old_check) and who.lower() in ("me", "bridge")
         step, cleared = self.step_for(slug, row)
         trace = self.trace_of(slug, f"Next step with {who}, no check-in")
-        run = ctx.call("task.next", slug, self.task_cmd("next", slug, *step, "--who", who, "--json"), SHORT_TIMEOUT)
+        run = ctx.call("task.next", slug, self.task_cmd("next", slug, *step, "--who", who,
+                                                        *(["--clear-check"] if drop_check else []), "--json"), SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["owner_failed"].format(err=m.short(run.err, 100)), bad=True)
             return
         said = self.tx.get(f"owner_{who.lower()}", who)
         ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task", "did": f"next step with {who}",
                             "ident": slug, "undone_ms": None, "work_kind": "stream" if row.get("stream") else "task",
-                            "undo": {"verb": "task_next", "args": {**(cleared or {"slug": slug, "who": old_who or "me"}), **trace}}})
+                            "undo": {"verb": "task_next", "args": {**(cleared or {"slug": slug, "who": old_who or "me",
+                                                                                **({"check": old_check} if drop_check else {})}),
+                                                                     **trace}}})
         ctx.note(self.tx["owner_set"].format(who=said, title=m.short(row["title"], 60)))
         ctx.delta()
         self.app.collector.request("both")
@@ -476,6 +484,20 @@ class WorkVerbs:
             return {"slug": slug}
         return {"slug": slug, "back": True, "on": was["blocked_by"],
                 **{k: was[f] for k, f in (("since", "blocked_since"), ("until", "quiet_until")) if was.get(f)}}
+
+    def task_next_of(self, slug: str) -> dict:
+        """The task's own next step as its STATUS.md holds it ({what, who, check, ...}), {} where it has none: a row
+        that folds an inbox item shows the item's step, never the task's"""
+        for kind in ("tasks", "streams"):
+            try:
+                text = (self.app.root / "work" / kind / slug / "STATUS.md").read_text(encoding="utf-8")
+                break
+            except (OSError, UnicodeDecodeError):
+                continue
+        else:
+            return {}
+        nxt = split_front(text)[0].get("next")
+        return {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in nxt.items()} if isinstance(nxt, dict) else {}
 
     def task_step(self, slug: str) -> str | None:
         """The what of a task's next step as its STATUS.md names it (next: {what} or next: "..."), else None"""

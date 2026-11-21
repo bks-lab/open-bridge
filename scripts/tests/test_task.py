@@ -1004,6 +1004,18 @@ def test_next_who_and_check_put_a_task_in_progress_with_someone_and_keep_its_ste
         assert run(repo, *bad).returncode == 1, bad
 
 
+def test_next_who_on_a_step_with_a_check_in_answers_in_json(repo):
+    # round 3 of the four answers: With … du on a task with a check-in failed "Object of type date is not JSON
+    # serializable" after STATUS.md was already written, so the cockpit kept no undo for a change that happened
+    import json
+    p = repo / "work/tasks/alpha/STATUS.md"
+    p.write_text(STATUS.replace("status: doing\n", "status: doing\nnext: {what: Send the draft}\n", 1), encoding="utf-8")
+    assert run(repo, "next", "alpha", "--who", "Kim", "--check", "2026-11-29", "--json").returncode == 0
+    r = run(repo, "next", "alpha", "--who", "me", "--json")
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout)["check"] == "2026-11-29"
+
+
 def test_wait_back_restores_what_the_task_waited_on_before(repo):
     # the undo of Wait on a task that already waited: its blocker, the day it began and its quiet day come back as
     # they were, nothing else (the cockpit's runs_on hands this out)

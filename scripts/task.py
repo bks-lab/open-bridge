@@ -596,7 +596,9 @@ def _set_next_owner(root: Path, path: Path, old: str, slug: str, text: str | Non
     path.write_bytes(new.encode("utf-8"))
     with contextlib.redirect_stdout(sys.stderr):
         regenerate_board(root)
-    return {"slug": slug, "next": nxt.get("what"), "who": nxt.get("who"), "check": nxt.get("check")}
+    day = nxt.get("check")
+    return {"slug": slug, "next": nxt.get("what"), "who": nxt.get("who"),
+            "check": day.isoformat() if isinstance(day, (dt.date, dt.datetime)) else day}
 
 
 # ---------------------------------------------------------------- brief
