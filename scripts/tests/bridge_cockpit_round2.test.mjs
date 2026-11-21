@@ -114,3 +114,40 @@ test('a card quotes the briefing\'s own answer of the bucket the briefing has th
   assert.match(el.$('.fb-nr').text(), /„8 nachfassen“|"8 nachfassen"|8 nachfassen/)
   assert.doesNotMatch(el.$('.fb-nr').text(), /8 ja/)
 })
+
+// ---------------------------------------------------------------- words to a tab
+
+const drafted = { ref: '%6', name: 'update-the-data-import', state: 'waiting', since_ms: NOW - 3 * MIN, workspace: 'Home', live: true,
+  ask: { text: 'Soll ich den Haken in der Aufgabe setzen?\n❯ #', hash: 'h6', draft: true, suggestion: null, yes_no: true } }
+
+test('Message is never offered where words cannot go: a dialog takes its options, a draft is in the way', () => {
+  const s = state({ tabs: [deploy, drafted] })
+  for (const tab of [deploy, drafted]) {
+    const el = mount(html`<${views.detail.TabControls} tab=${tab} s=${s} c=${recorder()} />`)
+    assert.ok(!el.$$('button').some(b => /^(message|Nachricht)$/.test(b.text().trim())), `no Message on ${tab.name}`)
+  }
+  assert.equal(logic.canMessage(deploy), false)
+  assert.equal(logic.canMessage(drafted), false)
+  assert.equal(logic.canMessage({ ...drafted, ask: { text: 'Done.', hash: 'x', draft: false } }), true)
+})
+
+test('the tab overlay offers no line to type into a dialog or onto a draft, and says why', () => {
+  for (const tab of [deploy, drafted]) {
+    const s = state({ tabs: [tab], ui: { tabView: tab.ref, busy: {} } })
+    const el = mount(html`<${views.tabs.TabView} s=${s} c=${recorder()} />`)
+    assert.equal(el.$('#tabview-input'), null, tab.name)
+    assert.ok(el.$('.tabview-nosend'), 'a quiet sentence instead')
+  }
+})
+
+test('a tab whose prompt holds a draft offers the way to the tab and says what is in the way', () => {
+  const s = state({ tabs: [drafted] })
+  const x = { group: 'asks', id: 'tab:%6', kind: 'tab', tab: drafted, row: null }
+  const a = answers(x, 'do', s)
+  assert.equal(a[0]?.run?.verb, 'tab_jump')
+  const el = mount(html`<${views.flowbuckets.BucketCard} x=${x} bucket="do" s=${s} c=${recorder()} />`)
+  assert.ok(el.$('.fb-answers button'), 'one answer at least')
+  assert.match(el.text(), /Entwurf|typed|draft/i)
+  const reply = mount(html`<${views.reply.TabReply} tab=${drafted} s=${s} c=${recorder()} noJump />`)
+  assert.ok(reply.$('.reply-draft'), 'the reply says a draft is in the way, also without a button')
+})

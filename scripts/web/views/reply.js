@@ -40,7 +40,8 @@ export function TabReply({ tab, s, c, compact = false, bare = false, noJump = fa
   const { buttons, textBox } = replyOptions(tab, s, t)
   const shown = bare || noJump ? buttons.filter(b => b.verb !== 'tab_jump') : buttons
   const withText = textBox && !bare
-  if (!shown.length && !withText) return null
+  // a draft in the input line is said also where nothing is left to press here: it is why nothing is offered
+  if (!shown.length && !withText && !tab.ask?.draft) return null
   const busy = !!s.ui?.busy?.[tab.ref]
   const id = `reply-${tab.ref}`
   const answer = async (verb, args, q) => {

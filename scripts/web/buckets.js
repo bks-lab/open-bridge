@@ -156,6 +156,11 @@ export function askQuestion(text) {
 // its turn status; never the tab's words
 const TAB_CHROME = /^[\u23f5\u23f8\u23f9✻✶✳✢✽✦※·*]|\?\s+for shortcuts|esc to interrupt|shift\+tab to cycle|auto-compact|accept edits|bypass permissions|plan mode|\/clear to save|update installed/i
 
+/** Whether words may go to a tab as a message: an agent at work in it, no dialog (a dialog takes its options; the
+ *  driver types the words and presses Enter, which picks the highlighted one) and no draft in its input line (the
+ *  words would be appended to it; the server refuses them, tab_draft) */
+export const canMessage = tab => !!tab?.live && tab.state !== 'needs-you' && !tab.ask?.draft
+
 /** A tab's words in one line, for every view that names them (Start, the tabs column, the drawer, the card): its
  *  question (askQuestion of what the server read off its screen), else its last line where that is no line of
  *  Claude Code's own, else '' */
@@ -257,13 +262,15 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
     // choice, "reply by number"), so Go on is never the only way to answer it
     const opts = replyOptions(tab, s, t)
     const own = opts.buttons.filter(b => b.verb !== 'tab_jump')
+    // where the tab takes nothing from here (a draft in its prompt, a dialog without keys) the way to it is the answer
+    const jump = opts.buttons.find(b => b.verb === 'tab_jump') ?? null
     const say = opts.textBox ? { kind: 'say', tab } : null
     if (say && !tab.ask?.yes_no) add('yes', say, f.say)
     for (const b of own) {
       if (say && tab.ask?.yes_no && b.verb === 'tab_go_on') add('yes', say, f.say)
       add('yes', { kind: 'reply', verb: b.verb, args: b.args }, b.label)
     }
-    if (!own.length && !say) add('yes', yesIt)
+    if (!own.length && !say) add('yes', yesIt ?? (jump ? { kind: 'reply', verb: jump.verb, args: jump.args } : null), yesIt ? null : jump?.label)
   } else if (bucket === 'do') add('yes', yesIt)
   if (bucket === 'delegate') add('go', doIt)
   if (bucket === 'plan') add('schedule', key ? { kind: 'pick', then: day => ({ verb: 'later', args: { key, until: day, plan: true } }) } : null)

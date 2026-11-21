@@ -2608,11 +2608,11 @@ def test_tab_jump_send_go_on_close(world):
     world.runner.calls.clear()
     jumped = world.act("tab_jump", tab_ref="surface:7")
     assert jumped["note"]                                  # a switch says so, the window may not show it
-    world.act("tab_send", tab_ref="surface:7", text="please continue")
+    world.act("tab_send", tab_ref="surface:13", text="please continue")
     world.act("tab_go_on", tab_ref="surface:13")
     world.act("tab_close", tab_ref="surface:8")
     assert writes(world) == [W(world, "focus", "surface:7"),
-                             W(world, "send", "surface:7", "--", "please continue"),
+                             W(world, "send", "surface:13", "--", "please continue"),
                              W(world, "send", "surface:13", "--", "Keep going."),
                              W(world, "close", "surface:8")]
     # round 6d: any tab that neither works nor asks closes, so the refused close is one at work
@@ -2651,14 +2651,22 @@ def test_snapshot_verbs_and_cmux_unavailable(world, tmp_path):
         w2.close()
 
 
+def test_words_never_reach_a_dialog_whatever_the_page_named(world):
+    # Round 2: the Nachricht box and the overlay sent words without seen, expect or name, so the needs-you guard was
+    # skipped; the driver types them and presses Enter, which picks the highlighted "1. Yes" of the dialog
+    world.runner.calls.clear()
+    refused(world, "not_applicable", "tab_send", tab_ref="surface:7", text="bitte warte")
+    assert world.runner.of("workplace.send") == []
+
+
 def test_audit_line_without_texts(world):
     world.act("note", key="task:other-task", text="confidential words")
-    world.act("tab_send", tab_ref="surface:7", text="another secret line")
+    world.act("tab_send", tab_ref="surface:13", text="another secret line")
     log = (world.state / "audit.log").read_text()
     lines = log.strip().splitlines()
     assert len(lines) == 2
     assert lines[0].split()[1:] == ["note", "task:other-task", "exits=0", "ok=true"]
-    assert "surface:7" in lines[1]
+    assert "surface:13" in lines[1]
     assert "confidential" not in log and "secret" not in log and world.app.token not in log
 
 

@@ -2986,6 +2986,8 @@ export function replyOptions(tab, s, t = TABLES.en) {
     if (ready && ask.hash && key) {
       buttons.push({ id: 'accept', verb: 'tab_accept', label: r.accept(short(ready, 60)), args: { tab_ref: tab.ref, text: ask.suggestion, ...replyGuard(tab) } })
     }
+    // a draft nobody can send from here ("#" typed): the way to the tab, where it is cleared or sent
+    if (!buttons.length && canTab(s, 'focus')) buttons.push({ id: 'open', verb: 'tab_jump', label: r.openTab, args: { tab_ref: tab.ref } })
     return { buttons, textBox: false }
   }
   if (!send) return none

@@ -203,6 +203,7 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
     ${pick ? html`<${DayPick} s=${s} busy=${busy} onPick=${day => run(pick, day)} onCancel=${() => setPick(null)} />` : null}
     ${say ? html`<${SayLine} busy=${busy} onSend=${words => run(say, words)} onCancel=${() => setSay(null)} />` : null}
     ${note ? html`<p class="fb-note small" role="status">${note}</p>` : null}
+    ${isTab(x) && tab.ask?.draft ? html`<p class="fb-note fb-draft muted small">${tab.ask.suggestion ? t.reply.draft : t.reply.typed}</p>` : null}
     ${Number.isInteger(row?.brief_nr) ? html`<p class="fb-nr muted small">${f.inBriefing(row.brief_nr, first && !tab ? first.toLowerCase() : null)}</p>` : null}
     <details class="fb-more">
       <summary>${f.more}</summary>

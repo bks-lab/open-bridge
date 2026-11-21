@@ -168,12 +168,15 @@ test('tab controls, slim: without the driver rights the card falls back to the s
 })
 
 test('tab controls, full: every control of the tab, and the message field when it is open', () => {
-  const closed = renderControls('surface:7', { slim: false })
-  assert.deepEqual(labels(closed.el), [en.btnYes, en.btnNo, en.btnToTab, en.btnTabView, en.btnMessage])
+  // a dialog takes its options, never a message (round 2: the words and Enter picked "1. Yes")
+  const dialog = renderControls('surface:7', { slim: false })
+  assert.deepEqual(labels(dialog.el), [en.btnYes, en.btnNo, en.btnToTab, en.btnTabView])
+  const closed = renderControls('surface:7', { slim: false, tab: { state: 'waiting' } })
+  assert.ok(labels(closed.el).includes(en.btnMessage))
   assert.equal(closed.el.button(en.btnMessage).getAttribute('aria-pressed'), 'false')
   closed.el.button(en.btnMessage).click()
   assert.deepEqual(closed.c.calls.at(-1), ['setOpenMsg', 'surface:7'])
-  const open = renderControls('surface:7', { slim: false, ui: { openMsg: 'surface:7' } })
+  const open = renderControls('surface:7', { slim: false, tab: { state: 'waiting' }, ui: { openMsg: 'surface:7' } })
   const input = open.el.$('input#msg-surface\\:7')
   assert.ok(input, 'message input')
   assert.equal(input.getAttribute('placeholder'), en.msgPlaceholder)

@@ -101,8 +101,8 @@ def test_a_tab_verb_leads_back_to_its_tab_in_the_result_and_the_broadcast(world)
     res = world.act("tab_jump", tab_ref="surface:7")
     assert res["note"] and res["go"] == {"kind": "tab", "ref": "surface:7"}
     assert world.app.notes[-1]["go"] == {"kind": "tab", "ref": "surface:7"}
-    res = world.act("tab_send", tab_ref="surface:7", text="please continue")
-    assert res["go"] == {"kind": "tab", "ref": "surface:7"}
+    res = world.act("tab_send", tab_ref="surface:13", text="please continue")
+    assert res["go"] == {"kind": "tab", "ref": "surface:13"}
 
 
 def test_a_closed_tab_leads_nowhere(world):

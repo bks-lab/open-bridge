@@ -4,7 +4,7 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  detailNeedsLoad, duration, formatDay, indexRows, short,
+  canMessage, detailNeedsLoad, duration, formatDay, indexRows, short,
   stateToken, canTab, settledRefs, statusSplit, tabCloseOffer, tabNextStep, areaScope, homeAreas, startWaiting,
   skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow, personOf, flowBucketsOn, tabPoint, tabWords
 } from '../logic.js'
@@ -311,9 +311,9 @@ export function TabControls({ tab, s, c, compact = false, slim = false }) {
       <${TabClose} tab=${tab} s=${s} c=${c} strong />
       ${canTab(s, 'focus') ? html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>` : null}
       ${canTab(s, 'screen') ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${t.btnTabView}<//>` : null}
-      ${tab.live ? html`<${Btn} size="xs" variant="ghost" pressed=${open} onClick=${() => c.setOpenMsg(open ? null : tab.ref)}>${t.btnMessage}<//>` : null}
+      ${canMessage(tab) ? html`<${Btn} size="xs" variant="ghost" pressed=${open} onClick=${() => c.setOpenMsg(open ? null : tab.ref)}>${t.btnMessage}<//>` : null}
     </div>
-    ${open ? html`<div class="field-row">
+    ${open && canMessage(tab) ? html`<div class="field-row">
       <label class="sr-only" for=${id}>${t.msgPlaceholder}</label>
       <input id=${id} class="input" type="text" maxlength="2000" placeholder=${t.msgPlaceholder} value=${text}
         onInput=${e => setText(e.currentTarget.value)} onKeyDown=${e => { if (e.key === 'Enter') send() }} />

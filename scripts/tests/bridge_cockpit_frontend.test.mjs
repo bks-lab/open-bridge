@@ -4314,10 +4314,13 @@ test('replyOptions leads with the answer a waiting tab holds ready and offers no
   assert.equal(logic.replyOptions(ready, allCaps, en).buttons[0].label, 'Send "ja, Kontakt nochmal versuchen"')
   // without the key right of the driver: nothing extra, and still nothing that types
   const noKey = { driver: { caps: ['tabs', 'send', 'focus'] } }
-  assert.deepEqual(logic.replyOptions(ready, noKey, en), { buttons: [], textBox: false })
-  // something typed that offers no answer (`❯ #`): nothing that types, nothing to accept
+  // (only the way to the tab, where the draft is sent or cleared)
+  assert.deepEqual(verbsOf(logic.replyOptions(ready, noKey, en)), ['tab_jump'])
+  assert.equal(logic.replyOptions(ready, noKey, en).textBox, false)
+  // something typed that offers no answer (`❯ #`): nothing that types, nothing to accept, the way to the tab
   const typed = { ...ready, ask: { ...ready.ask, suggestion: null } }
-  assert.deepEqual(logic.replyOptions(typed, allCaps, en), { buttons: [], textBox: false })
+  assert.deepEqual(verbsOf(logic.replyOptions(typed, allCaps, en)), ['tab_jump'])
+  assert.equal(logic.replyOptions(typed, allCaps, en).textBox, false)
 })
 
 test('replyOptions never offers an answer the server refuses in the state the tab is in', () => {
@@ -4337,7 +4340,7 @@ test('replyOptions never offers an answer the server refuses in the state the ta
   }
   // without the hash of the question there is no accept (the server needs it)
   const unhashed = askTab({ state: 'waiting', ask: { text: 'Go on?', hash: null, yes_no: true, draft: true, suggestion: 'go on', options: [] } })
-  assert.deepEqual(verbsOf(logic.replyOptions(unhashed, allCaps, text.TABLES.en)), [])
+  assert.deepEqual(verbsOf(logic.replyOptions(unhashed, allCaps, text.TABLES.en)), ['tab_jump'])
 })
 
 test('replyOptions hides key buttons without the key cap and text replies without send', () => {

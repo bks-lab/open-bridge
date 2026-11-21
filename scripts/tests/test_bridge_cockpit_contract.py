@@ -291,7 +291,7 @@ def s_tabs(w: World) -> None:
     w.act("tab_yes", tab_ref="surface:7")
     w.act("tab_no", tab_ref="surface:7")
     w.act("tab_jump", tab_ref="surface:7")
-    w.act("tab_send", tab_ref="surface:7", text="--please continue")
+    w.act("tab_send", tab_ref="surface:13", text="--please continue")
     w.act("tab_keys", tab_ref="surface:7", steps=[{"text": "ls"}, {"key": "enter"}])
     w.act("tab_go_on", tab_ref="surface:13")
     # a reply that names the question it answers, the tab and the state: the screen is read fresh first
