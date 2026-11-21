@@ -527,7 +527,11 @@ export function rowPoint(row, s) {
  *  session is no decision (null) */
 export function tabPoint(tab, s = null) {
   if (!tab || tab.is_control || !ASKING.has(tab.state)) return null
-  const row = tab.item ? (s?.model?.sections ?? []).flatMap(x => x.rows ?? []).find(r => r.inbox_id === tab.item) ?? null : null
+  // its item's row wherever the model holds it (a section, the rows put off, the ones past the briefing's window): a
+  // column card has Later, Done and Obsolete as the card in Work through has (round 2: one with a ready answer had none)
+  const m = s?.model ?? {}
+  const row = tab.item ? [...(m.sections ?? []).flatMap(x => x.rows ?? []), ...(m.hidden ?? []), ...(m.deferred ?? [])]
+    .find(r => r?.inbox_id === tab.item) ?? null : null
   return { group: 'asks', id: `tab:${tab.ref}`, kind: 'tab', tab, row }
 }
 

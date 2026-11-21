@@ -178,3 +178,15 @@ test('a row of Settings, Setup wears no bucket and no answers, only Seen and its
   assert.equal(el.$$('.fb-answer').length, 0, 'no answers')
   assert.equal(el.$$('.fb-chip').length, 0, 'no bucket chip')
 })
+
+test('a column card of a tab with a ready answer keeps Later, Done and Obsolete on its item, wherever the model holds it', () => {
+  const item = ask('20261009-0900-d779', { inbox_state: 'deferred' })
+  const tab = { ref: 'surface:17', name: 'Support rota · d779', item: item.inbox_id, state: 'waiting', live: true,
+    ask: { text: 'Swap Taylor and Casey?', hash: 'h3', draft: true, suggestion: 'ja, tauschen' } }
+  const s = state({ tabs: [tab] })
+  s.model.deferred = [item]
+  const p = logic.tabPoint(tab, s)
+  const got = logic.bucketAnswers(p, 'do', s, 'de')
+  assert.equal(got[0].run.verb, 'tab_accept')
+  assert.deepEqual(got.map(a => a.meaning).slice(-3), ['later', 'done', 'obsolete'])
+})
