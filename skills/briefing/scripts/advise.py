@@ -189,7 +189,7 @@ def advise(root: Path, *, now: dt.datetime | None = None, calendar: list | None 
         if t["blocked_by"]:
             if idle >= int(cfg["blocked_days"]):
                 found.append(_finding("blocked", t["slug"],
-                                      w["blocked"].format(slug=t["slug"], idle=idle, why=str(t["blocked_by"])[:80]),
+                                      w["blocked"].format(slug=t["title"], idle=idle, why=str(t["blocked_by"])[:80]),
                                       "later", t["slug"]))
         elif idle >= int(cfg["stale_days"]):
             customer = t["context"] in (cfg["customer_contexts"] or [])
