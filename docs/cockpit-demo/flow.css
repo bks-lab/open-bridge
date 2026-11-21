@@ -527,6 +527,13 @@
     radial-gradient(farthest-side at 50% 100%, color-mix(in srgb, var(--ink) 18%, transparent), transparent) bottom / 100% 12px no-repeat scroll,
     var(--surface); }
 .fb-side h2 { margin: 0; }
+/* the four buckets and the counts under them always stand whole: only the open bucket's points give way and scroll in
+   their own box (round 2 of the four answers: with Do open the column was cut through Waiting on others, and the
+   counts out of sight were never seen) */
+.fb-side > * { flex: none; }
+.fb-side > .fb-buckets { flex: 0 1 auto; min-height: 0; }
+.fb-buckets > li:has(> .fb-points) { display: flex; flex-direction: column; min-height: 0; flex: 0 1 auto; }
+.fb-buckets > li:not(:has(> .fb-points)) { flex: none; }
 .fb-buckets, .fb-points { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .fb-bucket {
   display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 10px; border: 1px solid transparent;
@@ -543,7 +550,7 @@
 .fb-running { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--border); }
 .fb-running h3 { margin: 0; color: var(--on-surface-muted); }
 /* the open bucket's points scroll in a box of their own: every bucket stays in sight above and below them */
-.fb-buckets > li > .fb-points { max-height: min(42vh, 420px); overflow-y: auto; overscroll-behavior: contain;
+.fb-buckets > li > .fb-points { flex: 0 1 auto; min-height: 4.5em; max-height: min(42vh, 420px); overflow-y: auto; overscroll-behavior: contain;
   scrollbar-gutter: stable; border-left: 2px solid var(--border); margin-left: 10px; padding-left: 6px; }
 .fb-point {
   display: block; width: 100%; padding: 6px 8px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--on-surface-muted);
@@ -564,15 +571,16 @@
 .fb-next { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-left: 3px solid var(--accent-line); border-radius: var(--radius-md);
   background: var(--surface-raised); }
 .fb-next p { margin: 0; font-size: var(--text-h4); color: var(--ink); overflow-wrap: anywhere; }
-.fb-answers { display: flex; flex-wrap: wrap; gap: 10px; }
+/* the answers keep their own height: the confirm of Obsolete beside them never stretches them (round 2: about 78 px tall) */
+.fb-answers { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .fb-answers .btn { min-height: 44px; padding: 0 18px; font-size: var(--text-body); max-width: 100%; }
 /* Obsolete: the fixed, quiet last answer, always at the right end of the card's answers; its confirm stands in its place */
 .fb-answers .btn.fb-quiet { margin-left: auto; min-height: 36px; padding: 0 12px; font-size: var(--text-sm); color: var(--on-surface-muted); }
-.fb-confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.fb-confirm { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
 .fb-answers > .fb-confirm { margin-left: auto; }
 .fb-answers .fb-confirm .btn { min-height: 36px; font-size: var(--text-sm); }
 .fb-confirm-q { color: var(--on-surface); font-weight: 600; }
-.fb-confirm-note { flex: 1 1 16em; min-width: 0; }
+.fb-confirm-note { flex: 1 1 9em; width: 11em; min-width: 6em; }
 /* Later ▾ and its menu: tomorrow, Monday, in a week with their days, a picked day, the watch list */
 .fb-later { position: relative; display: inline-flex; }
 .fb-later-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; display: flex; flex-direction: column; min-width: 240px;
@@ -626,8 +634,15 @@
 @media (max-width: 960px) {
   .fb-grid { grid-template-columns: minmax(0, 1fr); }
   .fb-side { position: static; max-height: none; }
-  /* on a phone the card follows the buckets closely: a short list of the open bucket's points */
-  .fb-buckets > li > .fb-points { max-height: 30vh; }
+  /* on a phone the card follows the four buckets at once: the open bucket's points are walked on the card (its walk
+     bar), never listed above it (round 2 of the four answers: at 390 px the card started at y 1082) */
+  .fb-buckets > li > .fb-points { display: none; }
+  /* the four buckets as one wrapped row of their names and counts, so the card starts on the first screen */
+  .fb-side > .fb-buckets { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  .fb-buckets > li { flex: 1 1 40%; }
+  .fb-bucket { padding: 8px 10px; border-color: var(--border); }
+  .fb-bucket-sub { display: none; }
+  .fb-confirm { flex-wrap: wrap; }
   .fb-card { padding: var(--space-md); }
   /* Later's menu spans the card on a phone, never past the screen's edge */
   .fb-later { position: static; }
