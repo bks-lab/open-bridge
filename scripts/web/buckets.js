@@ -115,10 +115,14 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
     if (r?.key && (r.settled_as != null || String(r.hidden_until ?? '').slice(0, 10) > today0)) away.add(r.key)
   }
   const tabRowGone = tab => (tab?.item && away.has(`inbox:${tab.item}`)) || (tab?.slug && away.has(`task:${tab.slug}`))
+  // a row the briefing holds away until a later day is no point until then, also one whose blocker would put it in
+  // Waiting on others (round 3: Later > Monday on a waiting task was counted as later and stood on in Waiting)
+  const awayNow = new Set((s?.model?.away ?? []).filter(a => a?.key && String(a.until ?? '').slice(0, 10) > today0).map(a => a.key))
   const push = x => {
     const id = x.id
     if (!id || seen.has(id) || gone.has(id)) return
     if (x.tab && tabRowGone(x.tab)) return
+    if (!x.running && x.row?.key && awayNow.has(x.row.key)) return
     const bucket = pointBucket(x)
     if (!bucket) return
     seen.add(id)

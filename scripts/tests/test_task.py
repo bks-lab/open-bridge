@@ -1016,6 +1016,20 @@ def test_next_who_on_a_step_with_a_check_in_answers_in_json(repo):
     assert json.loads(r.stdout)["check"] == "2026-11-29"
 
 
+def test_wait_on_a_task_that_waits_already_keeps_the_day_it_began(repo):
+    # round 3 of the four answers: Later on a task waiting for Mika since 55 days (blocked_by, no blocked_since)
+    # wrote blocked_since: today, so the row said waiting 0 days on its return
+    import yaml
+    p = repo / "work/tasks/alpha/STATUS.md"
+    text = p.read_text(encoding="utf-8")
+    text = STATUS.replace("status: doing\n", 'status: doing\nblocked_by: "waiting for Mika to reply"\n', 1)
+    p.write_text(text, encoding="utf-8")
+    was = str(yaml.safe_load(text.split("---\n")[1]).get("last_updated"))[:10]
+    assert run(repo, "wait", "alpha", "--until", "2099-11-23", "--on", "Mika").returncode == 0
+    front = yaml.safe_load(p.read_text(encoding="utf-8").split("---\n")[1])
+    assert str(front["blocked_since"]) == was
+
+
 def test_wait_back_restores_what_the_task_waited_on_before(repo):
     # the undo of Wait on a task that already waited: its blocker, the day it began and its quiet day come back as
     # they were, nothing else (the cockpit's runs_on hands this out)

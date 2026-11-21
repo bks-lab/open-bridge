@@ -501,7 +501,8 @@ def wait_task(root: Path, slug: str, *, until: str | None = None, on: str | None
             raise ValueError("--until YYYY-MM-DD is required (or --clear)")
         dt.date.fromisoformat(until)
         on = " ".join((on or "").split())
-        kept = re.search(r"^blocked_by:", text, re.M) is not None and not on
+        waited = re.search(r"^blocked_by:", text, re.M) is not None
+        kept = waited and not on
         on = on or "runs on"
         # without --on an existing reason stays: it says more than "runs on"
         fields = ([] if kept else [("blocked_by", json.dumps(on, ensure_ascii=False), "status")]) + [("quiet_until", until, "blocked_by")]
@@ -512,7 +513,9 @@ def wait_task(root: Path, slug: str, *, until: str | None = None, on: str | None
             nxt = fm_.get("next") if isinstance(fm_.get("next"), dict) else {}
             other = str(nxt.get("who") or "").strip().lower() not in ("", "me", "you", "self", "ich", "du", "bridge",
                                                                         "bridge_then_me")
-            since = str(fm_.get("last_updated") or "")[:10] if other else ""
+            # one that waits already (blocked_by without its day) waits since it last moved too (round 3: Later on a
+            # task waiting for Mika 55 days wrote today)
+            since = str(fm_.get("last_updated") or "")[:10] if other or waited else ""
             fields.append(("blocked_since", since if re.fullmatch(r"\d{4}-\d{2}-\d{2}", since) and since <= today else today,
                            "blocked_by"))
         text = add_note(set_fields(text, fields), f"Runs on until {until}" + ("" if kept else f": {on}"), today)
