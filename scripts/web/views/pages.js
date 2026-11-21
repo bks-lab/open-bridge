@@ -11,7 +11,7 @@ import {
   jevList, TASK_LANES, taskLane, noiseRows, rowActionKey,
   skipFixable, skipText,
   cardPlan, moneyText, costBoard, itemRow, ghFiltered, ghMyLogin,
-  areaLog, workShows, flowBucketsOn,
+  areaLog, workShows, flowBucketsOn, settingsAreaOf,
 } from '../logic.js'
 import { reducedMotion } from '../motion.js'
 import { T, language } from '../text.js'
@@ -152,7 +152,10 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
   const tone = it.tone ?? null
   // with the briefing's buckets on, an inbox item or a task carries its bucket's bar with its number in the briefing,
   // and nothing beside it the other views do not offer (round 2: Seen and Ask stood beside it only here)
-  const bar = flowBucketsOn(s) && !!actionRow(it, byKey) && !!(it.inbox || it.task)
+  // a row of Settings, Setup is configuration, no point of work: no bucket and no answers there (round 1: its rows
+  // wore "Planen" with Do it beside Seen and Steps)
+  const setup = !!settingsAreaOf(s.model, page)
+  const bar = flowBucketsOn(s) && !setup && !!actionRow(it, byKey) && !!(it.inbox || it.task)
   // an inbox item or task opens its drawer: a click anywhere on the row but its controls, or Enter on the row
   const itemKey = (section === 'tasks' || section === 'inbox' || it.inbox) ? triageKey(it) : null
   // an inbox item or task opens its own drawer, every other row the general detail
@@ -194,7 +197,7 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
       ${it.ask && !bar ? html`<${RowAsk} s=${s} c=${c} rowKey=${it.key} onAsk=${() => c.ask('info', { page, section, index: it.index })} />` : null}
       ${(it.lines ?? []).length ? html`<${Btn} size="xs" variant="ghost" cls=${open ? '' : 'act-quiet'} pressed=${open} onClick=${() => setOpen(!open)}>${t.btnLines}<//>` : null}
       ${it.actions?.length && it.row_id ? html`<${RowSteps} it=${it} page=${page} section=${section} s=${s} c=${c} as=${steps} />` : null}
-      ${bar ? html`<${RowBar} row=${actionRow(it, byKey)} s=${s} c=${c} tab=${it.tab} pin=${false} nr />` : actionRow(it, byKey) && (it.inbox || it.task)
+      ${bar ? html`<${RowBar} row=${actionRow(it, byKey)} s=${s} c=${c} tab=${it.tab} pin=${false} nr />` : !(setup && flowBucketsOn(s)) && actionRow(it, byKey) && (it.inbox || it.task)
         ? html`<${RowBar} row=${actionRow(it, byKey)} s=${s} c=${c} tab=${it.tab} pin=${false} />` : null}
     </span></td>
   </tr>`

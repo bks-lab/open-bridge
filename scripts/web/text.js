@@ -591,7 +591,7 @@ const en = {
   histNotes: n => `Notes (${n})`,
   historyEmpty: 'Nothing closed yet.',
   histKind: { task: 'Task', stream: 'Stream', inbox: 'Inbox', other: 'Row', row: 'Step' },
-  rowSteps: 'Action', rowStepsTitle: 'Steps this row offers: a click opens them, a second click runs one', rowStepsMore: 'More steps',
+  rowSteps: 'Steps', rowStepsTitle: 'Steps this row offers: a click opens them, a second click runs one', rowStepsMore: 'More steps',
   stepConfirm: label => `${label}: sure?`, stepConfirmTitle: 'A second click runs it; it resets after a few seconds',
   // GitHub work (views/github.js): the figures and boards above a github-work section, and an opened issue or PR
   gh: {
