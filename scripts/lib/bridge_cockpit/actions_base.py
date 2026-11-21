@@ -131,6 +131,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "tab_send": {"tab_ref": ("tab_ref", True), "text": ("text", True), "seen": ("ask_hash", False),
                  "expect": ("tab_state", False), "name": ("tab_name", False)},
     "tab_go_on": {"tab_ref": ("tab_ref", True), "seen": ("ask_hash", False), "name": ("tab_name", False)},
+    # the answer a waiting tab holds ready in its input line goes out with Enter alone, only while that very line
+    # (text) and the question (seen) stand on its screen read now
+    "tab_accept": {"tab_ref": ("tab_ref", True), "seen": ("ask_hash", True), "text": ("text", True), "name": ("tab_name", False)},
     "tab_close": {"tab_ref": ("tab_ref", True)},
     # the task and the inbox item behind a tab end as Done does (settle), then the tab closes (actions_tabs.py)
     "tab_done": {"tab_ref": ("tab_ref", True), "by": ("by", False)},
@@ -311,7 +314,7 @@ LOCAL_VERBS = frozenset({"person_settings", "ask_engine", "pin", "hide", "home_t
 LAYOUT_VERBS = frozenset({"snapshot"})
 # saving the layout is cmux's own feature; steering a tab goes through the terminal driver and needs its verb
 CMUX_VERBS = frozenset({"snapshot", "snapshot_list"})
-NEEDS_CAP = {"tab_yes": "key", "tab_no": "key", "tab_option": "key", "tab_keys": "keys", "tab_jump": "focus", "tab_close": "close", "tab_done": "close",
+NEEDS_CAP = {"tab_yes": "key", "tab_accept": "key", "tab_no": "key", "tab_option": "key", "tab_keys": "keys", "tab_jump": "focus", "tab_close": "close", "tab_done": "close",
              "tab_rename": "rename", "workspace_rename": "rename_workspace", "tab_move": "move_tab", "tab_new": "new_tab",
              "workspace_new": "new_workspace", "workspace_close": "close_workspace"}
 

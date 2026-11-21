@@ -2808,7 +2808,7 @@ export function createMockTransport(opts = {}) {
         }
         // an answer to a tab: refused like the server when the question it names is no longer on screen
         // (the third option of the dialog stands for that here) or a draft is typed in the tab
-        if (['tab_send', 'tab_option', 'tab_yes', 'tab_no', 'tab_go_on'].includes(verb)) {
+        if (['tab_send', 'tab_option', 'tab_yes', 'tab_no', 'tab_go_on', 'tab_accept'].includes(verb)) {
           const tab = state.tabs.tabs.find(t => t.ref === args.tab_ref)
           if (!tab || (args.seen && args.seen !== tab.ask?.hash) || (verb === 'tab_option' && args.n === 3)) {
             return fail(409, 'tab_moved', 'The tab moved on before the answer, nothing was sent.')
@@ -2816,11 +2816,15 @@ export function createMockTransport(opts = {}) {
           if ((verb === 'tab_send' || verb === 'tab_go_on') && tab.ask?.draft) {
             return fail(409, 'tab_draft', 'Something is typed in that tab, nothing was sent.')
           }
+          // the answer the input line holds goes out only while that very line stands (actions_tabs.py v_tab_accept)
+          if (verb === 'tab_accept' && (tab.state !== 'waiting' || args.text !== tab.ask?.suggestion)) {
+            return fail(409, 'tab_moved', 'The tab moved on before the answer, nothing was sent.')
+          }
           // a dialog takes its options, never typed words (actions.py v_tab_send)
           if (verb === 'tab_send' && tab.state === 'needs-you' && (args.seen || args.expect || args.name)) {
             return fail(409, 'not_applicable', 'A dialog takes its options, not text.')
           }
-          const said = verb === 'tab_option' ? tab.ask?.options.find(o => o.n === args.n)?.label : verb === 'tab_send' ? args.text : verb
+          const said = verb === 'tab_option' ? tab.ask?.options.find(o => o.n === args.n)?.label : verb === 'tab_send' || verb === 'tab_accept' ? args.text : verb
           result.note = `Mock: ${tab.name}: ${said}`
         }
         // a start from the chat answers with its inbox item and the launch outcome (actions.py v_chat_tab)

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // The cockpit, what a waiting tab asks and the answers to it from the page: the question as the tab
 // poll read it off the tab's screen (asks.py), and one button per option of a dialog, yes and no for a
-// yes or no question, go on and a text field. Every answer names the question it answers, the tab's name
+// yes or no question, go on and a text field; a tab whose input line holds an answer ready gets that answer
+// alone, sent with Enter (tab_accept). Every answer names the question it answers, the tab's name
 // and its state, and the server sends nothing once the tab moved on (actions.py guard_fresh).
 // The rules every component keeps stand at the head of components.js.
 
@@ -61,7 +62,7 @@ export function TabReply({ tab, s, c, compact = false, bare = false, noJump = fa
   const opener = withText && !open ? html`<button type="button" class="btn btn-ghost btn-xs" aria-expanded="false" aria-controls=${id}
     onClick=${() => { focus.current = true; setOpen(true) }}><span class="btn-label">${t.reply.placeholder}</span></button>` : null
   return html`<div class="reply">
-    ${tab.ask?.draft ? html`<p class="reply-draft muted small">${t.reply.draft}</p>` : null}
+    ${tab.ask?.draft ? html`<p class="reply-draft muted small">${tab.ask.suggestion ? t.reply.draft : t.reply.typed}</p>` : null}
     ${shown.length || opener ? html`<div class="btn-row reply-btns">
       ${shown.map((b, i) => html`<${Btn} key=${b.id} size="xs" variant=${b.verb === 'tab_jump' ? 'ghost' : i === 0 ? 'primary' : 'secondary'}
         busy=${busy} title=${b.label} onClick=${() => answer(b.verb, b.args, b.label)}>${b.label}<//>`)}

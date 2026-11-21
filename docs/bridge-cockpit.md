@@ -1078,7 +1078,8 @@ click starts one item; there is no start of several at once.
 
 **A tab asks.** The card shows the question the tab poll read (`asks.py`) and
 its answers as buttons, the same as everywhere a tab is answered: a dialog's
-options (`tab_option`), yes and no, go on, a field for an answer of your own.
+options (`tab_option`), yes and no, go on, a field for an answer of your own,
+or, when the tab's input line holds an answer ready, only that answer (`tab_accept`).
 With the decision guide on, its steps stand under them. Every answer names
 the question it answers, so nothing reaches a tab that moved on; once sent,
 the card leaves the queue until the tab asks anew. The right column offers no
@@ -3339,14 +3340,30 @@ A tab that waits shows what it asks, read off its screen, so it can be answered 
 - **A tab that waits** with a yes or no question (its last words end with `?`)
   shows Yes and No, which type those words. Every waiting tab offers "Go on"
   (not when its result is filed) and a field to type an answer, behind one click
-  in the sidebar.
+  in the sidebar. The question is the agent's last block of words (from its
+  last `⏺` line), never Claude Code's own lines around it: the turn's status
+  line (`✻ Baked for 3s`), the session recap (`※ recap: ...` with its wrapped
+  lines) and the hints at the right edge (`/clear to save ...`, `Update
+  installed · /restart to apply`).
+- **A tab whose input line holds text** has an answer ready: Claude Code's own
+  grey suggestion for the next prompt, or words typed there; the screen cannot
+  tell the two apart. Its first button is that answer, labelled with its words
+  in quotes (`Send "yes, try the contact again"`, de: `„ja, Kontakt nochmal
+  versuchen“ senden`), and it presses Enter alone (`tab_accept`, with the
+  question's hash and the line's words: nothing goes out once either changed
+  on the screen read fresh). A line says so ("The tab already has an answer
+  ready in its input line"). Nothing that types words is offered beside it (Yes
+  and No as words, "Go on", the field), since the server refuses typed words
+  while the line holds text. Without the driver's key right, or with a line that
+  holds no word (`❯ #`), no button stands there; "Open tab" goes to it.
 - **What a tab asks** is read by the tab poll through the driver's optional verb
   `screen`: only for the tabs that wait or need you, again only when a tab's
   state, last line or since-time changed or its question is a minute old, at
   most four screens and three seconds per poll, the tabs that need you first. A
   poll without such a tab asks the driver nothing. The question goes out with
   the tabs (`tabs.tabs[].ask`: text, options, a hash, whether it reads as yes or
-  no, whether something is typed in the tab) and never rebuilds the briefing.
+  no, whether something is typed in the tab, and that text as the suggested
+  answer) and never rebuilds the briefing.
 - **After an answer** the row stays where it stood for one more poll, greyed,
   with what was answered, or "Moved on" when the tab went on by itself, so a
   click never lands on the row that slid up into its place. The tab's pane on
@@ -3805,7 +3822,10 @@ nothing a stranger could trigger:
   also refused when something is already typed in the tab's prompt, so your
   words never land on half a sentence; that screen read happens for every text
   answer the page sends when the driver serves `screen`, also to a tab with no
-  question read (a filed one). A text answer never goes into a dialog, which
+  question read (a filed one), and for "Go on" from a tab's own controls. The
+  answer a tab holds ready (`tab_accept`) types nothing: it presses Enter only
+  while the question of its hash and the very words of the input line still
+  stand on the fresh screen. A text answer never goes into a dialog, which
   takes only its options (a typed digit would pick one past that check). A
   refusal sends nothing and says so
   ("The tab moved on before the answer, nothing was sent.");

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Verbs on agent tabs through the terminal driver: adopt, press, answer an option, send, jump, close, done and close
+"""Verbs on agent tabs through the terminal driver: adopt, press, answer an option, accept the answer a tab holds ready,
+send, jump, close, done and close
 (what stands behind the tab ends as Done does, then the tab closes), rename a
 tab or a workspace, a new tab, a new workspace and a workspace closed, organize with AI, the control tab, the layout
 snapshot, and a relay question handed to the control tab.
@@ -158,9 +159,27 @@ class TabVerbs:
         tab = self.tab(tab_ref)
         if tab["state"] != "waiting" or m.filed_by(tab, self.app.collector.view) is not None:
             raise self.not_applicable("go on is for waiting tabs without a filed result", "tab_ref")
-        if seen is not None or name is not None:
-            tab, _ = self.guard_fresh(ctx, tab_ref, "waiting", seen, name, True)
+        # always guarded: go on types words, which would land on a draft in the input line (TabControls sends no seen)
+        tab, _ = self.guard_fresh(ctx, tab_ref, "waiting", seen, name, True)
         self.send_to(ctx, tab, self.tx["go_on"])
+
+    def v_tab_accept(self, ctx: Ctx, tab_ref: str, seen: str, text: str, name: str | None = None) -> None:
+        """The answer a waiting tab holds ready in its input line (Claude Code's own suggestion, or words typed
+        there; the screen cannot tell them apart): Enter alone, nothing typed. Only while the question of `seen`
+        and that very line stand on the screen read now (guard_fresh, asks.question_of suggestion)."""
+        tab = self.tab(tab_ref)
+        if tab["state"] != "waiting" or not m.is_live(tab) or tab_ref == self.app.tabs.control_ref():
+            raise self.not_applicable("only a waiting agent tab holds an answer ready", "tab_ref")
+        tab, fresh = self.guard_fresh(ctx, tab_ref, "waiting", seen, name, False)
+        if not fresh or fresh.get("suggestion") != text:
+            raise ActionError(409, "tab_moved", self.tx["tab_moved"], None)
+        said = self.tx["said_accept"].format(text=m.short(text, 60))
+        run = ctx.call("workplace.key", tab_ref, self.app.workplace("key", tab_ref, "enter"), CMUX_TIMEOUT)
+        if run.ok:
+            ctx.note(self.tx["key_sent"].format(name=m.short(tab["name"], 30), said=said), go={"kind": "tab", "ref": tab_ref})
+        else:
+            ctx.note(self.tx["key_failed"].format(err=m.short((run.err or run.out).strip(), 100)), bad=True)
+        ctx.tabs_after(3)
 
     def closable(self, tab_ref: str) -> dict:
         """The tab, when it may close: it neither works nor asks (waiting at its prompt with no question, options or

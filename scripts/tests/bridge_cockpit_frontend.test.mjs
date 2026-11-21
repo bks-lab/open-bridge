@@ -1410,7 +1410,8 @@ test('a slim tab card offers one next step: answer, go on, close, else go to the
   const said = { text: 'Done, the report is filed.', options: [], yes_no: false, draft: false }
   assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: said }, all), ['go_on', 'close'])
   assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: { ...said, yes_no: true } }, all), ['go_on'])
-  assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: { ...said, draft: true } }, all), ['go_on'])
+  // go on types words, refused by the server while the input line holds text: the tab itself is the next step
+  assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: { ...said, draft: true } }, all), ['jump'])
   assert.deepEqual(logic.tabNextStep({ state: 'waiting', ask: { ...said, options: [{ n: 1, label: 'Yes' }] } }, all), ['go_on'])
   assert.deepEqual(logic.tabNextStep({ state: 'waiting', filed_by: 'x' }, all), ['close'])
   assert.deepEqual(logic.tabNextStep({ state: 'working' }, all), ['jump'])
@@ -4297,6 +4298,46 @@ test('replyOptions gives go on and a text box for a summary, go on hidden when f
   // the control session answers through its own box, and a tab at work waits for nothing
   assert.deepEqual(logic.replyOptions({ ...summary, is_control: true }, allCaps, en), { buttons: [], textBox: false })
   assert.deepEqual(logic.replyOptions({ ...summary, state: 'working' }, allCaps, en), { buttons: [], textBox: false })
+})
+
+test('replyOptions leads with the answer a waiting tab holds ready and offers nothing that types text beside it', () => {
+  const en = text.TABLES.en
+  const de = text.TABLES.de
+  const ready = askTab({ state: 'waiting', ask: { text: 'Soll ich es noch einmal versuchen?', hash: ASK_HASH, yes_no: true, draft: true,
+    suggestion: 'ja, Kontakt nochmal versuchen', options: [] } })
+  const r = logic.replyOptions(ready, allCaps, de)
+  assert.deepEqual(verbsOf(r), ['tab_accept'])
+  assert.equal(r.buttons[0].label, '„ja, Kontakt nochmal versuchen“ senden')
+  assert.deepEqual(r.buttons[0].args, { tab_ref: 'surface:7', text: 'ja, Kontakt nochmal versuchen', seen: ASK_HASH, name: 'alpha' })
+  // the server refuses typed words while the input line holds text (tab_draft): no field for them either
+  assert.equal(r.textBox, false)
+  assert.equal(logic.replyOptions(ready, allCaps, en).buttons[0].label, 'Send "ja, Kontakt nochmal versuchen"')
+  // without the key right of the driver: nothing extra, and still nothing that types
+  const noKey = { driver: { caps: ['tabs', 'send', 'focus'] } }
+  assert.deepEqual(logic.replyOptions(ready, noKey, en), { buttons: [], textBox: false })
+  // something typed that offers no answer (`❯ #`): nothing that types, nothing to accept
+  const typed = { ...ready, ask: { ...ready.ask, suggestion: null } }
+  assert.deepEqual(logic.replyOptions(typed, allCaps, en), { buttons: [], textBox: false })
+})
+
+test('replyOptions never offers an answer the server refuses in the state the tab is in', () => {
+  // a draft in the input line: the server refuses tab_send and tab_go_on (actions_tabs.py guard_fresh, tab_draft)
+  const types = b => b.verb === 'tab_send' || b.verb === 'tab_go_on'
+  for (const t of [text.TABLES.en, text.TABLES.de]) {
+    for (const yes_no of [true, false]) {
+      for (const suggestion of ['go on', null]) {
+        const tab = askTab({ state: 'waiting', ask: { text: 'Go on?', hash: ASK_HASH, yes_no, draft: true, suggestion, options: [] } })
+        const r = logic.replyOptions(tab, allCaps, t)
+        assert.ok(!r.buttons.some(types), JSON.stringify(r.buttons))
+        assert.equal(r.textBox, false)
+        // the answer it holds ready is pressed only with the question it was read for
+        assert.ok(r.buttons.every(b => b.verb !== 'tab_accept' || b.args.seen === ASK_HASH))
+      }
+    }
+  }
+  // without the hash of the question there is no accept (the server needs it)
+  const unhashed = askTab({ state: 'waiting', ask: { text: 'Go on?', hash: null, yes_no: true, draft: true, suggestion: 'go on', options: [] } })
+  assert.deepEqual(verbsOf(logic.replyOptions(unhashed, allCaps, text.TABLES.en)), [])
 })
 
 test('replyOptions hides key buttons without the key cap and text replies without send', () => {

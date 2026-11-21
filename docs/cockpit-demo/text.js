@@ -1018,7 +1018,9 @@ const en = {
     answeredWord: 'answered',
     unreadable: 'It waits, its question cannot be read here',
     openTab: 'Open tab',
-    draft: 'Something is typed in that tab',
+    draft: 'The tab already has an answer ready in its input line',
+    typed: 'Something is typed in that tab',
+    accept: s => `Send "${s}"`,
   },
   hints: {
     button: 'Explain',
@@ -2889,7 +2891,9 @@ const de = {
     answeredWord: 'beantwortet',
     unreadable: 'Er wartet, die Frage ist hier nicht lesbar',
     openTab: 'Tab öffnen',
-    draft: 'Im Tab steht ein Entwurf',
+    draft: 'Im Tab steht schon eine vorgeschlagene Antwort bereit',
+    typed: 'Im Tab ist schon etwas eingetippt',
+    accept: s => `„${s}“ senden`,
   },
   hints: {
     button: 'Erklären',
