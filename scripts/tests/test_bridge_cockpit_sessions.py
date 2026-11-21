@@ -381,7 +381,8 @@ def test_a_session_of_another_bridge_is_never_read_a_plain_folder_is(flow, tmp_p
     real = sess.read_tail
     monkeypatch.setattr(sess, "read_tail", lambda path, n: read.append(Path(path)) or real(path, n))
     got = home.poll()
-    assert got[SID]["task"] is None and got[SID_B]["task"] == "demo-task"
+    # the other Bridge's session is not listed at all (round 1 of the four answers), a plain folder's is
+    assert SID not in got and got[SID_B]["task"] == "demo-task"
     assert read and all(SID not in p.name for p in read)                      # the other Bridge's file is never opened
 
 
@@ -428,3 +429,18 @@ def test_with_the_page_off_or_the_switch_off_no_transcript_is_read(tmp_path, mon
         refused(w, "stale_row", "session_unlink", session=SID)
     finally:
         w.close()
+
+
+def test_a_session_of_another_bridge_is_no_session_of_this_one(flow, tmp_path):
+    # round 1 (tabs): a cockpit started with --root on a test Bridge listed the operator's sessions of their real Bridge
+    # and credited one of them with a task of the test Bridge
+    w, home = flow
+    other = tmp_path / "elsewhere-bridge"
+    (other / "work" / "tasks").mkdir(parents=True)
+    (other / "bridge-config.yaml").write_text("{}\n", encoding="utf-8")
+    plain = tmp_path / "some-repo"
+    plain.mkdir()
+    home.session(SID, w.root, said("hello", 5))
+    home.session(SID_B, other, said("task:demo-task", 5), pid=4101, surface=SURF_B)
+    got = home.poll()
+    assert SID in got and SID_B not in got
