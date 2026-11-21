@@ -248,7 +248,8 @@ class LaunchSteps:
             return None
         until = (self.today() + dt.timedelta(days=30)).isoformat()
         self.clear_twins(row["key"])
-        self.app.store.hide(row["key"], until, str(row["title"]))
+        # the filed item stands for the row: no Later, nothing was put off (round 3 of the four answers)
+        self.app.store.hide(row["key"], until, str(row["title"]), filed=new_id)
         # the row is back with "show again", from the toast or the history; the inbox item stays
         ctx.history.append(history_item(row["key"], row["title"], "other", f"filed, hidden until {until}"))
         ctx.settled.append(row["key"])

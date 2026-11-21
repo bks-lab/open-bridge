@@ -2262,7 +2262,7 @@ def settled_record(root: Path, now: dt.datetime) -> dict:
     """What the person decided in the cockpit (work/cockpit/settled/): the keys marked done or not doing and the
     rows put off, with the day they show again. Read for the printed briefing, so a row closed there does not
     come back here. Empty when the record cannot be read: a briefing never fails for it."""
-    empty: dict = {"dismissed": [], "dismissed_on": {}, "hidden": {}, "hidden_done": {}}
+    empty: dict = {"dismissed": [], "dismissed_on": {}, "hidden": {}, "hidden_done": {}, "hidden_filed": []}
     folder = root / "work" / "cockpit" / "settled"
     if not folder.is_dir():
         return empty
@@ -2274,10 +2274,11 @@ def settled_record(root: Path, now: dt.datetime) -> dict:
         store = SettledStore(folder, lambda: 0)
         _keys, hidden, dismissed = store.state(f"{now:%Y-%m-%d}")
         done = store.hidden_done(f"{now:%Y-%m-%d}")
+        filed = store.hidden_filed(f"{now:%Y-%m-%d}")
     except (ImportError, OSError, ValueError):
         return empty
     return {"dismissed": sorted(dismissed), "dismissed_on": {k: v.get("at") or "" for k, v in dismissed.items()},
-            "hidden": hidden, "hidden_done": done}
+            "hidden": hidden, "hidden_done": done, "hidden_filed": sorted(filed)}
 
 
 SETTLE_KEY = re.compile(r"^(?:task:[a-z0-9][a-z0-9._-]{0,119}|ref:[\w.-]+/[\w.-]+#\d+)\Z")
@@ -2365,9 +2366,12 @@ def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | N
             out["done_today"] += 1
     record = settled if isinstance(settled, dict) else {}
     done_on = record.get("hidden_done") or {}
+    filed = set(record.get("hidden_filed") or ())
     for key, until in (record.get("hidden") or {}).items():
         if str(key).startswith("inbox:"):
             continue                            # an inbox item is put off in the inbox, counted above
+        if key in filed:
+            continue                            # filed to the inbox by Do it: its item stands for it, no Later
         if key in done_on:
             # a stream done for this time: out of sight until tomorrow, done the day it was done
             out["done_today"] += str(done_on[key])[:10] == today.isoformat()

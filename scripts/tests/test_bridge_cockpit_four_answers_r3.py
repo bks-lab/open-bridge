@@ -160,3 +160,37 @@ def test_a_tab_whose_item_was_dropped_says_obsolete_not_done(tmp_path):
     event(tmp_path, ITEM, T0 + 2 * MIN, "reopen", "")
     event(tmp_path, ITEM, T0 + 3 * MIN, "close", "done")
     assert ret.tab_settled(tmp_path, {"item": ITEM}) == "item"
+
+
+# ---------------------------------------------------------------- Do it on an issue: no Later
+
+def test_a_row_filed_to_the_inbox_by_do_it_is_not_counted_as_later(tmp_path):
+    # round 3: Do it on a pull request filed an inbox item, hid the row 30 days, and Later went from 1 to 2
+    import datetime as dt
+    from lib.bridge_cockpit.settled import SettledStore
+    folder = tmp_path / "work" / "cockpit" / "settled"
+    folder.mkdir(parents=True)
+    store = SettledStore(folder, lambda: dt.datetime(2026, 11, 21, 9).timestamp() * 1000)
+    store.hide("ref:acme/web#15", "2026-12-21", "Review the export endpoint PR", filed="20261121-0900-review-a1b2")
+    store.hide("ref:acme/web#16", "2026-11-25", "Put off")
+    if "briefing" in sys.modules:
+        br = sys.modules["briefing"]
+    else:
+        spec = importlib.util.spec_from_file_location("briefing", Path(__file__).resolve().parents[1] / "briefing.py")
+        br = importlib.util.module_from_spec(spec)
+        sys.modules["briefing"] = br
+        spec.loader.exec_module(br)
+    now = dt.datetime(2026, 11, 21, 9)
+    rec = br.settled_record(tmp_path, now)
+    assert br.aside_counts(tmp_path, now, 0, rec)["later"] == 1
+
+
+def test_do_it_on_an_issue_records_its_hide_as_filed(w):
+    row = {"key": "ref:acme/web#15", "title": "Review the export endpoint PR", "ref": "acme/web#15", "sources": ["prs"]}
+    w.runner.calls.clear()
+    act = w.app.actions
+    seen = []
+    w.app.store.hide = lambda key, until, title="", done=False, filed=None: seen.append((key, filed))
+    act.inbox_add = lambda ctx, row_key, summary, detail, **kw: "20261121-0900-review-a1b2"
+    act.file_foreign(type("C", (), {"history": [], "settled": [], "note": lambda *a, **k: None})(), row)
+    assert seen == [("ref:acme/web#15", "20261121-0900-review-a1b2")]

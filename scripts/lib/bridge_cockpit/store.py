@@ -326,12 +326,13 @@ class WebStore:
         with self.lock:
             return self._merged()[0]
 
-    def hide(self, key: str, until: str, title: str = "", done: bool = False) -> None:
-        """Hidden until a day; `done` marks a stream done for this time (counted as done today, settled.hidden_done)"""
+    def hide(self, key: str, until: str, title: str = "", done: bool = False, filed: str | None = None) -> None:
+        """Hidden until a day; `done` marks a stream done for this time (counted as done today, settled.hidden_done),
+        `filed` a row filed to that inbox item (counted as no Later, settled.hidden_filed)"""
         with self.lock:
             self._hidden[key] = until
             self._save()
-            self._share(lambda s: s.hide(key, until, title, done=done))
+            self._share(lambda s: s.hide(key, until, title, done=done, filed=filed))
 
     def unhide(self, key: str) -> bool:
         with self.lock:

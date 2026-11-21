@@ -110,8 +110,9 @@ def test_render_reads_the_settled_record(tmp_path):
         yaml.safe_dump({"schema_version": 1, "key": "task:t2", "act": "hide", "until": "2026-10-01"}))
     got = bf.settled_record(root, NOW)
     assert got == {"dismissed": ["ref:acme/app#7"], "dismissed_on": {"ref:acme/app#7": ""}, "hidden": {"task:t1": "2026-10-09"},
-                   "hidden_done": {}}
-    assert bf.settled_record(tmp_path / "none", NOW) == {"dismissed": [], "dismissed_on": {}, "hidden": {}, "hidden_done": {}}
+                   "hidden_done": {}, "hidden_filed": []}
+    assert bf.settled_record(tmp_path / "none", NOW) == {"dismissed": [], "dismissed_on": {}, "hidden": {}, "hidden_done": {},
+                                                          "hidden_filed": []}
 
 
 # ---------------------------------------------------------------- put off, waiting

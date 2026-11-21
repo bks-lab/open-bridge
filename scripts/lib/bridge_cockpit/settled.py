@@ -130,6 +130,12 @@ class SettledStore:
         return {k: str(d.get("day") or "") for k, d in self._decisions().items()
                 if d["act"] == "hide" and d.get("done") is True and d["until"] > today}
 
+    def hidden_filed(self, today: str) -> set:
+        """The hides of rows filed to the inbox (Do it on an issue, a deadline), lasting beyond today: the filed item
+        stands for the row, so they count as no Later (round 3 of the four answers: Later went from 1 to 2)"""
+        return {k for k, d in self._decisions().items()
+                if d["act"] == "hide" and isinstance(d.get("filed"), str) and d["until"] > today}
+
     def acks(self) -> tuple[set, dict]:
         """(the finding keys the record decides, the findings marked seen: row key -> {fp, day, note, inbox})"""
         latest = {k[len(ACK_PREFIX):]: d for k, d in self._decisions().items() if k.startswith(ACK_PREFIX)}
@@ -185,8 +191,11 @@ class SettledStore:
             raise ValueError(f"outcome must be one of {SETTLE_OUTCOMES}")
         self._record(key, "dismiss", outcome=outcome, title=str(title)[:200])
 
-    def hide(self, key: str, until: str, title: str = "", done: bool = False) -> None:
-        self._record(key, "hide", until=until, title=str(title)[:200] or None, done=True if done else None)
+    def hide(self, key: str, until: str, title: str = "", done: bool = False, filed: str | None = None) -> None:
+        """`filed`: the inbox item a row was filed to (Do it on an issue): that item stands for it, so the hide is
+        no Later (hidden_filed)"""
+        self._record(key, "hide", until=until, title=str(title)[:200] or None, done=True if done else None,
+                     filed=str(filed)[:120] if filed else None)
 
     def unsettle(self, key: str) -> None:
         self._record(key, "unsettle")
