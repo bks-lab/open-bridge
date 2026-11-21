@@ -1,0 +1,253 @@
+# SPDX-License-Identifier: MIT
+"""The four answers every point takes, in one place (scripts/lib/answers.py).
+
+Every point answers who is on the move and when. The cockpit's cards, every view, every page that shows a
+point and the printed briefing offer the same four answers in the same order: Do it (the Bridge takes the
+next step), Later (a day, or the watch list), Done, Obsolete (closed as not done). The briefing's answer
+words ("3 do", "3 später montag") and the old words (ja, los, nachfassen, parken, streichen ...) are parsed
+here, and what an answer does to a row of each kind is a table here, so the cockpit never derives it again.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import importlib.util
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.dont_write_bytecode = True
+
+
+def _load(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+ans = _load("answers", ROOT / "scripts" / "lib" / "answers.py")
+
+FRIDAY = dt.date(2026, 11, 20)       # a Friday
+
+
+# ---------------------------------------------------------------- the set
+
+def test_exactly_four_answers_in_a_fixed_order_do_first():
+    assert ans.ANSWERS == ("do", "later", "done", "obsolete")
+    assert ans.PRIMARY == "do"
+    assert ans.LATER_CHOICES == ("tomorrow", "monday", "week", "pick", "list")
+    assert ans.MORE == ("owner", "tab", "fields", "ask")
+
+
+def test_the_words_of_each_answer_in_english_and_german():
+    de = {a["id"]: a for a in ans.answer_defs("de")}
+    en = {a["id"]: a for a in ans.answer_defs("en")}
+    assert [de[i]["label"] for i in ans.ANSWERS] == ["Mach das", "Später", "Erledigt", "Veraltet"]
+    assert [en[i]["label"] for i in ans.ANSWERS] == ["Do it", "Later", "Done", "Obsolete"]
+    assert [de[i]["say"] for i in ans.ANSWERS] == ["mach", "später", "erledigt", "veraltet"]
+    assert [en[i]["say"] for i in ans.ANSWERS] == ["do", "later", "done", "obsolete"]
+    assert de["do"]["primary"] is True and not any(de[i]["primary"] for i in ("later", "done", "obsolete"))
+    # Obsolete is quiet and asks before it acts, in place
+    assert de["obsolete"]["confirm"] is True and de["obsolete"]["quiet"] is True
+    assert [c["label"] for c in ans.later_defs("de")] == ["morgen", "Montag", "in einer Woche", "Tag wählen", "Merkliste"]
+    assert [c["label"] for c in ans.more_defs("de")] == ["Liegt bei …", "Zum Tab", "Felder", "Fragen"]
+    assert ans.words("de")["done_stream"] == "für diesmal erledigt"
+    assert ans.words("fr") == ans.words("en")         # an unknown language speaks English
+
+
+def test_the_words_carry_no_dash():
+    for lang in ("en", "de"):
+        for text in ans.words(lang).values():
+            assert "—" not in text and "–" not in text and "--" not in text
+
+
+# ---------------------------------------------------------------- the day of a Later
+
+def test_a_later_choice_is_a_day():
+    assert ans.later_until("tomorrow", FRIDAY) == "2026-11-21"
+    assert ans.later_until("monday", FRIDAY) == "2026-11-23"
+    assert ans.later_until("monday", dt.date(2026, 11, 23)) == "2026-11-30"   # on a Monday: the next one
+    assert ans.later_until("week", FRIDAY) == "2026-11-27"
+    assert ans.later_until("pick", FRIDAY, "2026-12-03") == "2026-12-03"
+    assert ans.later_until("list", FRIDAY) == ans.LIST_DAY
+    assert ans.later_until(None, FRIDAY) == "2026-11-21"                      # no choice: tomorrow
+
+
+def test_a_picked_day_in_the_past_or_unreadable_is_refused():
+    for bad in ("2026-11-19", "2026-11-20", "soon", None):
+        try:
+            ans.later_until("pick", FRIDAY, bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"{bad!r} was taken")
+
+
+def test_the_watch_list_is_a_day_nobody_reaches():
+    assert ans.is_list_day(ans.LIST_DAY) and ans.is_list_day("9999-12-31")
+    assert not ans.is_list_day("2026-12-01") and not ans.is_list_day(None)
+
+
+# ---------------------------------------------------------------- the answer words
+
+def one(text, today=FRIDAY):
+    got = ans.parse(text, today)
+    assert len(got) == 1, got
+    return got[0]
+
+
+def test_the_four_words_in_both_languages_answer_a_numbered_row():
+    for text, want in (("3 mach", "do"), ("3 do", "do"), ("3 Mach das", "do"), ("3 do it", "do"),
+                       ("3 später", "later"), ("3 later", "later"), ("3 erledigt", "done"), ("3 done", "done"),
+                       ("3 veraltet", "obsolete"), ("3 obsolete", "obsolete")):
+        got = one(text)
+        assert (got["nr"], got["answer"]) == (3, want), text
+
+
+def test_a_later_may_carry_its_day():
+    got = one("3 später montag")
+    assert got["answer"] == "later" and got["choice"] == "monday" and got["until"] == "2026-11-23"
+    assert one("3 later tomorrow")["until"] == "2026-11-21"
+    assert one("4 später in einer Woche")["until"] == "2026-11-27"
+    assert one("4 later in a week")["until"] == "2026-11-27"
+    assert one("5 später 3.12.")["until"] == "2026-12-03"
+    assert one("5 later 2026-12-03")["until"] == "2026-12-03"
+    assert one("6 später merkliste")["until"] == ans.LIST_DAY
+    assert one("6 later list")["choice"] == "list"
+    plain = one("7 später")
+    assert plain["choice"] == "tomorrow" and plain["until"] == "2026-11-21"
+
+
+def test_several_answers_in_one_line():
+    got = ans.parse("1 mach, 3 später montag 5 veraltet; 6 erledigt", FRIDAY)
+    assert [(g["nr"], g["answer"]) for g in got] == [(1, "do"), (3, "later"), (5, "obsolete"), (6, "done")]
+    assert got[1]["until"] == "2026-11-23"
+
+
+def test_the_old_words_are_aliases_of_the_four():
+    cases = {"ja": ("do", None), "yes": ("do", None), "los": ("do", None), "go": ("do", None),
+             "nachfassen": ("do", None), "nudge": ("do", None),
+             "einplanen": ("later", "pick"), "schedule": ("later", "pick"),
+             "nicht jetzt": ("later", "tomorrow"), "not now": ("later", "tomorrow"),
+             "warten": ("later", "tomorrow"), "wait": ("later", "tomorrow"),
+             "parken": ("later", "list"), "park": ("later", "list"),
+             "behalten": ("later", "tomorrow"), "keep": ("later", "tomorrow"),
+             "streichen": ("obsolete", None), "drop": ("obsolete", None)}
+    for word, (answer, choice) in cases.items():
+        got = one(f"2 {word}")
+        assert got["answer"] == answer, word
+        if answer == "later" and choice != "pick":
+            assert got["choice"] == choice, word
+        assert got["alias"] is True, word
+    assert one("2 mach")["alias"] is False
+
+
+def test_einplanen_with_a_day_puts_it_on_that_day():
+    got = one("2 einplanen montag")
+    assert got["answer"] == "later" and got["until"] == "2026-11-23"
+
+
+def test_a_letter_picks_the_answer_in_the_fixed_order():
+    got = ans.parse("1a 3b 4c 5d", FRIDAY)
+    assert [(g["nr"], g["answer"]) for g in got] == [(1, "do"), (3, "later"), (4, "done"), (5, "obsolete")]
+
+
+def test_what_is_no_answer_is_left_out_and_said():
+    assert ans.parse("hello there", FRIDAY) == []
+    assert ans.parse("3 frobnicate", FRIDAY) == [{"nr": 3, "answer": None, "word": "frobnicate", "choice": None,
+                                                    "until": None, "alias": False}]
+
+
+# ---------------------------------------------------------------- what an answer does to a row
+
+def test_the_kind_of_a_row():
+    assert ans.row_kind({"tab": "t1"}) == "tab"
+    assert ans.row_kind({"inbox_id": "i1"}) == "inbox"
+    assert ans.row_kind({"inbox_id": "i1", "bucket": "waiting"}) == "waiting"
+    assert ans.row_kind({"task": "a"}) == "task"
+    assert ans.row_kind({"task": "a", "stream": True}) == "stream"
+    assert ans.row_kind({"task": "a", "bucket": "waiting"}) == "waiting"
+    assert ans.row_kind({"ref": "o/r#1"}) == "issue"
+    assert ans.row_kind({"title": "x"}) == "other"
+
+
+def test_do_it_on_a_task_starts_an_agent_and_moves_it_to_i_do():
+    e = ans.effect("do", {"task": "a", "step": "draft it"})
+    assert e["cockpit"]["verb"] == "do_it" and e["then"] == "delegate" and e["running"] is True
+
+
+def test_do_it_on_an_inbox_item_is_its_yes_and_the_run():
+    e = ans.effect("do", {"inbox_id": "i1"})
+    assert e["cockpit"] == {"verb": "do_it", "args": {"yes": True}}
+    assert e["cli"] == ["inbox.py approve i1", "inbox.py run"] and e["then"] == "delegate"
+
+
+def test_do_it_on_a_waiting_point_writes_a_nudge_as_a_draft_never_sent():
+    e = ans.effect("do", {"task": "a", "bucket": "waiting", "who": "Ada"})
+    assert e["cockpit"]["verb"] == "nudge" and e["draft_only"] is True and e["then"] == "do"
+
+
+def test_a_tab_that_asks_answers_with_its_own_words():
+    e = ans.effect("do", {"tab": "t1"})
+    assert e["cockpit"]["verb"] == "tab_answer" and e["own_answers"] is True
+
+
+def test_later_puts_off_to_a_day_or_onto_the_watch_list():
+    assert ans.effect("later", {"inbox_id": "i1"}, until="2026-11-23")["cli"] == ["inbox.py defer i1 --until 2026-11-23"]
+    task = ans.effect("later", {"task": "a"}, until="2026-11-23")
+    assert task["cockpit"] == {"verb": "later", "args": {"until": "2026-11-23"}} and task["then"] == "later"
+    park = ans.effect("later", {"task": "a"}, until=ans.LIST_DAY)
+    assert park["cockpit"]["verb"] == "task_park" and park["then"] == "list"
+    assert park["cli"][0].startswith("task.py status a backlog")
+    shelf = ans.effect("later", {"inbox_id": "i1"}, until=ans.LIST_DAY)
+    assert shelf["cli"] == [f"inbox.py defer i1 --until {ans.LIST_DAY}"] and shelf["then"] == "list"
+    issue = ans.effect("later", {"ref": "o/r#1"}, until=ans.LIST_DAY)
+    assert issue["cockpit"] == {"verb": "hide", "args": {"until": ans.LIST_DAY}} and issue["then"] == "list"
+
+
+def test_later_on_a_waiting_point_keeps_it_with_the_same_person():
+    e = ans.effect("later", {"task": "a", "bucket": "waiting", "who": "Ada"}, until="2026-11-23")
+    assert e["cockpit"] == {"verb": "runs_on", "args": {"until": "2026-11-23", "on": "Ada"}}
+    assert e["cli"] == ["task.py wait a --until 2026-11-23"] and e["then"] == "waiting"
+    i = ans.effect("later", {"inbox_id": "i1", "bucket": "waiting", "who": "Ada"}, until="2026-11-23")
+    assert i["cli"] == ["inbox.py defer i1 --until 2026-11-23 --on Ada"]
+
+
+def test_done_closes_and_a_stream_is_done_for_now():
+    assert ans.effect("done", {"inbox_id": "i1"})["cli"][0].startswith("inbox.py close i1")
+    assert ans.effect("done", {"task": "a"})["cockpit"] == {"verb": "settle", "args": {"outcome": "done"}}
+    s = ans.effect("done", {"task": "a", "stream": True})
+    assert s["cockpit"]["verb"] == "note" and s["stream_continues"] is True
+    issue = ans.effect("done", {"ref": "o/r#1"})
+    assert issue["cockpit"] == {"verb": "settle", "args": {"outcome": "done"}} and issue["github"] == "untouched"
+
+
+def test_obsolete_closes_as_not_done_with_a_note():
+    i = ans.effect("obsolete", {"inbox_id": "i1"})
+    assert i["cli"] == ['inbox.py drop i1 --note "veraltet" --reason outdated']
+    assert i["cockpit"] == {"verb": "settle", "args": {"outcome": "not_doing", "reason": "outdated"}}
+    t = ans.effect("obsolete", {"task": "a"})
+    assert t["cli"] == ['task.py close a --declined --reason "Wird nicht gemacht: veraltet"']
+    s = ans.effect("obsolete", {"task": "a", "stream": True})
+    assert s["cli"] == ['task.py close a --stream --declined --reason "Wird nicht gemacht: veraltet"']
+    assert s["cockpit"]["args"] == {"outcome": "not_doing", "stream": True}
+    issue = ans.effect("obsolete", {"ref": "o/r#1"})
+    assert issue["github"] == "untouched" and issue["cli"] == []
+
+
+def test_every_answer_has_an_effect_on_every_kind():
+    rows = {"tab": {"tab": "t"}, "inbox": {"inbox_id": "i"}, "task": {"task": "a"}, "stream": {"task": "a", "stream": True},
+            "waiting": {"task": "a", "bucket": "waiting"}, "issue": {"ref": "o/r#1"}, "other": {"title": "x"}}
+    for kind, row in rows.items():
+        for a in ans.ANSWERS:
+            e = ans.effect(a, row, until="2026-11-23")
+            assert e["answer"] == a and e["kind"] == kind and e["cockpit"]["verb"], (a, kind)
+
+
+def test_an_unknown_answer_is_refused():
+    try:
+        ans.effect("park", {"task": "a"})
+    except ValueError:
+        return
+    raise AssertionError("park was taken as an answer")
