@@ -188,8 +188,9 @@ test('the page by buckets: an empty bucket offers the next one that holds a poin
   const s = state({ work: [task('quiet', { status: 'review', bucket: 'drop' })], ui: { flowBucket: 'do' } })
   const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
   await rounds()
-  // the bucket picked holds nothing: the first one that holds a point is open
-  assert.equal(el.$('.fb-head-title').text(), 'Parken oder streichen')
+  // the bucket picked holds nothing: it stays open with its empty state, a button leads to the next one that holds one
+  assert.equal(el.$('.fb-head-title').text(), 'Tun (du, heute)')
+  assert.ok(el.$$('.fb-empty button').some(b => /Parken oder streichen/.test(b.text())))
   assert.doesNotMatch(el.text(), /\b(enter|esc|shortcut|taste)\b/i)
 })
 
@@ -206,4 +207,77 @@ test('bucketWords: the taskboard columns and Jev\'s squares say the buckets\' na
   assert.deepEqual(on.columns, { me: 'Tun (du, heute)', bridge: 'Mache ich', waiting: 'Wartet auf andere' })
   assert.deepEqual(on.quadrant, { now: 'Tun (du, heute)', plan: 'Planen', hand: 'Mache ich', drop: 'Parken oder streichen' })
   assert.deepEqual(logic.bucketWords(state({ on: false }), 'de'), { columns: {}, quadrant: {} })
+})
+
+// ---------------------------------------------------------------- round 1 of the simulation
+
+test('a point opened from any list lands on its own card in its own bucket, never on the first card', () => {
+  const first = ask('20261009-0900-q1', { brief_nr: 1 })
+  const quiet = task('resting-one', { bucket: 'drop', brief_nr: 12 })
+  const s = state({ now: [first], work: [task('a'), quiet] })
+  const patch = logic.pointOpen(s, quiet.key)
+  assert.equal(patch.flowBucket, 'drop')
+  assert.deepEqual(patch.flowBucketAt, { id: quiet.key, i: 0 })
+  const el = mount(html`<${FlowPage} s=${{ ...s, ui: { ...s.ui, ...patch } }} c=${recorder()} />`)
+  assert.equal(el.$('.fb-title').text(), quiet.title)
+  // a row no bucket holds (a closed task, another area's) still opens as a point of its own
+  assert.equal(logic.pointOpen(s, 'task:gone-long-ago').flowView, 'solo')
+})
+
+test('an empty bucket picked stays open with its empty state and the way on, it never jumps to the first bucket', () => {
+  const s = state({ now: [ask('20261009-0900-q1')], work: [task('p')], ui: { flowBucket: 'waiting', flowView: 'buckets' } })
+  const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
+  assert.equal(el.$('.fb-bucket.is-open').getAttribute('data-bucket'), 'waiting')
+  assert.ok(el.$('.fb-empty'), 'the empty state of the bucket picked')
+  assert.match(el.$('.fb-empty').text(), /Tun \(du, heute\)/)
+})
+
+test('a point put off until a later day stands in no bucket until then, however it was put off', () => {
+  const s = state({ now: [ask('20261009-0900-q1'), ask('20261009-0901-off', { inbox_state: 'deferred', until: TOMORROW, bucket: 'plan', brief_nr: 4 }),
+    ask('20261009-0902-back', { inbox_state: 'deferred', until: '2026-10-09', bucket: 'plan' })], work: [task('a')] })
+  // Later on a task hides it here until the day (hide_until): it moves on, its bucket counts one less
+  s.model.hidden = [task('put-off', { bucket: 'do', hidden_until: TOMORROW, section: 'work' })]
+  const { all } = logic.bucketPoints(s, 'de')
+  const ids = all.map(x => x.id)
+  assert.ok(!ids.includes('task:put-off'), 'a task hidden until tomorrow')
+  assert.ok(!ids.includes('inbox:20261009-0901-off'), 'an item put off until tomorrow, by inbox.py or here alike')
+  assert.ok(ids.includes('inbox:20261009-0902-back'), 'an item whose day came is a point again')
+  assert.ok(ids.includes('task:a') && ids.includes('inbox:20261009-0900-q1'))
+})
+
+test('an answer moves on to the next point, also where the point answered stays in its bucket', async () => {
+  const calls = []
+  const c = new Proxy({}, { get: (_, p) => (p === 'then' || typeof p === 'symbol' ? undefined
+    : (...a) => { calls.push([p, ...a]); return p === 'act' ? Promise.resolve({ ok: true }) : undefined }) })
+  const one = task('w1', { bucket: 'waiting', blocked_by: 'Robin' })
+  const two = task('w2', { bucket: 'waiting', blocked_by: 'Mika' })
+  const s = state({ work: [one, two], ui: { flowBucket: 'waiting', flowView: 'buckets' } })
+  const el = mount(html`<${FlowPage} s=${s} c=${c} />`)
+  await rounds()
+  assert.equal(el.$('.fb-title').text(), one.title)
+  el.$$('.fb-answers button').find(b => b.text() === 'Warten').click()
+  await rounds()
+  el.$$('.fb-pick button')[0].click()
+  await rounds()
+  assert.equal(calls.find(x => x[0] === 'act')[1], 'runs_on')
+  assert.deepEqual(calls.find(x => x[0] === 'flowBucketGo'), ['flowBucketGo', two.key, 0])
+})
+
+test('a blocked task or stream the briefing does not list waits on others, wherever the model keeps its blocker', () => {
+  // the model's own rows of resting tasks carry the blocker only on the card (model.py with_tasks, card.state)
+  const blocked = task('fabrikam-backup', { bucket: 'resting', card: { state: { blocked_by: 'waiting for Robin' } } })
+  assert.equal(logic.rowBucket(blocked), 'waiting')
+  const stream = task('rota', { bucket: 'resting', stream: true, card: { state: { blocked_by: 'waiting for Kai' } } })
+  assert.equal(logic.rowBucket(stream), 'waiting')
+  assert.equal(logic.rowBucket(task('quiet', { bucket: 'resting' })), 'drop')
+})
+
+test('a nudge on a blocked task names what it waits on, and Wait keeps that blocker', () => {
+  const s = state()
+  const t = task('logbook', { bucket: 'waiting', blocked_by: 'waiting for Robin to reply' })
+  const [nudge, wait] = logic.bucketAnswers(row(t), 'waiting', s, 'de')
+  assert.match(nudge.run.args.note, /waiting for Robin to reply/)
+  assert.doesNotMatch(nudge.run.args.note, /andere Seite|jemandem/)
+  // no "on": task.py wait keeps the blocker the task has
+  assert.deepEqual(wait.run.then('2026-10-16'), { verb: 'runs_on', args: { keys: [t.key], until: '2026-10-16' } })
 })

@@ -1508,8 +1508,8 @@ const ctl = {
   flowChip: chip => setUi({ flowChip: chip, flowAt: null }),
   flowDecided: () => setUi(ui => ({ flowDecided: (ui.flowDecided ?? 0) + 1 })),
   // the briefing's buckets: a bucket opened (its first point in front), a point of it brought to the front
-  flowBucket: id => setUi({ flowBucket: id ?? null, flowBucketAt: null }),
-  flowBucketGo: (id, i) => setUi({ flowBucketAt: { id, i } }),
+  flowBucket: id => setUi({ flowBucket: id ?? null, flowBucketAt: null, flowView: 'buckets', flowSolo: null }),
+  flowBucketGo: (id, i) => setUi({ flowBucketAt: { id, i }, flowView: 'buckets', flowSolo: null }),
   // the read marks (cockpit.flow.seen): points read, quietly (an open, Read, Mark all read), at once in the page and
   // then on the server in calls of at most 50 keys; a refusal leaves them unread, as the next state says
   flowSeen: async keys => {

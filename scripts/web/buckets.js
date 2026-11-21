@@ -48,7 +48,8 @@ export function rowBucket(row) {
   if (BUCKET_IDS.includes(row?.bucket)) return row.bucket
   // a backlog task no bucket of the briefing holds is parked already (the briefing's Merkliste shows it in none)
   if (row?.status === 'backlog') return null
-  if (row?.blocked_by) return 'waiting'
+  // the model's own rows of resting tasks keep the blocker on the card (model.py with_tasks)
+  if (row?.blocked_by || row?.card?.state?.blocked_by) return 'waiting'
   if (row?.bucket === 'resting') return 'drop'
   const who = String(row?.card?.next?.who ?? '').toLowerCase()
   if (who === 'bridge' || who === 'bridge_then_me') return 'delegate'
@@ -83,8 +84,12 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
     if (x.kind === 'reports') for (const r of x.rows) push({ group: 'reports', id: r.key, kind: 'row', row: r })
     else push(x)
   }
+  // a row put off until a later day (hidden here, deferred by inbox.py or here, ahead of its lead time, with someone
+  // until a check-in day) is no point until that day, however it was put off: an answer that puts it off moves on
+  const today = isoDate(s?.now || Date.now())
+  const off = e => !!e?.until && String(e.until).slice(0, 10) > today
   for (const g of parts?.leftOut?.groups ?? []) {
-    for (const e of g.rows ?? []) if (e?.row?.key) push({ group: 'left', left: g.reason, id: e.row.key, kind: 'row', row: e.row, entry: e })
+    for (const e of g.rows ?? []) if (e?.row?.key && !off(e)) push({ group: 'left', left: g.reason, id: e.row.key, kind: 'row', row: e.row, entry: e })
   }
   const order = new Map(all.map((x, i) => [x.id, i]))
   const nr = x => (Number.isInteger(x.row?.brief_nr) ? x.row.brief_nr : Infinity)
@@ -99,10 +104,10 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
   return { buckets, all }
 }
 
-/** The bucket open: the one picked (ui.flowBucket) while it holds a point, else the first one that holds one, else
- *  the first */
+/** The bucket open: the one picked (ui.flowBucket), also while it is empty (its empty state offers the next bucket
+ *  that holds a point), else the first one that holds one, else the first */
 export function openBucket(buckets, picked) {
-  return buckets.find(b => b.id === picked && b.points.length) ?? buckets.find(b => b.points.length) ?? buckets[0] ?? null
+  return buckets.find(b => b.id === picked) ?? buckets.find(b => b.points.length) ?? buckets[0] ?? null
 }
 
 /** The question of a tab's screen: the last sentence that asks (it ends with a "?"), with the sentence before it
@@ -161,10 +166,18 @@ const upFirst = w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w)
 const isTask = row => !!row?.task && !row.inbox_id && row.key === `task:${row.task}`
 const isStream = row => !row?.inbox_id && !!(row?.stream || row?.work_kind === 'stream')
 
-/** Who a waiting point waits on, for a nudge: the check-in's, the task's step's, the row's */
-function waitsOn(x, f) {
-  return x?.checkin?.who ?? x?.row?.checkin?.who ?? x?.row?.card?.next?.who ?? x?.row?.who ?? f.someone
+/** Who a waiting point waits on, for a nudge: the check-in's, else the task's step's or the row's while nothing
+ *  blocks it (a blocker is a sentence, never a name: blockerOf), else nobody named (null) */
+function waitsOn(x) {
+  const named = x?.checkin?.who ?? x?.row?.checkin?.who
+  if (named) return named
+  if (blockerOf(x?.row)) return null
+  const who = x?.row?.card?.next?.who ?? x?.row?.who
+  return who && !['me', 'you', 'self', 'bridge', 'bridge_then_me'].includes(String(who).toLowerCase()) ? who : null
 }
+
+/** What a blocked row waits on, as its task says it (blocked_by, kept on the card for the model's own rows) */
+const blockerOf = row => row?.blocked_by || row?.card?.state?.blocked_by || null
 
 /** The answers of a point in its bucket, the first the strong one: each {id, meaning, label, run}, `run` what it
  *  sends: {kind: 'reply', verb, args} a tab's own answer (c.reply), {kind: 'act', verb, args} a verb of the server
@@ -202,9 +215,13 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
   if (bucket === 'delegate') add('go', doIt)
   if (bucket === 'plan') add('schedule', key ? { kind: 'pick', then: day => ({ verb: 'later', args: { key, until: day } }) } : null)
   if (bucket === 'waiting') {
-    const who = waitsOn(x, f)
-    add('nudge', key && row.inbox_state !== 'approved' ? act(flowAction('do', row, t.flow.simple.chase(who, pointName(row)))) : null)
-    add('wait', key ? { kind: 'pick', then: day => ({ verb: 'runs_on', args: { keys: [key], until: day, ...(who !== f.someone ? { on: String(who) } : {}) } }) } : null)
+    const who = waitsOn(x)
+    const blocker = blockerOf(row)
+    const ask = who ? t.flow.simple.chase(who, pointName(row ?? {})) : blocker ? t.flow.simple.chaseBlocked(short(blocker, 120), pointName(row ?? {}))
+      : t.flow.simple.chase(f.someone, pointName(row ?? {}))
+    add('nudge', key && row.inbox_state !== 'approved' ? act(flowAction('do', row, ask)) : null)
+    // a named person goes with the wait; without one task.py wait keeps the blocker the task has
+    add('wait', key ? { kind: 'pick', then: day => ({ verb: 'runs_on', args: { keys: [key], until: day, ...(who ? { on: String(who) } : {}) } }) } : null)
   }
   // on a tab, later and drop act only on the inbox item it asks about: on a task or a stream behind it they would put
   // off the whole task, not the question

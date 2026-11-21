@@ -96,7 +96,10 @@ function intoView(el) {
  *  never the calm card's All decided over an empty queue (round 6 B) */
 export function FlowPage({ s, c }) {
   // the briefing's buckets (cockpit.flow.buckets, views/flowbuckets.js) in place of the overview and the right column
-  if (s.model) return flowBucketsOn(s) ? html`<${BucketBody} s=${s} c=${c} />` : html`<${FlowBody} s=${s} c=${c} />`
+  // a way that opened a point no bucket holds (a closed task, another area's row, an entry of Running now, a finished
+  // run) shows it as Work through always did, until a bucket is picked again (app.js flowBucket)
+  const own = ['solo', 'run', 'read'].includes(s.ui?.flowView)
+  if (s.model) return flowBucketsOn(s) && !own ? html`<${BucketBody} s=${s} c=${c} />` : html`<${FlowBody} s=${s} c=${c} />`
   return html`<div class="col col-page flow"><header class="page-head flow-head"><${WorkSwitch} s=${s} c=${c} /></header><${NoModel} s=${s} cls="flow-nostate" /></div>`
 }
 

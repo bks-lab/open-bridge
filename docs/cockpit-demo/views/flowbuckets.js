@@ -149,14 +149,14 @@ export function BucketBar({ x, s, c, size = 'xs', bucket = null, chip = true }) 
 }
 
 /** One point as a card: its marks, its title, Next, the bucket's answers, its number in the briefing, More */
-export function BucketCard({ x, bucket, s, c }) {
+export function BucketCard({ x, bucket, s, c, onDone = null }) {
   const lang = language()
   const t = T()
   const f = t.flow.buckets
   useItemDetail(x, s, c)
   const row = x.row ?? null
   const tab = x.tab ?? null
-  const { answers, run, pick, setPick, confirm, setConfirm, note, busy } = useBucketAnswer(x, bucket, s, c, () => c.flowDecided?.())
+  const { answers, run, pick, setPick, confirm, setConfirm, note, busy } = useBucketAnswer(x, bucket, s, c, () => { c.flowDecided?.(); onDone?.() })
   const marks = [pointKindWord(x, lang), pointArea(x), row?.due ? f.due(formatDay(String(row.due).slice(0, 10), lang)) : null,
     row?.gate === 'only-you' ? f.onlyYou : null, bucket === 'waiting' && (x.checkin?.who ?? row?.checkin?.who) ? f.with(x.checkin?.who ?? row.checkin.who) : null]
     .filter(Boolean)
@@ -198,6 +198,9 @@ export function BucketBody({ s, c }) {
   const i = focusIndex(points, s.ui?.flowBucketAt)
   const x = points[i] ?? null
   const onwards = open ? buckets.find(b => b.id !== open.id && b.points.length) ?? null : null
+  // an answer moves on to the next point, also where the point stays in its bucket (Wait on a task that waits, a
+  // tab's own answer): the next one is held by its id, at the place the answered one leaves free
+  const onwardsAfter = () => c.flowBucketGo(points[i + 1]?.id ?? null, i)
   // what each answer of the open bucket does, and the fixed last one every point has
   const legend = open ? [f.legend[open.id]?.(...open.options.map(o => o.charAt(0).toUpperCase() + o.slice(1))), f.obsoleteLegend(f.obsolete)]
     .filter(Boolean).join(' ') : ''
@@ -228,7 +231,7 @@ export function BucketBody({ s, c }) {
           <h2 class="fb-head-title">${open.title}</h2><span class="fb-head-sub muted">${f.sub[open.id]}</span>
           ${legend ? html`<p class="fb-legend muted small">${legend}</p>` : null}
         </header>` : null}
-        ${x ? html`<${BucketCard} key=${x.id} x=${x} bucket=${open.id} s=${s} c=${c} />`
+        ${x ? html`<${BucketCard} key=${x.id} x=${x} bucket=${open.id} s=${s} c=${c} onDone=${onwardsAfter} />`
           : html`<div class="fb-empty"><p>${all.length ? f.cleared : f.empty}</p>
             ${onwards ? html`<${Btn} size="sm" variant="primary" onClick=${() => c.flowBucket(onwards.id)}>${f.onwards(onwards.title)}<//>`
               : html`<p class="muted">${f.allDone}</p>`}</div>`}
