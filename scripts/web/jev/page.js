@@ -24,7 +24,6 @@ import { flowBucketsOn, indexRows, itemRow, rowPoint, triageKey } from '../logic
 import { KindTag, OriginTag } from '../views/day.js'
 import { BucketBar } from '../views/flowbuckets.js'
 import { T as dashText, language } from '../text.js'
-import { bucketWords } from '../buckets.js'
 
 export { pendingTitles, place }
 export const JEV_PAGE = '@jev'
@@ -216,7 +215,6 @@ function Matrix({ items, first, spots, labels, emph, onDot }) {
     ${QUADS.map(q => html`<g key=${q.id} data-quad=${q.id}>
       <rect class=${`jev-quad jev-quad-${q.id}`} x=${q.x + 3} y=${q.y + 3} width=${q.w - 6} height=${q.h - 6} rx="14" />
       <rect class=${`jev-quad jev-quad-${q.id}`} data-qflash=${q.id} x=${q.x + 3} y=${q.y + 3} width=${q.w - 6} height=${q.h - 6} rx="14" opacity="0" /></g>`)}
-    ${QUADS.map(q => html`<text key=${'q' + q.id} data-qlabel=${q.id} class=${`jev-qlabel jev-qlabel-${q.id}`} x=${q.ax} y=${q.ay} text-anchor=${q.anchor}></text>`)}
     <line data-axis="x" class="jev-axis" x1=${X0} y1=${Y0} x2=${X1} y2=${Y0} pathLength="1" stroke-dasharray="1" stroke-dashoffset="0" />
     <line data-axis="y" class="jev-axis" x1=${X0} y1=${Y0} x2=${X0} y2=${Y1} pathLength="1" stroke-dasharray="1" stroke-dashoffset="0" />
     <text class="jev-axis-label" x=${X1} y=${Y0 + 30} text-anchor="end">${t.urgency}</text>
@@ -243,6 +241,9 @@ function Matrix({ items, first, spots, labels, emph, onDot }) {
       </g>`
     })}
     ${fs ? html`<g data-k="crown" transform=${`translate(${fs.x.toFixed(1)} ${(fs.y - fs.r - 14).toFixed(1)})`}><path class="jev-crown" d="M-11 4 L-11 -6 L-5 -1 L0 -9 L5 -1 L11 -6 L11 4 Z" /></g>` : null}
+    ${/* the square words over the dots, with a halo of the page behind them: dots on the edge never cover them (round
+         2 of the four answers: PLANEN read ANEN) */ ''}
+    ${QUADS.map(q => html`<text key=${'q' + q.id} data-qlabel=${q.id} class=${`jev-qlabel jev-qlabel-${q.id}`} x=${q.ax} y=${q.ay} text-anchor=${q.anchor}></text>`)}
     <${Core} hidden />
   </g>`
 }
@@ -345,7 +346,9 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
   const byKey = indexRows(s.model)
   const plan = st.data?.plan
   const { items, first } = liveItems(plan, s.model, extra)
-  const words = matrixWords(bucketWords(s, language()), t)
+  // Jev's own words: its squares are urgency and impact and its colours who could do it, not the buckets, so it never
+  // names a point's bucket against the chip of its card (round 2 of the four answers)
+  const words = matrixWords(null, t)
   // the resting picture: dots pushed apart, labels placed clear of dots, crown and quadrant words (logic.js)
   const layKey = `${first?.key ?? ''}|${Object.values(words.quads).join('/')}|${items.map(it => `${it.key}:${it.urgency}:${it.impact}:${it.priority}:${it.rank}:${it.title}`).join('|')}`
   const lay = useMemo(() => layoutMatrix(items, { first, avoid: quadWordRects(words.quads) }), [layKey])
@@ -568,7 +571,9 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
       list.querySelectorAll('[data-row]').forEach(el => {
         const i = +el.dataset.row
         const key = el.dataset.key
-        const k = intro ? spring(Ti, 2.0 + i * 0.11, { w: 8, zeta: 0.95 }) : 1
+        // the rows run in at once where the waiting list stood, never after a second of an empty plan (round 2 of the
+        // four answers: on a first visit the plan stood empty for about 1.2 s between the two lists)
+        const k = intro ? spring(Ti, 0.15 + i * 0.06, { w: 8, zeta: 0.95 }) : 1
         const f = m.flip.get(key)
         const dy = f ? trackAt(f, now, { w: 11, zeta: 0.95 }) : 0
         busy = busy || tracking(f)
@@ -577,7 +582,7 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
         const it = items[i]
         // the rank badge pops in after its row, the confidence counts up with the bar
         const badge = el.querySelector('[data-rank]')
-        if (badge) badge.style.transform = `scale(${(intro && !calm ? spring(Ti, 2.1 + i * 0.11, { w: 12, zeta: 0.55 }) : 1).toFixed(3)})`
+        if (badge) badge.style.transform = `scale(${(intro && !calm ? spring(Ti, 0.25 + i * 0.06, { w: 12, zeta: 0.55 }) : 1).toFixed(3)})`
         const pct = el.querySelector('[data-pct]')
         if (pct) {
           const to = +pct.dataset.to

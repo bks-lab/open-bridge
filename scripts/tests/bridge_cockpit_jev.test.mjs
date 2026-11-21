@@ -351,9 +351,16 @@ test('matrixWords: the squares and the legend say the profile\'s bucket words wh
   assert.deepEqual(logic.matrixWords(null, t).quads, t.quads)
 })
 
-test('the Jev page uses the calm helpers: bucket words, no reading flash, word cuts', () => {
+test('the Jev page uses the calm helpers: its own words, no reading flash, word cuts', () => {
   const page = fs.readFileSync(path.join(WEB, 'jev', 'page.js'), 'utf8')
-  assert.match(page, /bucketWords\(/)
+  // round 2 of the four answers: Jev's own words, never the bucket names (a point stood in the square Do with the chip
+  // Plan); its square words drawn over the dots
+  assert.doesNotMatch(page, /bucketWords\(/)
+  assert.match(page, /matrixWords\(null/)
+  assert.ok(page.indexOf('data-qlabel') > page.indexOf('data-dot'), 'the square words over the dots')
+  // the plan's rows run in at once on a first visit, no second of an empty plan between the waiting list and Jev's
+  const start = /const k = intro \? spring\(Ti, ([\d.]+) \+ i \*/.exec(page)
+  assert.ok(start && Number(start[1]) < 0.5, 'rows run in at once')
   assert.match(page, /readingFor\(/)
   assert.match(page, /playFor\(/)
   assert.match(page, /layoutMatrix\(/)

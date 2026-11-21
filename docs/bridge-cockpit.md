@@ -1291,8 +1291,9 @@ Description, Steps and Activity. There is no right column.
 
 The Aufgaben page's columns of the Bridge and of others say the buckets' names
 (I'll do, Waiting on others); Me and To review keep the board's own. Jev's
-squares say do, plan, I'll do and, for what is neither urgent nor important, the
-watch list. With the switch off Work through is as it was. A person's page keeps
+squares keep Jev's own words (urgency and impact, who could do it), never a
+bucket's name, so a point never names two buckets at once; its square words stand
+over the dots. With the switch off Work through is as it was. A person's page keeps
 it as it is.
 
 The other views of the work tab follow the same switch, so they differ from Work

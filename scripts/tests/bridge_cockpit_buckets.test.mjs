@@ -202,7 +202,8 @@ test('the switch off: Work through as it was', async () => {
 test('bucketWords: Jev\'s squares and the task board\'s columns of the Bridge and of others say the buckets\' names', () => {
   const on = logic.bucketWords(state(), 'de')
   assert.deepEqual(on.columns, { bridge: 'Mache ich (Bridge)', waiting: 'Wartet (andere)' })
-  assert.deepEqual(on.quadrant, { now: 'Tun (du, heute)', plan: 'Planen (ohne Tag)', hand: 'Mache ich (Bridge)', drop: 'Merkliste' })
+  // round 2 of the four answers: Jev's squares keep Jev's words, never a bucket's name
+  assert.deepEqual(on.quadrant, {})
   assert.deepEqual(logic.bucketWords(state({ on: false }), 'de'), { columns: {}, quadrant: {} })
 })
 

@@ -59,7 +59,8 @@
 .jev-quad-plan { fill: color-mix(in srgb, var(--accent) 10%, transparent); }
 .jev-quad-hand { fill: color-mix(in srgb, var(--jev-give) 9%, transparent); }
 .jev-quad-drop { fill: color-mix(in srgb, var(--on-surface-faint) 8%, transparent); }
-.jev-qlabel { font-size: 15px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; fill: var(--on-surface-faint); }
+.jev-qlabel { font-size: 15px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; fill: var(--on-surface-muted);
+  paint-order: stroke; stroke: var(--surface); stroke-width: 5px; stroke-linejoin: round; pointer-events: none; }
 .jev-qlabel-now { fill: var(--jev-hot); }
 .jev-axis { stroke: var(--border-strong); stroke-width: 1.5; }
 .jev-axis-label { fill: var(--on-surface-muted); font-size: 13px; font-family: var(--font-mono); }

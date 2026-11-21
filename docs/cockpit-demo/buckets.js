@@ -325,7 +325,6 @@ export function laterDays(nowMs) {
 /** The day "later" puts a point off to on a list without a menu (Due's Later for many): tomorrow */
 export const nextBriefingDay = nowMs => isoDate(nowMs + DAY)
 
-const upFirst = w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w)
 const isTask = row => !!row?.task && !row.inbox_id && row.key === `task:${row.task}`
 const isStream = row => !row?.inbox_id && !!(row?.stream || row?.work_kind === 'stream')
 
@@ -491,15 +490,14 @@ export function pointKindWord(x, lang = 'en') {
   return k.other
 }
 
-/** The words of the buckets by the ids other parts of the page use, {} where the buckets are off: Jev's squares (now
- *  Do, plan Plan, hand I'll do, drop the watch list, where what is neither urgent nor important belongs) and the task
- *  board's columns of the Bridge's moves and of what waits on others (its own words for yours and for review: it
- *  splits by who moves, not by day) */
+/** The words of the buckets by the ids other parts of the page use, {} where the buckets are off: the task board's
+ *  columns of the Bridge's moves and of what waits on others (its own words for yours and for review: it splits by who
+ *  moves, not by day). Jev's squares keep Jev's own words: they are urgency and impact, not the buckets, and a point
+ *  in the square called Do with the chip Plan said two buckets at once (round 2 of the four answers) */
 export function bucketWords(s, lang = 'en') {
   if (!flowBucketsOn(s)) return { columns: {}, quadrant: {} }
   const by = Object.fromEntries(bucketDefs(s, lang).map(b => [b.id, b.title]))
-  const list = upFirst((TABLES[lang] ?? TABLES.en).flow.buckets.later.list)
-  return { columns: { bridge: by.delegate, waiting: by.waiting }, quadrant: { now: by.do, plan: by.plan, hand: by.delegate, drop: list } }
+  return { columns: { bridge: by.delegate, waiting: by.waiting }, quadrant: {} }
 }
 
 // ---------------------------------------------------------------- the other views of the work tab
