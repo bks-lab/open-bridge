@@ -232,3 +232,20 @@ def test_a_quiet_task_is_named_by_its_title_and_the_advice_stands_beside_it():
     row = next(r for b in v["buckets"] for r in b["items"] if r.get("task") == "dash" or r["title"].startswith("Check the dashboard"))
     assert row["title"] == "Check the dashboard"
     assert "untouched for 54 days" in " ".join(row["why"]) and "park?" in " ".join(row["why"])
+
+
+def test_an_item_the_printed_briefing_shows_as_advice_carries_that_number_and_bucket_in_the_cockpit():
+    # Round 2: the printed inbox stops at its `max:`; an item past it stands there as the advice "waits on you since
+    # 18.06: Document the access review" (no. 4, Plan, "4 einplanen"). The cockpit reads every item: its card of that
+    # item said no number and stood in Do. It takes the advice's number and bucket, so "4 einplanen" names it
+    items = [item("20260617-0900-ask-1", "Ask 1"), item("20260618-0900-document-the-access-review", "Document the access review")]
+    advice = {"id": "advise:waiting:20260618-0900-document-the-access-review", "title": "waits on you since 18.06: Document the access review", "check": "waiting",
+              "urgency": "today"}
+    cfg = [{"kind": "inbox", "max": 1}, {"kind": "advise"}]
+    printed = bv.build(result(sec("inbox", "inbox", items[:1]), sec("advise", "advise", [advice])), profile({"style": "triage"}, cfg))
+    nr = next(r["nr"] for b in printed["buckets"] for r in b["items"] if r["title"].startswith("waits on you"))
+    whole = result({**sec("inbox", "inbox", items), "printed_max": 1}, sec("advise", "advise", [advice]))
+    cockpit = bv.build(whole, profile({"style": "triage", "max_items": 500}, cfg, _whole=True))
+    row = next((b["id"], r) for b in cockpit["buckets"] for r in b["items"] if r.get("inbox_id") == "20260618-0900-document-the-access-review")
+    assert row[1].get("nr") == nr
+    assert row[0] == bucket_of(printed, advice["title"])

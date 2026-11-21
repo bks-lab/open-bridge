@@ -502,6 +502,8 @@ LABEL_TABLES = {"en": LABELS, "de": LABELS_DE}
 BRIEFING_KINDS = ("inbox", "advise", "tasks")
 PAGE_OF_KIND = {"inbox": "work", "tasks": "work", "command": "status", "calendar": "dates", "tracker": "trackers",
                 "commits": "today", "activity": "today"}
+# what an inbox id looks like in an advice's key (advise.py: advise:<check>:<inbox id>)
+INBOX_ID_LIKE = re.compile(r"^[0-9]{8}-[0-9]{4}-\S+$")
 DEFAULT_PAGES = ("work", "status", "dates", "trackers", "today")
 # where a default page sits: work in front as the "by source" view of the work tab, status in front, the rest behind
 # More, today's activity under the day list
@@ -1424,7 +1426,10 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             continue
         told.add(carrier)
         bucket = {"blocked": "waiting", "due": "do", "waiting": "plan"}[check]
-        add(f"advise:{item.get('id')}", row(sid, item, forced or bucket, item.get("title"), (), 2))
+        # the inbox item a waiting or due advice stands for where the item itself is not in the view (past its
+        # section's `max:`): a cockpit pass, which reads that item, gives it this row's number and bucket (_row_ident)
+        about = {"advise_inbox": subject} if check in ("waiting", "due") and INBOX_ID_LIKE.match(subject) else {}
+        add(f"advise:{item.get('id')}", row(sid, item, forced or bucket, item.get("title"), (), 2, **about))
     # the advice named a quiet task by its title and said how long it rested ("X untouched for 54 days (park?)"): the
     # point keeps the task's own title, the advice stands beside it (round 2 of the cockpit simulation: the advice was
     # the title on the card, the list and the toast)
@@ -1723,7 +1728,11 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
 
 
 def _row_ident(row: dict) -> str:
-    """A row the same in two builds of one result: its inbox item, task or ref, else its title and sources"""
+    """A row the same in two builds of one result: its inbox item, task or ref, else its title and sources. An advice
+    that stands for an inbox item past its section's `max:` is that item (round 2 of the cockpit simulation: the
+    printed no. 4 "waits on you since ..." had no card of that number)"""
+    if row.get("advise_inbox"):
+        return f"inbox:{row['advise_inbox']}"
     return _settled_key(row) or f"{row.get('title')}|{','.join(map(str, row.get('sources') or []))}|{row.get('url') or ''}"
 
 
