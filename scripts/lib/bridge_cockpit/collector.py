@@ -234,6 +234,8 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             "brief_nr": row.get("brief_nr"),
             # how long a task rests (the briefing's quiet advice): the card's quiet mark "resting for N days"
             "resting": row.get("resting"),
+            # how long a point waits on someone: the card's mark "waiting for N days"
+            "waiting_days": row.get("waiting_days"),
             "title": row["title"], "why": list(row.get("why", [])), "sources": list(row.get("sources", [])),
             "inbox_id": row.get("inbox_id"), "gate": row.get("gate"), "task": row.get("task"), "ref": row.get("ref"),
             "url": url, "link": link, "priority": row.get("priority"), "urgency": row.get("urgency"),

@@ -307,7 +307,9 @@ def _base_row(**extra) -> dict:
            # its number in the printed briefing (briefing_view.numbered), None where it prints none
            "brief_nr": None,
            # a task nobody touched for a while (the briefing's advice quiet): its days, True where it names none
-           "resting": None}
+           "resting": None,
+           # how long a point waits on someone else, in days (the briefing's "waiting N days")
+           "waiting_days": None}
     row.update(extra)
     return row
 
@@ -665,6 +667,8 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
                 # the row's number in the printed briefing ("3 yes", briefing_view.numbered), None where it prints none
                 brief_nr=i["nr"] if isinstance(i.get("nr"), int) and not isinstance(i.get("nr"), bool) and i["nr"] > 0 else None,
                 resting=resting_of(i.get("resting")),
+                # how long a point waits on someone (the briefing's "waiting N days"): the card's quiet mark
+                waiting_days=resting_of(i.get("waiting_days")) if i.get("waiting_days") is not True else None,
                 # the tasks the briefing folded into this line (briefing_view _fold): no point of their own
                 folded_tasks=[x for x in _list(i.get("folded_tasks")) if isinstance(x, str) and x][:ALSO_MAX],
             )

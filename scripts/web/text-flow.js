@@ -50,6 +50,7 @@ export const FLOW = {
       say: { do: 'do', later: 'later' },
       count: n => (n ? String(n) : 'empty'),
       resting: n => (n === true ? 'resting' : `resting for ${n} ${n === 1 ? 'day' : 'days'}`),
+      waitingFor: n => `waiting for ${n} ${n === 1 ? 'day' : 'days'}`,
       restingTip: 'Nobody touched it for a while. Any answer takes the mark away.',
       // what no bucket shows, only counted under them
       aside: { head: 'Out of sight, only counted', later: 'Later (back on its day)', list: 'Watch list', done: 'Done today',
@@ -449,6 +450,7 @@ export const FLOW = {
       say: { do: 'mach', later: 'später' },
       count: n => (n ? String(n) : 'leer'),
       resting: n => (n === true ? 'ruht' : `ruht seit ${n} ${n === 1 ? 'Tag' : 'Tagen'}`),
+      waitingFor: n => `wartet seit ${n} ${n === 1 ? 'Tag' : 'Tagen'}`,
       restingTip: 'Niemand hat es eine Weile angefasst. Jede Antwort nimmt den Hinweis weg.',
       aside: { head: 'Aus dem Blick, nur gezählt', later: 'Später (kommt an seinem Tag wieder)', list: 'Merkliste', done: 'Fertig heute',
         laterTip: 'Kommt am gewählten Tag in sein Fach zurück', listTip: 'Ohne Tag, irgendwann', doneTip: 'Heute erledigt oder als veraltet geschlossen' },

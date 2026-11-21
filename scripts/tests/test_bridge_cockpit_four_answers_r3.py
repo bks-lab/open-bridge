@@ -235,3 +235,13 @@ def test_with_you_on_an_inbox_item_with_someone_takes_it_back(w):
     res = w.act("task_owner", key=f"inbox:{YES_ID}", who="me")
     assert res["ok"]
     assert any(c[-3:-1] == ["reopen", YES_ID] or c[-2:] == ["reopen", YES_ID] or "reopen" in c for c in writes(w)), writes(w)
+
+
+def test_a_waiting_row_carries_its_waiting_days_to_the_cockpit():
+    # round 3: the card of a point waiting 56 days carried no mark, the printed briefing said it
+    tasks = [{"id": "logbook", "title": "Check the vehicle logbook", "state": "doing", "blocked_by": "waiting for Mika",
+              "blocked_since": "2026-09-26", "changed_at": "2026-09-26"}]
+    result = {"profile": "m", "title": "M", "collected_at": "2026-11-21T08:00", "sections": [_sec("tasks", "tasks", tasks)]}
+    built = bv.build(result, {"id": "m", "sections": [{"kind": "tasks"}], "view": {"style": "triage"}})
+    row = next(r for b in built["buckets"] for r in b["items"] if r.get("task") == "logbook")
+    assert row["waiting_days"] == 56

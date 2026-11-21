@@ -1437,7 +1437,8 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                         why.append(labels["look_again"].format(when=_fmt_when(item["quiet_until"], now, labels)))
                         nudge = look.date() <= now.date()
                     add(f"task:{iid}", row(sid, item, forced or "waiting", item.get("title"), why, 3, nudge=nudge,
-                                           task=iid, priority=item.get("priority"), origin_raw=item.get("origin")))
+                                           task=iid, priority=item.get("priority"), origin_raw=item.get("origin"),
+                                           waiting_days=age))
                 else:
                     due = _when(nxt.get("due"))
                     # the row is named by its task (its H1) and says its step apart: a name glued to a step stood
@@ -1458,6 +1459,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                         why = [labels["with"].format(who=nxt.get("who")),
                                labels["waiting_days"].format(n=age) if age is not None else ""] + why
                         extra["nudge"] = age is not None and age >= nudge_days
+                        extra["waiting_days"] = age
                     # your own next step outranks a card nobody has looked at (OWN_RANK)
                     add(f"task:{iid}", row(sid, item, forced or bucket, item.get("title"), why,
                                            1 if bucket == "do" else 3, step=nxt["what"], **extra))

@@ -18,7 +18,7 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  answerMark, askQuestion, asideCounts, bucketAnswers, bucketDefs, bucketPoints, detailNeedsLoad, errorText, flowParts, focusIndex, formatDay, instructScope,
+  answerMark, askQuestion, asideCounts, bucketAnswers, bucketHolder, bucketDefs, bucketPoints, detailNeedsLoad, errorText, flowParts, focusIndex, formatDay, instructScope,
   isoDate, laterDays, nextSentence, openBucket, ownerChoices, parseDate, pointArea, pointKindWord, pointName, replySend, restingOf, runningOf, short, viewBucket,
   withNote, withWas,
 } from '../logic.js'
@@ -257,9 +257,14 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
     onDone?.()
   })
   const rest = row ? restingOf(row) : null
-  const who = bucket === 'waiting' ? x.checkin?.who ?? row?.checkin?.who ?? null : null
+  // a waiting point names who it waits on, or what blocks it in its own words, and how long it waits (round 3 of the
+  // four answers: the card named nobody, the printed briefing said "waiting 56 days, waiting for Mika")
+  const held = bucket === 'waiting' ? bucketHolder({ ...x, bucket }, row) : null
+  const blocker = String(row?.blocked_by ?? row?.card?.state?.blocked_by ?? '').trim()
+  const who = held && held !== blocker.slice(0, 60) ? f.with(held) : held ? short(blocker, 60) : null
+  const waited = bucket === 'waiting' && Number.isInteger(row?.waiting_days) && row.waiting_days > 0 ? f.waitingFor(row.waiting_days) : null
   const marks = [[pointKindWord(x, lang)], [x.running ? f.runningMark : null, 'fb-mark-run'], [pointArea(x)], [row?.due ? f.due(formatDay(String(row.due).slice(0, 10), lang)) : null],
-    [row?.gate === 'only-you' ? f.onlyYou : null], [who ? f.with(who) : null], [rest ? f.resting(rest) : null, 'fb-mark-quiet', f.restingTip]]
+    [row?.gate === 'only-you' ? f.onlyYou : null], [who], [waited, 'fb-mark-quiet'], [rest ? f.resting(rest) : null, 'fb-mark-quiet', f.restingTip]]
     .filter(m => m[0])
   // a tab that asks is named by its tab (the way it reads in the terminal), the task it works on under it
   const title = pointTitleOf(x)

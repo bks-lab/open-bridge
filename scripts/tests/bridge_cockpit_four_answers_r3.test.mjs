@@ -5,9 +5,9 @@
 //   node --test scripts/tests/bridge_cockpit_four_answers_r3.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { loadCockpit } from './cockpit_render.mjs'
+import { loadCockpit, mount } from './cockpit_render.mjs'
 
-const { logic, text } = await loadCockpit()
+const { html, views, logic, text } = await loadCockpit()
 
 // Friday, 9 October 2026, noon
 const NOW = new Date(2026, 9, 9, 12, 0, 0).getTime()
@@ -105,4 +105,20 @@ test('Fields > Who says who has the point by its bucket', () => {
   assert.equal(who('delegate', { ...r, card: { next: { what: 'x', who: 'me' } } }), 'bridge')
   assert.equal(who('waiting', task('h', { blocked_by: 'waiting for Jordan', card: { next: { what: 'Draft', who: 'Jordan' } } })), 'Jordan')
   assert.equal(who('waiting', task('h2', { blocked_by: 'waiting for Jordan' })), 'waiting for Jordan')
+})
+
+// ---------------------------------------------------------------- the card of a waiting point
+
+test('a waiting card names what it waits on and how long', () => {
+  // round 3: none of the 8 waiting cards named a person or carried a mark, the briefing said "waiting 56 days"
+  const c = new Proxy({}, { get: (_, p) => (p === 'then' || typeof p === 'symbol' ? undefined : () => Promise.resolve({ ok: true })) })
+  const t = task('logbook', { bucket: 'waiting', blocked_by: 'waiting for Mika to reply', waiting_days: 56 })
+  const el = mount(html`<${views.flowbuckets.BucketCard} x=${{ group: 'row', id: t.key, kind: 'row', row: t, bucket: 'waiting' }}
+    bucket="waiting" s=${state({ work: [t] })} c=${c} />`)
+  assert.match(el.$('.fb-marks').text(), /waiting for Mika to reply/)
+  assert.match(el.$('.fb-marks').text(), /waiting for 56 days/)
+  const named = task('report', { bucket: 'waiting', card: { next: { what: 'Draft it', who: 'Jordan' } }, waiting_days: 3 })
+  const el2 = mount(html`<${views.flowbuckets.BucketCard} x=${{ group: 'row', id: named.key, kind: 'row', row: named, bucket: 'waiting' }}
+    bucket="waiting" s=${state({ work: [named] })} c=${c} />`)
+  assert.match(el2.$('.fb-marks').text(), /waits on Jordan/)
 })
