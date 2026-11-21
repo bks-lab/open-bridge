@@ -400,3 +400,7 @@ test('a tab whose question needs a number or a choice is answered in words first
   assert.deepEqual(calls.find(x2 => x2[0] === 'reply').slice(1), ['tab_send', logic.replySend(q, 'eher 1 Million').args])
   assert.equal(logic.replySend(q, 'x').args.seen, 'h2')
 })
+
+test('the files page is named in words on the start page, never by its id', () => {
+  assert.equal(views.home.pageTitleOf({ model: { pages: [] }, ui: {} }, '@files'), text.TABLES.en.filesTab)
+})

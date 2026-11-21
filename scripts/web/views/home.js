@@ -4,7 +4,7 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, tabWords, shownNumber, workPageOf, homeCatalog, homeChosen,
+  attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, tabWords, shownNumber, flowBucketsOn, doWord, workPageOf, homeCatalog, homeChosen,
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
   rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv, askMark,
@@ -32,7 +32,7 @@ import { TickerBand, TickerStatusList } from './ticker.js'
 export function pageTitleOf(s, id) {
   const t = T()
   const fixed = { briefing: briefingTitle(s), [SESSIONS_PAGE]: t.sessionsTab, [WORKERS_PAGE]: t.workersTab, [CHAT_PAGE]: t.chatTab,
-    [AGENTS_PAGE]: t.agentsTab, [CHECK_PAGE]: t.reviewTab, [JEV_PAGE]: 'Jev', [SETTINGS_PAGE]: t.settings.title }
+    [AGENTS_PAGE]: t.agentsTab, [CHECK_PAGE]: t.reviewTab, [JEV_PAGE]: 'Jev', [SETTINGS_PAGE]: t.settings.title, '@files': t.filesTab }
   return fixed[id] ?? (s.model?.pages ?? []).find(p => p.id === id)?.title ?? id
 }
 
@@ -736,7 +736,7 @@ function HomeBoard({ s, c }) {
   // what happened today is long and read last, so it closes the page
   const diary = withDay ? html`<${DayPages} s=${s} c=${c} shelf />` : null
   const shelves = html`
-    ${on.has('s:returns') ? html`<${HomeShelf} id="home-returns" title=${h.returnsTitle} count=${backs.filter(r => r.live !== 'done').length} empty=${h.returnsEmpty}>
+    ${on.has('s:returns') ? html`<${HomeShelf} id="home-returns" title=${h.returnsTitle} count=${backs.filter(r => r.live !== 'done').length} empty=${flowBucketsOn(s) ? h.returnsEmptyWord(doWord(s, language())) : h.returnsEmpty}>
       ${backs.slice(0, 8).map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}
     <//>` : null}
     ${on.has('s:pinned') ? html`<${HomeShelf} id="home-pinned" title=${h.pinnedTitle} count=${pinned.length} empty=${h.pinnedEmpty}>
