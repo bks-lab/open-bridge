@@ -153,6 +153,15 @@ def _day_of(text: str, today: dt.date) -> tuple | None:
         return "week", later_until("week", today)
     if t in ("merkliste", "liste", "list", "watch list", "watchlist"):
         return "list", LIST_DAY
+    # "in 3 tagen", "in 2 wochen", "in 1 week": a count of days or weeks (round 4: "in 1 woche" read as tomorrow and
+    # an answer of number 1)
+    span = re.match(r"^in (\d{1,3}) (tag|tage|tagen|day|days|woche|wochen|week|weeks)$", t)
+    if span:
+        n = int(span.group(1)) * (7 if span.group(2).startswith(("w", "W")) else 1)
+        if n < 1:
+            return None
+        when = (today + dt.timedelta(days=n)).isoformat()
+        return ("week" if n == 7 else "pick"), when
     if t in WEEKDAYS:
         return "pick", _next_weekday(today, WEEKDAYS[t]).isoformat()
     m = DOTTED.match(t)
@@ -184,11 +193,13 @@ ALIASES = {
     "parken": ("later", "list"), "park": ("later", "list"),
     "behalten": ("later", "tomorrow"), "keep": ("later", "tomorrow"),
     "streichen": ("obsolete", None), "drop": ("obsolete", None),
+    # a choice of Later said alone ("2 merkliste"): Later onto the watch list (round 4: it answered nothing)
+    "merkliste": ("later", "list"), "watch list": ("later", "list"), "watchlist": ("later", "list"),
 }
 _PHRASES = sorted(set(OWN) | set(ALIASES), key=len, reverse=True)
 # a number that starts an answer: at the start or after a space or separator, a word after it ("3 später", "1a");
 # the digits of a day ("3.12.", "2026-12-03") start none
-_START = re.compile(r"(?:^|(?<=[\s,;]))(\d+)(?!\s*(?:und|and)\s+\d)(?=\s*[:)]?\s*[^\W\d_])", re.I)
+_START = re.compile(r"(?:^|(?<=[\s,;]))(?<!\bin )(\d+)(?!\s*(?:und|and)\s+\d)(?=\s*[:)]?\s*[^\W\d_])", re.I)
 # a number that shares the answer of the next one ("3, 5 erledigt"): digits alone between separators
 _SHARED = re.compile(r"(?:^|(?<=[\s,;]))(\d+)(?=\s*(?:,|\bund\b|\band\b)\s*\d)")
 

@@ -371,3 +371,13 @@ def test_every_act_of_the_table_is_a_verb_the_server_takes():
                 spec = base.SPEC[e["cockpit"]["verb"]]
                 assert set(e["cockpit"]["args"]) <= set(spec), (a, row, e["cockpit"])
                 assert all(name in e["cockpit"]["args"] for name, (_, need) in spec.items() if need), (a, row, e["cockpit"])
+
+
+def test_later_in_a_count_of_days_or_weeks_and_the_watch_list_alone():
+    # round 4: "3 später in 1 woche" put it off to tomorrow and answered a number 1; "2 merkliste" answered nothing
+    today = dt.date(2026, 11, 21)
+    got = [(p["nr"], p["answer"], p["until"]) for p in ans.parse("3 später in 1 woche", today)]
+    assert got == [(3, "later", "2026-11-28")]
+    assert [(p["nr"], p["until"]) for p in ans.parse("3 later in 3 days, 4 done", today)] == [(3, "2026-11-24"), (4, None)]
+    shelf = ans.parse("2 merkliste", today)
+    assert [(p["nr"], p["answer"], p["choice"], p["until"]) for p in shelf] == [(2, "later", "list", ans.LIST_DAY)]
