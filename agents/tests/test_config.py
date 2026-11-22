@@ -14,6 +14,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import pytest
+
 import _runtime.config as config_mod
 from _runtime.config import (
     MAX_INLINE_GROUNDING_BYTES,
@@ -204,6 +206,41 @@ def test_public_trust_on_non_loopback_host_does_not_warn(tmp_path, monkeypatch, 
             'name: "PubWide"\nhost: "0.0.0.0"\n',
         )
     assert cfg.trust == "public"
+    assert not any("non-loopback" in r.message for r in caplog.records)
+
+
+def test_peer_trust_on_non_loopback_host_refuses_without_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("PEER_TOKEN", "a" * 32)
+    with pytest.raises(ValueError, match="trust: peer refuses to bind to non-loopback host"):
+        _load(
+            monkeypatch, tmp_path, "exposedpeer",
+            'name: "ExposedPeer"\ntrust: "peer"\nhost: "0.0.0.0"\n'
+            'auth:\n  mode: bearer\n  peers:\n    - id: axel\n      token_env: PEER_TOKEN\n',
+        )
+
+
+def test_peer_trust_on_non_loopback_host_warns_with_allow_non_loopback(tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("PEER_TOKEN", "a" * 32)
+    with caplog.at_level(logging.WARNING, logger="_runtime.config"):
+        cfg = _load(
+            monkeypatch, tmp_path, "allowedpeer",
+            'name: "AllowedPeer"\ntrust: "peer"\nhost: "0.0.0.0"\nallow_non_loopback: true\n'
+            'auth:\n  mode: bearer\n  peers:\n    - id: axel\n      token_env: PEER_TOKEN\n',
+        )
+    assert cfg.trust == "peer"
+    assert cfg.allow_non_loopback is True
+    assert any("non-loopback" in r.message for r in caplog.records)
+
+
+def test_peer_trust_on_loopback_host_does_not_warn(tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("PEER_TOKEN", "a" * 32)
+    with caplog.at_level(logging.WARNING, logger="_runtime.config"):
+        cfg = _load(
+            monkeypatch, tmp_path, "safepeer",
+            'name: "SafePeer"\ntrust: "peer"\nhost: "127.0.0.1"\n'
+            'auth:\n  mode: bearer\n  peers:\n    - id: axel\n      token_env: PEER_TOKEN\n',
+        )
+    assert cfg.trust == "peer"
     assert not any("non-loopback" in r.message for r in caplog.records)
 
 
