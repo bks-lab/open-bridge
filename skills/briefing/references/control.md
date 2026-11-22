@@ -134,7 +134,11 @@ Two things are yours besides:
   number its answer and, for later, the day (`9999-12-31` is the watch list).
   A number this print left out (a cockpit card names every row's number) is
   read from `briefing.py collect <id> --max-items 500 --json`, where every row
-  carries its `nr`.
+  carries its `nr`. A row keeps its number all day (the day's number book,
+  `.bridge/cockpit/numbers/<profile>.json`): an answer moves no other row's
+  number, and a row new today gets the next number nobody had. An agent tab
+  that asks in a dialog is a row of Do ("Agent tab asks: ..."), numbered after
+  the others; its do is the tab's own answer, given in the tab.
   What the answer does to the row is `answers.effect(answer, row, until)`, the
   table below in code: run its `cli` commands from the repo root. Its `cockpit`
   part is the act the page's card sends for the same answer; the page keeps its

@@ -115,7 +115,7 @@ MODEL_NEUTRAL: dict[str, Any] = {
     "review": {"running": False, "error": None, "last": None, "keys": []}, "days": {"quota": {}, "counts": {}},
     "week": {"quota": {}, "counts": {}}, "returns": [], "buckets": [],
     # the owner's out-of-sight counts (later, watch list, done today) count rows a person does not see
-    "aside": None, "away": []}
+    "aside": None, "away": [], "tab_nrs": {}}
 
 # a date as a person gets it: what the calendar says, nothing a page of the owner hangs on it. No overlaps: they name
 # the events beside it, which may stand in a calendar that is not theirs. No figures either, they count all of them

@@ -637,11 +637,19 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
     v = _dict(data.get("view"))
     buckets = []
     seen_keys: set[str] = set()
+    # an agent tab that asks has its row and number in the briefing (briefing_view tab_asks); here it stands as the tab
+    # itself, so its number goes to the tab's point by its ref, never as a second row
+    tab_nrs: dict[str, int] = {}
     for b in _list(v.get("buckets")):
         b = _dict(b)
         rows = []
         for i in _list(b.get("items")):
             i = _dict(i)
+            if as_text(i.get("tab_ref")):
+                nr = i.get("nr")
+                if isinstance(nr, int) and not isinstance(nr, bool) and nr > 0:
+                    tab_nrs[as_text(i.get("tab_ref"))] = nr
+                continue
             base = _base_row(
                 bucket=as_text(b.get("id")), title=as_text(i.get("title")),
                 why=[w for w in (as_text(x) for x in _list(i.get("why"))) if w],
@@ -728,6 +736,8 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
         # put off to a day and out of sight until it (briefing_view away): no point of the buckets, not even beside
         # the briefing (with_tasks)
         "away": away_of(v.get("away")),
+        # the briefing's number of each agent tab that asks, by its ref
+        "tab_nrs": tab_nrs,
         "agenda": agenda,
         "status": status,
         "pages": parse_pages(data, tx),
@@ -1148,6 +1158,8 @@ def merge_view(base: dict, fresh: dict) -> dict:
         # what is out of sight: a run that left a section out keeps what the earlier one put away from it
         "away": list(fresh.get("away") or []) + ([a for a in base.get("away") or [] if a not in (fresh.get("away") or [])]
                                                 if fresh_is_partial else []),
+        "tab_nrs": dict(fresh.get("tab_nrs") or {}) if fresh.get("tab_nrs") or not fresh_is_partial
+        else dict(base.get("tab_nrs") or {}),
     }
 
 

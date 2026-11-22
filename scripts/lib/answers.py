@@ -255,7 +255,7 @@ def row_kind(row: dict) -> str:
     """What a point is, as the answers tell it apart: an agent tab, a stream (also one that waits: Done is done for
     this time and Obsolete ends it, whatever bucket it stands in), a point waiting on someone else, an inbox item, a
     task, an issue or pull request, anything else"""
-    if row.get("tab"):
+    if row.get("tab") or row.get("tab_ref"):     # the cockpit's tab point, the briefing's row of an asking tab
         return "tab"
     if _is_stream(row):
         return "stream"

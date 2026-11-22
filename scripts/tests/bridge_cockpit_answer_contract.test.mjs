@@ -38,3 +38,14 @@ for (const c of contract.cases) {
     assert.deepEqual(comparable(sent(c)), comparable(c.act))
   })
 }
+
+// ---------------------------------------------------------------- an agent tab that asks has the briefing's number
+
+test('an agent tab that asks without a row of its own says the number the briefing gave it', () => {
+  const tab = { ref: 'surface:9', name: 'Contact import', state: 'needs-you', live: true, ask: { text: 'Proceed?', yes_no: true } }
+  const s = { now: NOW, model: { tab_nrs: { 'surface:9': 21 } }, ui: {} }
+  assert.equal(logic.pointNr({ kind: 'tab', id: 'tab:surface:9', tab, row: null }, s), 21)
+  // a tab of a row says the row's number
+  assert.equal(logic.pointNr({ kind: 'tab', id: 'tab:surface:9', tab, row: { key: 'task:a', brief_nr: 4 } }, s), 4)
+  assert.equal(logic.pointNr({ kind: 'tab', id: 'tab:surface:8', tab: { ...tab, ref: 'surface:8' }, row: null }, s), null)
+})

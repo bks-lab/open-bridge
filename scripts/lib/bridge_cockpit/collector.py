@@ -398,6 +398,8 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         "aside": m.aside_now(view, aside_record, dt.date.fromtimestamp(now / 1000).isoformat()),
         # put off to a day, out of sight until it (briefing_view away): a tab that asks about such an item waits too
         "away": list(view.get("away") or []),
+        # the briefing's number of each agent tab that asks (model.parse_view): the tab's card says it
+        "tab_nrs": dict(view.get("tab_nrs") or {}),
         "review": {"running": review["running"], "error": review["error"], "last": review["last"],
                    "keys": [f"task:{slug}" for slug in verdicts if f"task:{slug}" in index]},
         "pages": pages, "alarms": alarms,

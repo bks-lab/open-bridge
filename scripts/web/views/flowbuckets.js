@@ -19,7 +19,7 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   answerMark, askQuestion, asideCounts, bucketAnswers, bucketHolder, bucketDefs, bucketPoints, detailNeedsLoad, errorText, flowParts, focusIndex, formatDay, instructScope,
-  isoDate, laterDays, nextSentence, openBucket, ownerChoices, parseDate, pointArea, pointKindWord, pointName, replySend, restingOf, runningOf, short, viewBucket,
+  isoDate, laterDays, nextSentence, openBucket, ownerChoices, parseDate, pointArea, pointKindWord, pointName, pointNr, replySend, restingOf, runningOf, short, viewBucket,
   withNote, withWas,
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -197,7 +197,7 @@ export function BucketChip({ x, bucket, s, nr: withNr = true }) {
   const f = T().flow.buckets
   const def = bucketDefs(s, lang).find(b => b.id === bucket)
   if (!def) return null
-  const nr = withNr ? x?.row?.brief_nr : null
+  const nr = withNr ? pointNr(x, s) : null
   return html`<span class="fb-chips"><span class=${`chip fb-chip fb-chip-${bucket}`} title=${f.sub[bucket]}>${def.title}</span>${Number.isInteger(nr)
     ? html`<span class="chip fb-chip-nr mono" title=${f.inBriefing(nr, f.say)}>${f.nr(nr)}</span>` : null}</span>`
 }
@@ -292,7 +292,7 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
     ${say ? html`<${SayLine} busy=${busy} onSend=${words => run(say, words)} onCancel=${() => setSay(null)} />` : null}
     ${note ? html`<p class="fb-note small" role="status">${note}</p>` : null}
     ${isTab(x) && tab.ask?.draft ? html`<p class="fb-note fb-draft muted small">${tab.ask.suggestion ? t.reply.draft : t.reply.typed}</p>` : null}
-    ${Number.isInteger(row?.brief_nr) ? html`<p class="fb-nr muted small">${boldNr(f.inBriefing(row.brief_nr, f.say), f.nr(row.brief_nr))}</p>` : null}
+    ${Number.isInteger(pointNr(x, s)) ? html`<p class="fb-nr muted small">${boldNr(f.inBriefing(pointNr(x, s), f.say), f.nr(pointNr(x, s)))}</p>` : null}
     <details class="fb-more">
       <summary>${f.more}</summary>
       <div class="fb-more-body">

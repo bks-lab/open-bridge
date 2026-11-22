@@ -161,7 +161,7 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
     for (const e of g.rows ?? []) if (e?.row?.key && !off(e) && !unlisted(g, e)) push({ group: 'left', left: g.reason, id: e.row.key, kind: 'row', row: e.row, entry: e })
   }
   const order = new Map(all.map((x, i) => [x.id, i]))
-  const nr = x => (Number.isInteger(x.row?.brief_nr) ? x.row.brief_nr : Infinity)
+  const nr = x => pointNr(x, s) ?? Infinity
   // a tab that asks holds an agent until it is answered: it comes first, whatever kind of card shows it
   const tabFirst = x => (x.kind === 'tab' || (x.tab && ASKING.has(x.tab.state)) ? 0 : 1)
   const buckets = bucketDefs(s, lang).map(b => ({ ...b,
@@ -619,6 +619,15 @@ export function bucketCounts(items, s, byKey, lang = 'en') {
 export function doWord(s, lang = 'en') {
   const t = TABLES[lang] ?? TABLES.en
   return flowBucketsOn(s) ? t.flow.buckets.answers.do : t.action.do
+}
+
+/** The number a point has in the printed briefing: its row's (brief_nr), else, for an agent tab that asks without a
+ *  row of its own, the number the briefing gave that tab (model.tab_nrs by its ref, briefing_view tab_asks); null
+ *  where the briefing numbers none */
+export function pointNr(x, s) {
+  if (Number.isInteger(x?.row?.brief_nr)) return x.row.brief_nr
+  const n = x?.tab?.ref && !x?.row ? s?.model?.tab_nrs?.[x.tab.ref] : null
+  return Number.isInteger(n) ? n : null
 }
 
 /** The number a row shows on a list (Due, By source, the start page): while the buckets are on only its number in the

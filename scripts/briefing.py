@@ -847,7 +847,25 @@ def sec_workplace(section: dict, ctx: Context) -> list:
     for ws in plan["workspaces"]:
         for tab in ws["tabs"]:
             items.append({"id": tab["slug"], "title": tab["label"], "state": tab["action"], "project": ws["name"]})
+    items += asking_tabs(wp, ctx.root, cfg)
     return items
+
+
+def asking_tabs(wp, root: Path, cfg: dict) -> list:
+    """The agent tabs that ask you something in a dialog (state needs-you) and stand for no task or inbox item of their
+    own: rows of Do, so the briefing numbers the points the cockpit shows first in Do (round 4 of the four answers: the
+    cockpit's Do held them, the printed one did not). A tab of a task or an item is that row's; a tab that waits at its
+    prompt is told apart only by the cockpit, which reads its screen. Nothing without a driver."""
+    if not cfg.get("driver"):
+        return []
+    try:
+        rows = wp.status_rows(root, cfg, wp.driver_from(cfg.get("driver"))) or []
+    except Exception:       # a briefing never fails for its tabs
+        return []
+    return [{"id": f"tab:{t['ref']}", "title": str(t.get("name") or t["ref"]), "state": "asks", "tab_ref": str(t["ref"]),
+             "project": t.get("workspace")}
+            for t in rows if isinstance(t, dict) and t.get("state") == "needs-you" and t.get("ref")
+            and not t.get("slug") and not t.get("item") and not t.get("is_control")]
 
 
 # Where a STATUS.md lists what comes next, when it has no open checkboxes. CORE knows the English
@@ -1913,7 +1931,7 @@ def save_snapshot(root: Path, result: dict, previous: dict | None = None) -> Pat
             continue
         sections.append({"id": s["id"], "status": s["status"],
                          "items": [{"id": i["id"], "_fp": i.get("_fp")} for i in s.get("all", s["items"])]})
-    snap = {**{k: v for k, v in result.items() if k != "sections"}, "sections": sections}
+    snap = {**{k: v for k, v in result.items() if k not in ("sections", "number_book")}, "sections": sections}
     path.write_text(json.dumps(snap, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     return path
 
@@ -2370,13 +2388,49 @@ def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | N
     return {k: out[k] + extra.get(k, 0) for k in out}
 
 
-def render_view(result: dict, profile: dict, style: str | None = None, color: bool = False) -> str:
-    """The briefing as the profile's `view:` (or a one-off `style`) wants it shown."""
+def render_view(result: dict, profile: dict, style: str | None = None, color: bool = False, keep=None) -> str:
+    """The briefing as the profile's `view:` (or a one-off `style`) wants it shown. `keep` gets the built view (the
+    day's number book is saved from it)."""
     view = _view()
     chosen = view.style_of(profile, style)
     if chosen == "sources":
         return render(_public(result))
-    return view.draw(view.build(result, profile, chosen), color=color)
+    built = view.build(result, profile, chosen)
+    if keep is not None:
+        keep(built)
+    return view.draw(built, color=color)
+
+
+# the day's numbers of the rows per profile (briefing_view._number): a row keeps its number all day, so an answer moves
+# no other row's number. Machine state beside running.json, never saved in the snapshot
+NUMBERS = Path(".bridge") / "cockpit" / "numbers"
+PROFILE_FILE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}\Z")
+
+
+def number_book(root: Path, profile_id: str, now: dt.datetime) -> dict:
+    """{row ident: nr} given out today for this profile; empty on another day or when it cannot be read"""
+    if not PROFILE_FILE.match(str(profile_id or "")):
+        return {}
+    try:
+        data = json.loads((root / NUMBERS / f"{profile_id}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    nrs = data.get("nrs") if isinstance(data, dict) and data.get("day") == now.date().isoformat() else None
+    return dict(nrs) if isinstance(nrs, dict) else {}
+
+
+def save_number_book(root: Path, profile_id: str, now: dt.datetime, book) -> None:
+    """Keep today's numbers; a briefing never fails for it"""
+    if not isinstance(book, dict) or not PROFILE_FILE.match(str(profile_id or "")):
+        return
+    path = root / NUMBERS / f"{profile_id}.json"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"day": now.date().isoformat(), "nrs": book}, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------- CLI
@@ -2793,6 +2847,12 @@ def main(argv=None) -> int:
         result["housekeeping"] = housekeep(root, ctx.now, summary=_summary(result, profile, args.style),
                                            profile_id=profile["id"])
     result["running"] = running_record(root, ctx.now)         # never saved, as the settled record
+    result["number_book"] = number_book(root, profile["id"], ctx.now)       # never saved in the snapshot either
+
+    def keep_numbers(built: dict) -> None:
+        if not args.no_save:
+            save_number_book(root, profile["id"], ctx.now, built.get("number_book"))
+        built.pop("number_book", None)
     if args.cmd == "render":
         result["settled"] = settled_record(root, ctx.now)     # never saved: save_snapshot keeps its own fields
     elif profile.get("_whole"):
@@ -2820,8 +2880,10 @@ def main(argv=None) -> int:
     if args.cmd == "collect":
         data = _public(result)
         data.pop("numbering_settled", None)
+        data.pop("number_book", None)
         if _view().style_of(profile, args.style) != "sources":
             data["view"] = _view().build(result, profile, args.style)
+            keep_numbers(data["view"])
         data["pages"] = _view().pages(result, profile, root=root)
         data["page_catalog"] = catalog
         if args.json:
@@ -2830,7 +2892,7 @@ def main(argv=None) -> int:
             print(render_view(result, profile, args.style))
     else:
         color = args.color == "always" or (args.color == "auto" and sys.stdout.isatty())
-        print(render_view(result, profile, args.style, color=color))
+        print(render_view(result, profile, args.style, color=color, keep=keep_numbers))
     return 0
 
 

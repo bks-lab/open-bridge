@@ -104,6 +104,7 @@ LABELS = {
     "hidden": "{n} hidden (bucket not shown: {ids})",
     "error": "{title} failed: {reason}",
     "workplace": "Tabs: {n} proposed ({new} new, {resume} to resume, {open} already open). Open them?",
+    "tab_asks": "Agent tab asks: {name}",
     "off_day": "Off today: {n} more wait for the next working day",
     "collapsed": "Not listed one by one: {items}",
     "status_rows": "{n} → {rows}",
@@ -334,6 +335,7 @@ LABELS_DE = {
     "hidden": "{n} ausgeblendet (Fach nicht gezeigt: {ids})",
     "error": "{title} fehlgeschlagen: {reason}",
     "workplace": "Tabs: {n} vorgeschlagen ({new} neu, {resume} fortsetzen, {open} schon offen). Öffnen?",
+    "tab_asks": "Agent-Tab fragt: {name}",
     "off_day": "Heute frei: {n} weitere warten auf den nächsten Arbeitstag",
     "collapsed": "Nicht einzeln aufgeführt: {items}",
     "status_rows": "{n} → {rows}",
@@ -1314,7 +1316,12 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                     out["boards"].append(b)
                     have.add((b.get("org"), b.get("number")))
         if kind == "workplace":
-            tabs = [i for i in items_of(s) if i.get("state") != "warning"]
+            for i in items_of(s):
+                if i.get("state") == "asks" and i.get("tab_ref"):
+                    # an agent tab that asks in a dialog: yours today, answered in the tab (answers.effect kind tab)
+                    add(f"tab:{i['tab_ref']}", row(sid, i, "do", labels["tab_asks"].format(name=_short(i.get("title"), 60)),
+                                                   (), 0, tab_ref=str(i["tab_ref"])))
+            tabs = [i for i in items_of(s) if i.get("state") not in ("warning", "asks")]
             for i in items_of(s):
                 if i.get("state") == "warning":
                     tend("note", str(i.get("title")))
@@ -1802,15 +1809,14 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
         # four answers: they returned before the numbers, so no card said one and "3 später" pointed at nothing). A
         # cockpit pass carries the printed numbers over (_printed_numbers numbers these styles as triage does)
         if profile.get("_whole"):
-            printed = _printed_numbers(result, profile)
+            printed, out["number_book"] = _printed_numbers(result, profile)
             for r in visible:
                 got = printed.get(_row_ident(r))
                 if got:
                     r["nr"] = got[0]
         else:
             whole = _capped(shown, visible, max(1, len(visible)))[0]
-            for n, r in enumerate([r for b in whole for r in b["items"]], 1):
-                r["nr"] = n
+            out["number_book"] = _number(_tabs_last([r for b in whole for r in b["items"]]), result.get("number_book"))
     if style == "brevity":
         cap = min(cap, 3)
         pick = ([r for r in visible if r["bucket"] == "do"] +
@@ -1827,7 +1833,7 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
         return out
 
     # the printed run reads the same items as a cockpit pass, so every row stands in the same bucket in both
-    printed = _printed_numbers(result, profile) if profile.get("_whole") else {}
+    printed, book = _printed_numbers(result, profile) if profile.get("_whole") else ({}, None)
     out["buckets"], out["more"], out["dropped"] = _capped(shown, visible, cap)
     # The number every row has in the printed briefing ("3 yes"), one rule for every renderer (numbered). A cockpit
     # pass (`_whole`, every row) numbers as the printed briefing would: the view the printed briefing builds (each
@@ -1835,10 +1841,12 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
     # cockpit), its numbers carried over row by row, so its cards say the briefing's number and a row the printed
     # briefing does not show says none.
     if profile.get("_whole"):
+        out["number_book"] = book
         for r in visible:
             got = printed.get(_row_ident(r))
             if got:
                 r["nr"] = got[0]
+        _by_number(out, style, result)
         return out
     # every row is numbered by its place in the whole list, also one this print leaves out past max_items: a short and
     # a long print, the cockpit's cards and the chat then name a row by one number (round 2 of the four answers: the
@@ -1848,9 +1856,53 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
     # shows, so 41 of 96 cards had no number and one row had two numbers by style); it prints a few of them
     order = ([r for b in whole for r in b["items"]] if style == "calm" else
              numbered({**out, "style": style, "buckets": whole}))
-    for n, r in enumerate(order, 1):
-        r["nr"] = n
+    out["number_book"] = _number(_tabs_last(order), result.get("number_book"))
+    _by_number(out, style, result)
     return out
+
+
+def _tabs_last(order: list) -> list:
+    """The rows in the order they are numbered: an agent tab that asks after every other row, so a tab that starts or
+    stops asking moves no other row's number (the cockpit still shows it first in Do, as the print does)"""
+    return [r for r in order if not r.get("tab_ref")] + [r for r in order if r.get("tab_ref")]
+
+
+def _number(order: list, book) -> dict | None:
+    """Number the rows in `order`, 1 first. With the day's number book (`number_book`, {row ident: nr}, briefing.py
+    keeps it per profile and day) a row keeps the number it had today, and a row new today gets the next number nobody
+    had: an answer moves no other row's number, so "3 do" typed from an older print still names the row it named
+    (round 4 of the four answers: one Done renumbered every row after it). Returns the book with today's numbers, None
+    without a book."""
+    if not isinstance(book, dict):
+        for n, r in enumerate(order, 1):
+            r["nr"] = n
+        return None
+    held = {k: v for k, v in book.items() if isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool) and v > 0}
+    used: set = set()
+    fresh = []
+    for r in order:
+        n = held.get(_row_ident(r))
+        if n is not None and n not in used:
+            r["nr"] = n
+            used.add(n)
+        else:
+            fresh.append(r)
+    nxt = max([0, *held.values()]) + 1
+    for r in fresh:
+        r["nr"] = nxt
+        held[_row_ident(r)] = nxt
+        nxt += 1
+    return held
+
+
+def _by_number(out: dict, style: str, result: dict) -> None:
+    """With a number book the numbers no longer run in the order of the rows: each bucket then lists its rows by their
+    numbers (an asking tab first), as the cockpit's buckets order their points, so the print and the page agree"""
+    if not isinstance(result.get("number_book"), dict) or style not in ("triage", "calm"):
+        return
+    big = 10 ** 9
+    for b in out.get("buckets") or []:
+        b["items"].sort(key=lambda r: (0 if r.get("tab_ref") else 1, r.get("nr") or big))
 
 
 def _row_ident(row: dict) -> str:
@@ -1859,11 +1911,13 @@ def _row_ident(row: dict) -> str:
     printed no. 4 "waits on you since ..." had no card of that number)"""
     if row.get("advise_inbox"):
         return f"inbox:{row['advise_inbox']}"
+    if row.get("tab_ref"):
+        return f"tab:{row['tab_ref']}"
     return _settled_key(row) or f"{row.get('title')}|{','.join(map(str, row.get('sources') or []))}|{row.get('url') or ''}"
 
 
-def _printed_numbers(result: dict, profile: dict) -> dict:
-    """{row ident: (nr, bucket)} of the briefing as it is printed from this result: the same items (a view reads every
+def _printed_numbers(result: dict, profile: dict) -> tuple:
+    """({row ident: (nr, bucket)}, the number book) of the briefing as it is printed from this result: the same items (a view reads every
     item of a section, past its `max:` too), the profile without the pass's
     max_items (its own, `_print_max`), what was settled in the cockpit left out as a printed run leaves it out"""
     printed = {k: v for k, v in result.items() if k != "numbering_settled"}
@@ -1876,7 +1930,8 @@ def _printed_numbers(result: dict, profile: dict) -> dict:
         view["style"] = "triage"
     plain = {k: v for k, v in profile.items() if k not in ("_whole", "_print_max")}
     built = build(printed, {**plain, "view": view})
-    return {_row_ident(r): (r["nr"], r.get("bucket")) for b in built.get("buckets") or [] for r in b["items"] if r.get("nr")}
+    return ({_row_ident(r): (r["nr"], r.get("bucket")) for b in built.get("buckets") or [] for r in b["items"] if r.get("nr")},
+            built.get("number_book"))
 
 
 def _capped(shown: list, visible: list, cap: int) -> tuple:

@@ -327,7 +327,14 @@ one runs: [control.md](../skills/briefing/references/control.md).
 style that numbers (`briefing_view.numbered`): `triage` every row of every bucket, also with
 `answer_keys: false`, `report` the first rows and then those listed per bucket, `calm` every
 row of every bucket as `triage` does, printing a few of each bucket by their own numbers. The numbers run in the order of the buckets as the profile
-lists them, the order the cockpit shows them in (`brevity` and `plan` number nothing). A row's
+lists them, the order the cockpit shows them in; `brevity` and `plan` number every row in that order too and
+print the numbers of the rows they show. A row keeps its number all day: the day's number book
+(`.bridge/cockpit/numbers/<profile>.json`, written by `render` and `collect` unless `--no-save`) gives a row
+the number it had today and a row new today the next number nobody had, so an answer moves no other row's
+number; each bucket then lists its rows by their numbers. An agent tab that asks in a dialog and stands for no task
+or inbox item (the workplace section reads it from the driver) is a row of Do, shown first and numbered after
+every other row. A task the profile lists without a next step is no row and no point of the cockpit either
+(housekeeping counts it). On the first run of a day a row's
 number is its place in the whole list, also when `max_items` leaves it out of this print: a short
 print shows its rows with gaps between the buckets (1 to 3, then 48 to 50), a long one
 (`--max-items 300`) every number once, and both name a row by the same number. The
