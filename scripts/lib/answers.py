@@ -252,23 +252,33 @@ KINDS = ("tab", "inbox", "task", "stream", "waiting", "issue", "other")
 
 
 def row_kind(row: dict) -> str:
-    """What a point is, as the answers tell it apart: an agent tab, a point waiting on someone else, an inbox
-    item, a stream, a task, an issue or pull request, anything else"""
+    """What a point is, as the answers tell it apart: an agent tab, a stream (also one that waits: Done is done for
+    this time and Obsolete ends it, whatever bucket it stands in), a point waiting on someone else, an inbox item, a
+    task, an issue or pull request, anything else"""
     if row.get("tab"):
         return "tab"
+    if _is_stream(row):
+        return "stream"
     if row.get("bucket") == "waiting":
         return "waiting"
     if row.get("inbox_id"):
         return "inbox"
     if row.get("task"):
-        return "stream" if row.get("stream") else "task"
+        return "task"
     if row.get("ref"):
         return "issue"
     return "other"
 
 
+def _is_stream(row: dict) -> bool:
+    """A stream's own row (never an inbox item about one): briefing_view sets `stream` on it, the cockpit too"""
+    return bool(row.get("task") and not row.get("inbox_id") and (row.get("stream") or row.get("work_kind") == "stream"))
+
+
 OBSOLETE_NOTE = "veraltet"
 OBSOLETE_REASON = "Wird nicht gemacht: veraltet"
+#: the note a task parked on the watch list gets (task.py status backlog --note)
+PARK_NOTE = "Parked: on the watch list"
 
 
 PREPARE_NOTE = "Do it: prepare it, the person does the last step"
@@ -285,96 +295,116 @@ def settled_key(row: dict) -> str | None:
     return f"ref:{row['ref']}" if row.get("ref") else None
 
 
+def _launch(item: str, note: bool = False) -> str:
+    """An agent tab on one task or inbox item, at work at once: what the cockpit's start runs (workplace.py launch)"""
+    return f"workplace.py launch --items {item} --mode go --yes" + (" --start-note" if note else "")
+
+
 def effect(answer: str, row: dict, until: str | None = None, today: str | None = None) -> dict:
-    """What `answer` does to `row`: {answer, kind, cockpit: {verb, args}, cli: [briefing commands], then: the
-    bucket or place the point stands in afterwards} and the facts a page says beside it (running, draft_only,
-    own_answers, stream_continues, github). `until` is a Later's day (later_until), LIST_DAY for the watch list;
-    `today` the day a stream's "done for this time" counts on (it is back tomorrow)."""
+    """What `answer` does to `row`: {answer, kind, cockpit: {verb, args} or None, cli: [briefing commands], then:
+    the bucket or place the point stands in afterwards} and the facts a page says beside it (running, draft_only,
+    own_answers, stream_continues, github). `cockpit` is the act the cockpit's card sends for the same answer
+    (scripts/web/buckets.js bucketAnswers, its words aside: a note's or a reason's text is the page's language);
+    scripts/tests/fixtures/answers/effects.json holds the two to the same act, a test on each side. A tab that asks
+    has none: its own answers stand in the place of Do it. `until` is a Later's day (later_until), LIST_DAY for the
+    watch list; `today` the day a stream's "done for this time" counts on (it is back tomorrow)."""
     if answer not in ANSWERS:
         raise ValueError(f"no such answer: {answer!r}")
     kind = row_kind(row)
     item, slug = row.get("inbox_id"), row.get("task")
+    stream = _is_stream(row)
+    waiting = row.get("bucket") == "waiting"
     who = row.get("who")
     key = settled_key(row)
     out: dict = {"answer": answer, "kind": kind, "cli": []}
 
     def be(verb, then, cli=(), **args):
-        out.update(cockpit={"verb": verb, "args": args}, then=then, cli=list(cli))
+        out.update(cockpit={"verb": verb, "args": args} if verb else None, then=then, cli=list(cli))
         return out
 
+    keys = [key] if key else []
     if answer == "do":
         if kind == "tab":
             out["own_answers"] = True           # the tab's own answers stand in this place
-            return be("tab_answer", "delegate")
-        if kind == "waiting":
+            return be(None, "delegate")
+        if waiting:
             # never sent: while the agent writes it the point is the Bridge's, running; the draft it leaves stands in
             # Do for the person to send (`ready`; round 2 of the four answers: the table said Do at once)
             out["draft_only"] = True
             out["ready"] = "do"
             out["running"] = True
-            return be("do_it", "delegate", note=NUDGE_NOTE)
+            note = f"Start note: {NUDGE_NOTE}"
+            cli = ([f'inbox.py note {item} "{note}"', _launch(item, True)] if item else
+                   [f'task.py note {slug} --quiet "{note}"', _launch(slug, True)] if slug else [])
+            return be("do_it", "delegate", cli, keys=keys, note=NUDGE_NOTE)
         if item and row.get("inbox_state") == "approved":
-            # the yes is given: Do it starts it now instead of on the next pass (round 3 of the four answers)
+            # the yes is given: Do it starts it now instead of on the next pass (round 3 of the four answers); one
+            # without an action of its own gets an agent, as the cockpit's start (round 4: the chat ran nothing)
             out["running"] = True
-            return be("do_it", "delegate", ["inbox.py run"] if row.get("has_action") else [], yes=True)
+            return be("do_it", "delegate", ["inbox.py run"] if row.get("has_action") else [_launch(item)], keys=keys, yes=True)
         if item and row.get("gate") == "only-you":
             # only the person does its last step (send, publish, pay): no yes, the Bridge prepares it as the cockpit
             # does (round 3: "5 mach" approved an only-you item the page's Do it left open)
             out["prepare_only"] = True
             out["running"] = True
-            return be("do_it", "delegate", [f'inbox.py note {item} "{PREPARE_NOTE}"'], yes=True)
+            return be("do_it", "delegate", [f'inbox.py note {item} "{PREPARE_NOTE}"', _launch(item)], keys=keys, yes=True)
         if item:
-            return be("do_it", "delegate", [f"inbox.py approve {item}", "inbox.py run"], yes=True)
+            # the yes, then the run of its own action, or an agent where it has none (actions_work.py v_do_it)
+            return be("do_it", "delegate", [f"inbox.py approve {item}", "inbox.py run" if row.get("has_action") else _launch(item)],
+                      keys=keys, yes=True)
         out["running"] = True
-        return be("do_it", "delegate")
+        # a task gets an agent on its next step; any other row the cockpit files as an inbox item first, which the
+        # chat leaves to the person's word (no command here)
+        return be("do_it", "delegate", [_launch(slug)] if slug else [], keys=keys)
     if answer == "later":
         until = until or ""
         parked = is_list_day(until)
         hide = [f"briefing.py hide {key} --until {until}"] if key else []
-        if parked and kind == "waiting" and slug and not item and not row.get("stream"):
-            # the watch list is the watch list on a waiting task too: parked, as the cockpit parks it
-            return be("task_park", "list", [f'task.py status {slug} backlog --note "Parked: on the watch list"'])
-        if parked and kind == "waiting" and item:
-            return be("later", "list", [f"inbox.py defer {item} --until {until}"], until=until)
-        if kind == "waiting":
+        if parked:
+            # the watch list, whoever has the point: a task to the backlog, anything else put off to the list's day
+            if slug and not item and not stream:
+                return be("task_park", "list", [f'task.py status {slug} backlog --note "{PARK_NOTE}"'], key=key)
+            if item:
+                return be("later", "list", [f"inbox.py defer {item} --until {until}"], key=key, until=until)
+            return be("later", "list", hide, key=key, until=until)
+        if waiting:
             # out of sight until the day and counted as later, still with the same person when it is back (round 2)
+            on = {"on": str(who)} if who else {}
             if item:
                 return be("runs_on", "later", [f"inbox.py defer {item} --until {until}" + (f" --on {who}" if who else "")],
-                          until=until, **({"on": who} if who else {}))
-            if slug:
-                return be("runs_on", "later", [f"task.py wait {slug} --until {until}"], until=until,
-                          **({"on": who} if who else {}))
-            return be("hide", "later", hide, until=until)
+                          keys=keys, until=until, **on)
+            if slug and not stream:
+                return be("runs_on", "later", [f"task.py wait {slug} --until {until}"], keys=keys, until=until, **on)
+            return be("runs_on", "later", hide, keys=keys, until=until, **on)
+        plan = {"plan": True} if row.get("bucket") == "plan" else {}
         if item:
-            return be("later", "list" if parked else "later", [f"inbox.py defer {item} --until {until}"], until=until)
-        if kind == "task" and parked:
-            return be("task_park", "list", [f'task.py status {slug} backlog --note "Parked: on the watch list"'])
-        if kind in ("task", "stream"):
-            return be("later", "list" if parked else "later", hide, until=until)
-        return be("hide", "list" if parked else "later", hide, until=until)
+            return be("later", "later", [f"inbox.py defer {item} --until {until}"], key=key, until=until, **plan)
+        return be("later", "later", hide, key=key, until=until, **plan)
     if answer == "done":
-        if kind == "stream":
+        if stream:
             # done for this time: out of sight until tomorrow and counted as done today; the stream runs on
             out["stream_continues"] = True
             day = (dt.date.fromisoformat(today) if today else dt.date.today()) + dt.timedelta(days=1)
-            return be("later", "done", [f"briefing.py hide {key} --until {day.isoformat()} --done"], until=day.isoformat(),
-                      done=True)
+            return be("later", "done", [f"briefing.py hide {key} --until {day.isoformat()} --done"], key=key,
+                      until=day.isoformat(), done=True)
         if item:
-            return be("settle", "done", [f'inbox.py close {item} --note "done"'], outcome="done")
+            return be("settle", "done", [f'inbox.py close {item} --note "done"'], keys=keys, outcome="done")
         if slug:
-            return be("settle", "done", [f"task.py close {slug}"], outcome="done")
+            return be("settle", "done", [f"task.py close {slug}"], keys=keys, outcome="done")
         if kind == "issue":
             out["github"] = "untouched"         # hidden here, never closed on GitHub
-        return be("settle", "done", [f"briefing.py dismiss {key} --outcome done"] if key else [], outcome="done")
+        return be("settle", "done", [f"briefing.py dismiss {key} --outcome done"] if key else [], keys=keys, outcome="done")
     # obsolete: closed as not done, with a note
     if item:
         return be("settle", "done", [f'inbox.py drop {item} --note "{OBSOLETE_NOTE}" --reason outdated'],
-                  outcome="not_doing", reason="outdated")
-    if kind == "stream" or (row.get("stream") and slug):
+                  keys=keys, outcome="not_doing", reason="outdated")
+    if stream:
         return be("settle", "done", [f'task.py close {slug} --stream --declined --reason "{OBSOLETE_REASON}"'],
-                  outcome="not_doing", stream=True)
+                  keys=keys, outcome="not_doing", stream=True)
     if slug:
-        return be("settle", "done", [f'task.py close {slug} --declined --reason "{OBSOLETE_REASON}"'], outcome="not_doing")
+        return be("settle", "done", [f'task.py close {slug} --declined --reason "{OBSOLETE_REASON}"'], keys=keys,
+                  outcome="not_doing")
     if kind == "issue":
         out["github"] = "untouched"
-    return be("settle", "done", [f"briefing.py dismiss {key} --outcome not_doing"] if key else [], outcome="not_doing")
+    return be("settle", "done", [f"briefing.py dismiss {key} --outcome not_doing"] if key else [], keys=keys,
+              outcome="not_doing")

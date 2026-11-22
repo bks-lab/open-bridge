@@ -168,24 +168,35 @@ def test_the_kind_of_a_row():
     assert ans.row_kind({"task": "a"}) == "task"
     assert ans.row_kind({"task": "a", "stream": True}) == "stream"
     assert ans.row_kind({"task": "a", "bucket": "waiting"}) == "waiting"
+    # a stream is a stream in any bucket: its Done is for this time, its Obsolete ends it (round 4: a waiting stream
+    # was a waiting point, and "3 erledigt" gave task.py close, which a stream refuses)
+    assert ans.row_kind({"task": "a", "stream": True, "bucket": "waiting"}) == "stream"
     assert ans.row_kind({"ref": "o/r#1"}) == "issue"
     assert ans.row_kind({"title": "x"}) == "other"
 
 
 def test_do_it_on_a_task_starts_an_agent_and_moves_it_to_i_do():
     e = ans.effect("do", {"task": "a", "step": "draft it"})
-    assert e["cockpit"]["verb"] == "do_it" and e["then"] == "delegate" and e["running"] is True
+    assert e["cockpit"] == {"verb": "do_it", "args": {"keys": ["task:a"]}} and e["then"] == "delegate" and e["running"] is True
+    # the chat starts the agent the cockpit starts (round 4: "mach" on a task ran nothing)
+    assert e["cli"] == ["workplace.py launch --items a --mode go --yes"]
 
 
 def test_do_it_on_an_inbox_item_is_its_yes_and_the_run():
     e = ans.effect("do", {"inbox_id": "i1"})
-    assert e["cockpit"] == {"verb": "do_it", "args": {"yes": True}}
-    assert e["cli"] == ["inbox.py approve i1", "inbox.py run"] and e["then"] == "delegate"
+    assert e["cockpit"] == {"verb": "do_it", "args": {"keys": ["inbox:i1"], "yes": True}}
+    # without an action of its own the yes gets an agent, as the cockpit's do_it starts one
+    assert e["cli"] == ["inbox.py approve i1", "workplace.py launch --items i1 --mode go --yes"] and e["then"] == "delegate"
+    acted = ans.effect("do", {"inbox_id": "i1", "has_action": True})
+    assert acted["cli"] == ["inbox.py approve i1", "inbox.py run"]
 
 
 def test_do_it_on_an_approved_item_starts_it_now():
     e = ans.effect("do", {"inbox_id": "i1", "inbox_state": "approved", "has_action": True})
     assert e["cli"] == ["inbox.py run"] and e["cockpit"]["verb"] == "do_it" and e["then"] == "delegate"
+    # round 4: one without an action ran nothing from the chat, the cockpit started an agent
+    bare = ans.effect("do", {"inbox_id": "i1", "inbox_state": "approved"})
+    assert bare["cli"] == ["workplace.py launch --items i1 --mode go --yes"]
 
 
 def test_do_it_on_an_only_you_item_prepares_it_and_gives_no_yes():
@@ -193,8 +204,9 @@ def test_do_it_on_an_only_you_item_prepares_it_and_gives_no_yes():
     # started an agent to prepare it: one word, two acts
     e = ans.effect("do", {"inbox_id": "i1", "gate": "only-you"})
     assert not any("approve" in c or c == "inbox.py run" for c in e["cli"])
-    assert e["cli"] == ['inbox.py note i1 "Do it: prepare it, the person does the last step"']
-    assert e["cockpit"] == {"verb": "do_it", "args": {"yes": True}}
+    assert e["cli"] == ['inbox.py note i1 "Do it: prepare it, the person does the last step"',
+                        "workplace.py launch --items i1 --mode go --yes"]
+    assert e["cockpit"] == {"verb": "do_it", "args": {"keys": ["inbox:i1"], "yes": True}}
     assert e["prepare_only"] is True and e["running"] is True and e["then"] == "delegate"
 
 
@@ -208,13 +220,14 @@ def test_do_it_on_a_waiting_point_writes_a_nudge_as_a_draft_never_sent():
 
 def test_a_tab_that_asks_answers_with_its_own_words():
     e = ans.effect("do", {"tab": "t1"})
-    assert e["cockpit"]["verb"] == "tab_answer" and e["own_answers"] is True
+    # no verb of its own: the tab's own answer (a dialog's option, its ready suggestion, Yes or No) is the act
+    assert e["cockpit"] is None and e["own_answers"] is True and e["cli"] == []
 
 
 def test_later_puts_off_to_a_day_or_onto_the_watch_list():
     assert ans.effect("later", {"inbox_id": "i1"}, until="2026-11-23")["cli"] == ["inbox.py defer i1 --until 2026-11-23"]
     task = ans.effect("later", {"task": "a"}, until="2026-11-23")
-    assert task["cockpit"] == {"verb": "later", "args": {"until": "2026-11-23"}} and task["then"] == "later"
+    assert task["cockpit"] == {"verb": "later", "args": {"key": "task:a", "until": "2026-11-23"}} and task["then"] == "later"
     # round 1: "72 später" did nothing durable from the chat; it hides the task as the cockpit's Later does
     assert task["cli"] == ["briefing.py hide task:a --until 2026-11-23"]
     assert ans.effect("later", {"ref": "o/r#1"}, until="2026-11-23")["cli"] == ["briefing.py hide ref:o/r#1 --until 2026-11-23"]
@@ -224,12 +237,14 @@ def test_later_puts_off_to_a_day_or_onto_the_watch_list():
     shelf = ans.effect("later", {"inbox_id": "i1"}, until=ans.LIST_DAY)
     assert shelf["cli"] == [f"inbox.py defer i1 --until {ans.LIST_DAY}"] and shelf["then"] == "list"
     issue = ans.effect("later", {"ref": "o/r#1"}, until=ans.LIST_DAY)
-    assert issue["cockpit"] == {"verb": "hide", "args": {"until": ans.LIST_DAY}} and issue["then"] == "list"
+    # round 4: the table named `hide`, whose day the server refuses past a year; the cockpit sends later
+    assert issue["cockpit"] == {"verb": "later", "args": {"key": "ref:o/r#1", "until": ans.LIST_DAY}} and issue["then"] == "list"
+    assert issue["cli"] == [f"briefing.py hide ref:o/r#1 --until {ans.LIST_DAY}"]
 
 
 def test_later_on_a_waiting_point_keeps_it_with_the_same_person():
     e = ans.effect("later", {"task": "a", "bucket": "waiting", "who": "Ada"}, until="2026-11-23")
-    assert e["cockpit"] == {"verb": "runs_on", "args": {"until": "2026-11-23", "on": "Ada"}}
+    assert e["cockpit"] == {"verb": "runs_on", "args": {"keys": ["task:a"], "until": "2026-11-23", "on": "Ada"}}
     assert e["cli"] == ["task.py wait a --until 2026-11-23"] and e["then"] == "later"
     i = ans.effect("later", {"inbox_id": "i1", "bucket": "waiting", "who": "Ada"}, until="2026-11-23")
     assert i["cli"] == ["inbox.py defer i1 --until 2026-11-23 --on Ada"]
@@ -244,24 +259,24 @@ def test_later_on_a_waiting_point_keeps_it_with_the_same_person():
 
 def test_done_closes_and_a_stream_is_done_for_now():
     assert ans.effect("done", {"inbox_id": "i1"})["cli"][0].startswith("inbox.py close i1")
-    assert ans.effect("done", {"task": "a"})["cockpit"] == {"verb": "settle", "args": {"outcome": "done"}}
+    assert ans.effect("done", {"task": "a"})["cockpit"] == {"verb": "settle", "args": {"keys": ["task:a"], "outcome": "done"}}
     s = ans.effect("done", {"task": "a", "stream": True}, today="2026-11-21")
     # done for this time: out of sight until tomorrow and counted as done today, the same from the chat
-    assert s["cockpit"] == {"verb": "later", "args": {"until": "2026-11-22", "done": True}} and s["then"] == "done"
+    assert s["cockpit"] == {"verb": "later", "args": {"key": "task:a", "until": "2026-11-22", "done": True}} and s["then"] == "done"
     assert s["cli"] == ["briefing.py hide task:a --until 2026-11-22 --done"] and s["stream_continues"] is True
     issue = ans.effect("done", {"ref": "o/r#1"})
-    assert issue["cockpit"] == {"verb": "settle", "args": {"outcome": "done"}} and issue["github"] == "untouched"
+    assert issue["cockpit"] == {"verb": "settle", "args": {"keys": ["ref:o/r#1"], "outcome": "done"}} and issue["github"] == "untouched"
 
 
 def test_obsolete_closes_as_not_done_with_a_note():
     i = ans.effect("obsolete", {"inbox_id": "i1"})
     assert i["cli"] == ['inbox.py drop i1 --note "veraltet" --reason outdated']
-    assert i["cockpit"] == {"verb": "settle", "args": {"outcome": "not_doing", "reason": "outdated"}}
+    assert i["cockpit"] == {"verb": "settle", "args": {"keys": ["inbox:i1"], "outcome": "not_doing", "reason": "outdated"}}
     t = ans.effect("obsolete", {"task": "a"})
     assert t["cli"] == ['task.py close a --declined --reason "Wird nicht gemacht: veraltet"']
     s = ans.effect("obsolete", {"task": "a", "stream": True})
     assert s["cli"] == ['task.py close a --stream --declined --reason "Wird nicht gemacht: veraltet"']
-    assert s["cockpit"]["args"] == {"outcome": "not_doing", "stream": True}
+    assert s["cockpit"]["args"] == {"keys": ["task:a"], "outcome": "not_doing", "stream": True}
     issue = ans.effect("obsolete", {"ref": "o/r#1"})
     assert issue["github"] == "untouched" and issue["cli"] == ["briefing.py dismiss ref:o/r#1 --outcome not_doing"]
     assert ans.effect("done", {"ref": "o/r#1"})["cli"] == ["briefing.py dismiss ref:o/r#1 --outcome done"]
@@ -273,7 +288,8 @@ def test_every_answer_has_an_effect_on_every_kind():
     for kind, row in rows.items():
         for a in ans.ANSWERS:
             e = ans.effect(a, row, until="2026-11-23")
-            assert e["answer"] == a and e["kind"] == kind and e["cockpit"]["verb"], (a, kind)
+            assert e["answer"] == a and e["kind"] == kind, (a, kind)
+            assert e["cockpit"] is None if (kind, a) == ("tab", "do") else e["cockpit"]["verb"], (a, kind)
 
 
 def test_an_unknown_answer_is_refused():
@@ -300,3 +316,58 @@ def test_the_parser_keeps_every_day_and_every_number_it_is_given():
     assert [(g["nr"], g["answer"]) for g in ans.parse("3 und 5 erledigt", today)] == [(3, "done"), (5, "done")]
     assert [g["answer"] for g in ans.parse("3 erledigt, danke", today)] == ["done"]
     assert [g["answer"] for g in ans.parse("3 veraltet bitte", today)] == ["obsolete"]
+
+
+# ---------------------------------------------------------------- the chat and the cockpit do the same
+
+def test_a_stream_from_the_chat_is_done_for_this_time_and_obsolete_ends_it_in_any_bucket():
+    # round 4: "3 erledigt" on a stream row gave task.py close, which close_task refuses for a stream; a waiting stream
+    # did it even with stream set
+    for bucket in ("plan", "waiting", "do"):
+        row = {"task": "rota", "stream": True, "bucket": bucket}
+        done = ans.effect("done", row, today="2026-11-21")
+        assert done["cli"] == ["briefing.py hide task:rota --until 2026-11-22 --done"], bucket
+        gone = ans.effect("obsolete", row)
+        assert gone["cli"] == ['task.py close rota --stream --declined --reason "Wird nicht gemacht: veraltet"'], bucket
+    # the watch list on a waiting stream puts it off to the list's day, as the cockpit does, never task.py wait
+    shelf = ans.effect("later", {"task": "rota", "stream": True, "bucket": "waiting"}, until=ans.LIST_DAY)
+    assert shelf["cli"] == [f"briefing.py hide task:rota --until {ans.LIST_DAY}"]
+
+
+def _contract():
+    import json
+    return json.loads((ROOT / "scripts" / "tests" / "fixtures" / "answers" / "effects.json").read_text(encoding="utf-8"))
+
+
+def _comparable(act: dict) -> dict:
+    """An act without the page's words (a note's, a text's, a park's reason)"""
+    args = {k: v for k, v in (act.get("args") or {}).items() if k not in ("text", "note")}
+    if act.get("verb") == "task_park":
+        args.pop("reason", None)
+    return {"verb": act.get("verb"), "args": args}
+
+
+def test_the_table_names_the_act_the_cockpit_sends():
+    # round 4: the table named verbs the server has not (tab_answer) or refuses (hide past a year), and nothing held
+    # it to the cockpit's mapping; web/buckets.js is held to the same cases (bridge_cockpit_answer_contract.test.mjs)
+    c = _contract()
+    for case in c["cases"]:
+        e = ans.effect(case["answer"], case["row"], until=case.get("until"), today=c["today"])
+        assert _comparable(e["cockpit"]) == _comparable(case["act"]), case["name"]
+
+
+def test_every_act_of_the_table_is_a_verb_the_server_takes():
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    from bridge_cockpit import actions_base as base
+    rows = [{"tab": "t"}, {"inbox_id": "i"}, {"inbox_id": "i", "inbox_state": "approved"}, {"inbox_id": "i", "gate": "only-you"},
+            {"task": "a"}, {"task": "a", "stream": True}, {"task": "a", "bucket": "waiting", "who": "Ada"},
+            {"inbox_id": "i", "bucket": "waiting"}, {"ref": "o/r#1"}, {"ref": "o/r#1", "bucket": "waiting"}]
+    for row in rows:
+        for a in ans.ANSWERS:
+            for until in ("2026-11-23", ans.LIST_DAY):
+                e = ans.effect(a, row, until=until, today="2026-11-21")
+                if e["cockpit"] is None:
+                    continue
+                spec = base.SPEC[e["cockpit"]["verb"]]
+                assert set(e["cockpit"]["args"]) <= set(spec), (a, row, e["cockpit"])
+                assert all(name in e["cockpit"]["args"] for name, (_, need) in spec.items() if need), (a, row, e["cockpit"])

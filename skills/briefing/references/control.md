@@ -136,8 +136,12 @@ Two things are yours besides:
   read from `briefing.py collect <id> --max-items 500 --json`, where every row
   carries its `nr`.
   What the answer does to the row is `answers.effect(answer, row, until)`, the
-  table below in code; the cockpit runs the same table, so the same word does
-  the same thing on the same row in the chat and on the page.
+  table below in code: run its `cli` commands from the repo root. Its `cockpit`
+  part is the act the page's card sends for the same answer; the page keeps its
+  own copy (`scripts/web/buckets.js`), and the shared cases in
+  `scripts/tests/fixtures/answers/effects.json` hold the two to the same act,
+  so the same word does the same thing on the same row in the chat and on the
+  page.
 - **Do is the Bridge's next step**, the one the row's next sentence names: a
   task gets an agent on its next step and moves to "I'll do" as running; an
   inbox item gets its yes and runs (`only-you` gets no yes and never runs: a
