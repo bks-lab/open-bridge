@@ -11,7 +11,7 @@
 // task_park, settle, the tab's own answers); With … under More hands a task's step over (task_owner, work_on). No DOM,
 // no network. logic.js passes every name on.
 import { TABLES } from './text.js'
-import { DAY, tabHeld, actionRow, flowAction, inProject, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
+import { DAY, canTab, tabHeld, actionRow, flowAction, inProject, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
   replySend, short, triageShows } from './logic.js'
 
 // the briefing's buckets, in its order (briefing_view BUCKETS)
@@ -310,7 +310,11 @@ export function nextSentence(x, bucket, s, lang = 'en') {
   if (x?.row?.inbox_id && x.row.inbox_state === 'approved') return f.nextApproved
   const a = bucketAnswers(x, bucket, s, lang)
   if (!a.length) return f.nextNone
-  if (!a.some(z => z.meaning === 'do')) return x?.row?.tab?.live || x?.running ? f.nextWorking : f.nextNone
+  if (!a.some(z => z.meaning === 'do')) {
+    if (x?.row?.tab?.live || x?.running) return f.nextWorking
+    // no terminal to start an agent in: Do it is not offered, and Next says why instead of promising an agent (round 4)
+    return needsAgent(x?.row) && !canTab(s, 'launch') ? f.nextNoTerminal : f.nextNone
+  }
   if (bucket === 'waiting') return f.nextWaiting(who ?? f.someone)
   // what Do it does to this point, said concretely (round 1 of the four answers: 101 of 121 cards said only "the
   // Bridge takes the next step"): an inbox item gets its yes, a task an agent on its step, or on the task as a whole
@@ -334,6 +338,10 @@ export function laterDays(nowMs) {
 export const nextBriefingDay = nowMs => isoDate(nowMs + DAY)
 
 const isTask = row => !!row?.task && !row.inbox_id && row.key === `task:${row.task}`
+
+/** Whether Do it on a row starts an agent (actions_work.py v_do_it): any row but an inbox item whose yes runs on its
+ *  own, i.e. a task, an issue, an only-you item, an approved item without an action of its own */
+const needsAgent = row => !!row?.key && (!row.inbox_id || row.gate === 'only-you' || (row.inbox_state === 'approved' && !row.has_action))
 const isStream = row => !row?.inbox_id && !!(row?.stream || row?.work_kind === 'stream')
 
 /** Who a waiting point waits on, for a nudge: the check-in's, else the task's step's or the row's while nothing
@@ -394,8 +402,11 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
       add('do', { kind: 'reply', verb: b.verb, args: b.args }, b.label)
     }
     if (!out.length && jump) add('do', { kind: 'reply', verb: jump.verb, args: jump.args }, jump.label)
-  } else if (key && (row.inbox_state !== 'approved' || (!row.tab?.live && !x.running))) {
+  } else if (key && (row.inbox_state !== 'approved' || (!row.tab?.live && !x.running)) &&
+    (canTab(s, 'launch') || (!needsAgent(row) && bucket !== 'waiting'))) {
     // an item whose yes is given takes Do it too in I'll do: it starts now instead of on the next pass (round 3)
+    // without a terminal (the driver lists no launch) only a yes goes: what would start an agent is not offered, so a
+    // click never fails after the card promised an agent (round 4)
     if (bucket === 'waiting') {
       const who = waitsOn(x)
       const blocker = blockerOf(row)

@@ -36,6 +36,7 @@ export const FLOW = {
       nextApproved: 'Your yes stands. The Bridge runs it on its next pass.',
       nextWorking: 'An agent tab works on it. Its answer comes back here.',
       nextNone: 'This point takes no answer here. Open it under More.',
+      nextNoTerminal: 'No terminal is connected, so no agent can start here. Take the next step yourself, or answer Later, Done or Obsolete.',
       nextLabel: 'Next', asks: 'The tab asks',
       checkin: who => `It is with ${who}. Do it writes a draft that asks how it stands, never sent.`,
       // the four answers every point takes (lib/answers.py), the same on every card and in the briefing
@@ -438,6 +439,7 @@ export const FLOW = {
       nextApproved: 'Dein Ja steht. Die Bridge führt es beim nächsten Durchlauf aus.',
       nextWorking: 'Ein Agenten-Tab arbeitet daran. Seine Antwort kommt hierher.',
       nextNone: 'Dieser Punkt lässt sich hier nicht beantworten. Öffne ihn unter Mehr.',
+      nextNoTerminal: 'Kein Terminal ist verbunden, hier startet also kein Agent. Mach den nächsten Schritt selbst, oder antworte mit Später, Erledigt oder Veraltet.',
       nextLabel: 'Als Nächstes', asks: 'Der Tab fragt',
       checkin: who => `Es liegt bei ${who}. Mach das schreibt einen Entwurf, der nach dem Stand fragt, nie gesendet.`,
       answers: { do: 'Mach das', later: 'Später ▾', laterPlain: 'Später', done: 'Erledigt', doneStream: 'für diesmal erledigt' },

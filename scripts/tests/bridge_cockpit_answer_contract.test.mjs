@@ -49,3 +49,23 @@ test('an agent tab that asks without a row of its own says the number the briefi
   assert.equal(logic.pointNr({ kind: 'tab', id: 'tab:surface:9', tab, row: { key: 'task:a', brief_nr: 4 } }, s), 4)
   assert.equal(logic.pointNr({ kind: 'tab', id: 'tab:surface:8', tab: { ...tab, ref: 'surface:8' }, row: null }, s), null)
 })
+
+// ---------------------------------------------------------------- no terminal
+
+test('without a terminal Do it is offered only where a yes needs none, and Next says why', () => {
+  const s = { now: NOW, model: {}, ui: {}, driver: { caps: ['tabs'] } }
+  const t = { key: 'task:a', task: 'a', status: 'doing', bucket: 'plan', title: 'Task a' }
+  const point = row => ({ group: 'row', id: row.key, kind: 'row', row })
+  const meanings = (row, bucket = row.bucket) => logic.bucketAnswers(point(row), bucket, s, 'en').map(a => a.meaning)
+  // round 4: the card said "I start an agent", the click failed with a long red toast
+  assert.deepEqual(meanings(t), ['later', 'done', 'obsolete'])
+  assert.match(logic.nextSentence(point(t), 'plan', s, 'en'), /No terminal is connected/)
+  assert.deepEqual(meanings({ ...t, bucket: 'waiting', who: 'Ada' }), ['later', 'done', 'obsolete'])
+  // an inbox item's yes runs without a terminal
+  const yes = { key: 'inbox:20261121-0900-check-x', inbox_id: '20261121-0900-check-x', inbox_state: 'open', bucket: 'do', gate: 'your-yes', title: 'Check' }
+  assert.equal(meanings(yes)[0], 'do')
+  assert.equal(meanings({ ...yes, gate: 'only-you' })[0], 'later')
+  // with a terminal, or while the page does not know yet (no caps), Do it stands
+  assert.equal(logic.bucketAnswers(point(t), 'plan', { ...s, driver: { caps: ['tabs', 'launch'] } }, 'en')[0].meaning, 'do')
+  assert.equal(logic.bucketAnswers(point(t), 'plan', { ...s, driver: { caps: null } }, 'en')[0].meaning, 'do')
+})
