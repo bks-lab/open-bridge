@@ -680,7 +680,7 @@ function FieldPick({ label, value, choices, none = null, busy = false, onPick })
 
 /** The fields of the point, like an issue tracker's sidebar (logic.js flowFields); with the one point view (stage 1)
  *  the drawer's facts folded under Details at their foot */
-export function Fields({ x, s, c }) {
+export function Fields({ x, s, c, bare = false }) {
   const t = T()
   const f = t.flow.fields
   const lang = language()
@@ -754,8 +754,9 @@ export function Fields({ x, s, c }) {
   // stage 4: Theme, Area, Who and Due (or the day it asks again) on top, every other field folded under Details
   const all = flowFields(x, s, feed, detail)
   const { top, rest } = one ? fieldsSplit(all, x, s) : { top: all, rest: [] }
-  return html`<section class="flow-fields flow-aside-part" aria-labelledby="flow-fields">
-    <h3 id="flow-fields" class="label-caps">${f.label}</h3>
+  // bare: a part under a heading of its own (the card's More), which names it once (round 4: FELDER FELDER)
+  return html`<section class="flow-fields flow-aside-part" aria-labelledby=${bare ? null : 'flow-fields'} aria-label=${bare ? f.label : null}>
+    ${bare ? null : html`<h3 id="flow-fields" class="label-caps">${f.label}</h3>`}
     <dl class="meta flow-meta">${top.map(fld => html`<div class="meta-item" key=${fld.id} data-field=${fld.id}>
       <dt>${f[fld.id]}</dt><dd>${value(fld)}</dd></div>`)}</dl>
     ${one ? html`<${Facts} key=${x.id} x=${x} item=${item} detail=${detail} rest=${rest} value=${value} />` : null}

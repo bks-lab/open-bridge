@@ -430,3 +430,11 @@ test('waiting on you is the count of Do everywhere, an asking tab without a row 
   assert.equal(logic.startWaiting(s), doBucket.points.length)
   assert.equal(doBucket.points.length, 3)
 })
+
+test('More names the fields once (round 4: FELDER FELDER)', async () => {
+  const s = state({ work: [task('mine')], ui: { flowBucket: 'plan', lang: 'en' } })
+  const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
+  await rounds()
+  const heads = el.$$('.fb-more .label-caps').map(h => h.text().trim().toLowerCase())
+  assert.equal(heads.filter(h => h === en.fieldsHead.toLowerCase()).length, 1, heads.join(' | '))
+})

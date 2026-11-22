@@ -303,7 +303,7 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
           <${InstructLine} key=${x.id} scope=${scope} x=${x} s=${s} c=${c} /></section>` : null}
         <section class="fb-fields fb-more-part"><h3 class="label-caps">${f.fieldsHead}</h3>
           ${tab?.ask?.text ? html`<pre class="fb-screen mono">${tab.ask.text}</pre>` : null}
-          ${x.kind !== 'reports' && row ? html`<${Fields} x=${x} s=${s} c=${c} />` : null}
+          ${x.kind !== 'reports' && row ? html`<${Fields} x=${x} s=${s} c=${c} bare />` : null}
           ${row ? html`<${PointTabs} x=${x} s=${s} c=${c} />` : null}
         </section>
       </div>
