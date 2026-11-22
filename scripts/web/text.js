@@ -1368,6 +1368,9 @@ const en = {
   settleNot: 'Discard',
   settleReopen: 'Open again',
   kind: { task: 'Task', stream: 'Stream', done_task: 'Closed task', done_stream: 'Ended stream', done: 'Closed', inbox: 'Report', issue: 'Issue', other: 'Item' },
+  // an inbox item by its art (inbox_verbs.art_of_kind), the same word on every view and on the card (round 4: one item
+  // read Report, Inbox and idea on three views)
+  kindArt: { ask: 'Question', report: 'Report', idea: 'Idea' },
   kindTitle: {
     task: 'A task: finite work under work/tasks/, it gets done',
     stream: 'A stream: long-running work under work/streams/ (a customer, a programme); it ends only when you end it',
@@ -3263,6 +3266,7 @@ const de = {
   settleNot: 'Verwerfen',
   settleReopen: 'Wieder öffnen',
   kind: { task: 'Aufgabe', stream: 'Stream', done_task: 'Erledigte Aufgabe', done_stream: 'Beendeter Stream', done: 'Erledigt', inbox: 'Meldung', issue: 'Issue', other: 'Eintrag' },
+  kindArt: { ask: 'Frage', report: 'Meldung', idea: 'Idee' },
   kindTitle: {
     task: 'Eine Aufgabe: endliche Arbeit unter work/tasks/, sie wird fertig',
     stream: 'Ein Stream: Dauerläufer unter work/streams/ (ein Kunde, ein Programm); er endet nur, wenn du ihn beendest',

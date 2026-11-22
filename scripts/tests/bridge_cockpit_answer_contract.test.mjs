@@ -85,3 +85,14 @@ test('with the buckets on the lead line says the count of Do, the badge\'s, in t
   assert.doesNotMatch(lead, /11|reports/)
   assert.match(lead, /^1 waits for you · free for the rest of the day$/)
 })
+
+// ---------------------------------------------------------------- one kind word
+
+test('an inbox item is named by its art on the card as on every list', async () => {
+  const { html, mount, views } = await import('./cockpit_render.mjs').then(async r => ({ ...(await r.loadCockpit()), mount: r.mount }))
+  const idea = { key: 'inbox:20261121-0900-x', inbox_id: '20261121-0900-x', art: 'idea', inbox_kind: 'idea', title: 'Backup check' }
+  assert.equal(logic.pointKindWord({ kind: 'row', row: idea }, 'en'), 'Idea')
+  assert.equal(logic.pointKindWord({ kind: 'row', row: { ...idea, art: 'ask' } }, 'de'), 'Frage')
+  const el = mount(html`<${views.day.KindTag} row=${idea} s=${{ model: {} }} />`)
+  assert.match(el.text(), /Idea/)
+})

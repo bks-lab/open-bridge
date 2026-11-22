@@ -508,7 +508,8 @@ export function pointKindWord(x, lang = 'en') {
   const k = (TABLES[lang] ?? TABLES.en).flow.buckets.kind
   if (x?.tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) return k.tab
   const row = x?.row
-  if (row?.inbox_id) return k.inbox
+  // an inbox item by its art, as every list's kind tag says it (round 4: the card said Inbox, the lists Report)
+  if (row?.inbox_id) return (TABLES[lang] ?? TABLES.en).kindArt?.[row.art ?? 'ask'] ?? k.inbox
   if (isStream(row)) return k.stream
   if (row?.task) return k.task
   if (row?.ref) return k.issue
