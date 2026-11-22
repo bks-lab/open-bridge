@@ -376,3 +376,40 @@ def test_a_longer_print_numbers_every_row_once_in_order(tmp_path, capsys):
     assert bf.main(["--root", str(root), "render", "--no-save", "--color", "never", "--max-items", "300"]) == 0
     nums = [int(m.group(1)) for m in re.finditer(r"^\s{0,3}(\d+)  ", capsys.readouterr().out, re.M)]
     assert nums == list(range(1, 21))
+
+
+# ---------------------------------------------------------------- round 4: every style numbers, a stream says so
+
+def test_brevity_and_plan_number_every_row_in_bucket_order_and_print_the_number():
+    r = result(sec("inbox", "inbox", [item("20261120-0900-sign-a1b2", "Sign"), item("20261120-0910-read-c3d4", "Read", urgency="later")]),
+               sec("tasks", "tasks", [task("a", {"what": "draft it", "who": "bridge"})]))
+    for style in ("brevity", "plan"):
+        v = bv.build(r, profile(view={"style": style}))
+        rows = {x["title"]: x.get("nr") for x in (v.get("top") or [])}
+        assert style != "brevity" or rows["Sign"] == 1, (style, rows)
+        whole = bv.build(r, profile(view={"style": style}, _whole=True), "triage")
+        nrs = {x["title"]: x.get("nr") for b in whole["buckets"] for x in x_items(b)}
+        # the cockpit pass carries the printed numbers: one per row, 1 to 3, Do first
+        assert sorted(nrs.values()) == [1, 2, 3] and nrs["Sign"] == 1, (style, nrs)
+    text = bv.draw(bv.build(r, profile(view={"style": "brevity"})))
+    assert "1. Sign" in text
+    plan = bv.draw(bv.build(r, profile(view={"style": "plan"})))
+    assert "1. Sign" in plan and "3. Task a" in plan
+
+
+def x_items(b):
+    return b["items"]
+
+
+def test_a_stream_row_says_it_is_a_stream_and_its_answers_keep_it_running():
+    stream = task("rota", {"what": "swap the shifts", "who": "me"}, stream=True)
+    waiting = task("feed", {"what": "x", "who": "me"}, stream=True, blocked_by="waiting for Mika")
+    v = bv.build(result(sec("tasks", "tasks", [stream, waiting])), profile())
+    got = rows_of(v)
+    assert got["Task rota"][1]["stream"] is True and got["Task feed"][1]["stream"] is True
+    assert got["Task feed"][0] == "waiting"
+    answers = sys.modules.get("answers") or _load("answers", ROOT / "scripts" / "lib" / "answers.py")
+    for title in ("Task rota", "Task feed"):
+        row = got[title][1]
+        assert answers.effect("done", row, today="2026-11-20")["cli"][0].startswith(f"briefing.py hide task:{row['task']}")
+        assert "--stream" in answers.effect("obsolete", row)["cli"][0]

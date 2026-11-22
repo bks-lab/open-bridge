@@ -1249,6 +1249,10 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
              "origin_section_kind": kind, "origin_provider": item.get("tracker") or provider}
         if _pos_int(item.get("estimate_min")):
             r["estimate"] = item["estimate_min"]
+        if item.get("stream") is True:
+            # a stream's row says so: its Done is done for this time, its Obsolete ends it (answers.effect; round 4:
+            # "3 erledigt" on a stream gave task.py close, which a stream refuses)
+            r["stream"] = True
         return {**r, **extra}
 
     carried = []      # advice that only stands when no other row carries it
@@ -1793,6 +1797,20 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
                                                    changed=sum(1 for r in visible if r["changed"] and not r["new"]))
 
     cap = _int(view.get("max_items"), 3 if style == "brevity" else 12, 1)
+    if style in ("brevity", "plan"):
+        # every row has its number in these styles too, in the order of the buckets the cockpit shows (round 4 of the
+        # four answers: they returned before the numbers, so no card said one and "3 später" pointed at nothing). A
+        # cockpit pass carries the printed numbers over (_printed_numbers numbers these styles as triage does)
+        if profile.get("_whole"):
+            printed = _printed_numbers(result, profile)
+            for r in visible:
+                got = printed.get(_row_ident(r))
+                if got:
+                    r["nr"] = got[0]
+        else:
+            whole = _capped(shown, visible, max(1, len(visible)))[0]
+            for n, r in enumerate([r for b in whole for r in b["items"]], 1):
+                r["nr"] = n
     if style == "brevity":
         cap = min(cap, 3)
         pick = ([r for r in visible if r["bucket"] == "do"] +
@@ -1853,6 +1871,9 @@ def _printed_numbers(result: dict, profile: dict) -> dict:
     view = dict(profile.get("view") if isinstance(profile.get("view"), dict) else {})
     # the numbers are the whole list's (build): a print as long as the list carries every one of them
     view["max_items"] = 10 ** 6
+    # brevity and plan show a few rows or lay them into the day, and number every row in bucket order as triage does
+    if style_of({**profile, "view": view}) in ("brevity", "plan"):
+        view["style"] = "triage"
     plain = {k: v for k, v in profile.items() if k not in ("_whole", "_print_max")}
     built = build(printed, {**plain, "view": view})
     return {_row_ident(r): (r["nr"], r.get("bucket")) for b in built.get("buckets") or [] for r in b["items"] if r.get("nr")}
@@ -1885,7 +1906,7 @@ def _capped(shown: list, visible: list, cap: int) -> tuple:
 def numbered(view: dict) -> list:
     """The rows of a built view in the order the printed briefing numbers them, 1 first: every row of every bucket
     (triage), the rows listed first and per bucket (report), Today, Next days, Waiting on others and what the Bridge
-    offers (calm); the styles without numbers (brevity, plan, sources) none. The renderers print these numbers and
+    offers (calm); brevity and plan carry their numbers on the rows (build), sources none. The renderers print these numbers and
     the cockpit shows them on its cards, so "3 yes" means the same row in the chat and on the page"""
     style = view.get("style")
     if style == "report":
@@ -1968,18 +1989,23 @@ def _plan(rows, events, now, cfg, day_start, day_end) -> dict:
     free = [f for f in free if f[1] > f[0]]
     slots = [{"start": _clock(s), "end": _clock(e), "title": t, "kind": "event"} for s, e, t in busy]
     later = []
+
+    def named(r):
+        # a row by its number, as the cockpit's card names it ("3 später" from the chat)
+        return f"{r['nr']}. {r['title']}" if r.get("nr") else r["title"]
+
     for r in [r for r in rows if r["bucket"] == "do"] + [r for r in rows if r["bucket"] == "plan"]:
         length = r.get("estimate") or minutes
         gap = next((f for f in free if f[1] - f[0] >= length), None)
         if gap is None:
-            later.append(r["title"])
+            later.append(named(r))
             continue
         slots.append({"start": _clock(gap[0]), "end": _clock(gap[0] + length), "title": r["title"],
-                      "kind": "work", "why": r["why"]})
+                      "kind": "work", "why": r["why"], **({"nr": r["nr"]} if r.get("nr") else {})})
         gap[0] += length
     slots.sort(key=lambda s: (s["start"], s["kind"] != "event"))
-    return {"slots": slots, "parallel": [r["title"] for r in rows if r["bucket"] == "delegate"],
-            "waiting": [r["title"] for r in rows if r["bucket"] == "waiting"], "later": later, "shutdown": day_end}
+    return {"slots": slots, "parallel": [named(r) for r in rows if r["bucket"] == "delegate"],
+            "waiting": [named(r) for r in rows if r["bucket"] == "waiting"], "later": later, "shutdown": day_end}
 
 
 # ---------------------------------------------------------------- draw
@@ -2029,13 +2055,13 @@ def draw(view: dict, color: bool = False, width: int | None = None) -> str:
     if view["style"] == "brevity":
         for r in view.get("top", []):
             out.append("")
-            out += wrap(_marked(r) + r["title"], style="1")
+            out += wrap((f"{r['nr']}. " if r.get("nr") else "") + _marked(r) + r["title"], style="1")
             out += wrap(f"{labels['why']}: " + " · ".join(r["why"]), indent="  ", hang="  ", style="2")
     elif view["style"] == "plan" and view.get("plan"):
         plan = view["plan"]
         out.append("")
         for s in plan["slots"]:
-            line = f"  {s['start']}-{s['end']}  {s['title']}"
+            line = f"  {s['start']}-{s['end']}  " + (f"{s['nr']}. " if s.get("nr") else "") + s["title"]
             out += wrap(line, hang=" " * 15, style="2" if s["kind"] == "event" else None)
         for key, title, style in (("parallel", labels["meanwhile"], None), ("waiting", titles["waiting"], "2"),
                                   ("later", labels["later"], "2")):

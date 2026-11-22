@@ -217,7 +217,8 @@ def test_numbers_are_unique_and_in_order_in_a_whole_pass():
 def test_a_cockpit_pass_numbers_by_the_profiles_style_not_the_forced_one():
     rows = [sec("inbox", "inbox", [item("i1", "Sign"), item("i2", "Object", urgency="later")])]
     v = bv.build(result(*rows), profile({"style": "brevity"}, _whole=True), "triage")
-    assert all("nr" not in r for b in v["buckets"] for r in b["items"])    # brevity prints no numbers
+    # round 4 of the four answers: brevity numbers every row too, in bucket order (it printed none, so no card said one)
+    assert {r["title"]: r.get("nr") for b in v["buckets"] for r in b["items"]} == {"Sign": 1, "Object": 2}
 
 
 def test_a_cockpit_pass_leaves_out_what_was_settled_in_the_cockpit_when_it_numbers():
