@@ -18,7 +18,7 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  answerMark, askQuestion, asideCounts, bucketAnswers, bucketHolder, bucketDefs, bucketPoints, detailNeedsLoad, errorText, flowParts, focusIndex, formatDay, instructScope,
+  DAY, LATER_MAX_DAYS, answerMark, askQuestion, asideCounts, bucketAnswers, bucketHolder, bucketDefs, bucketPoints, detailNeedsLoad, errorText, flowParts, focusIndex, formatDay, instructScope,
   isoDate, laterDays, nextSentence, openBucket, ownerChoices, parseDate, pointArea, pointKindWord, pointName, pointNr, replySend, restingOf, runningOf, short, viewBucket,
   withNote, withWas,
 } from '../logic.js'
@@ -54,7 +54,10 @@ function LaterMenu({ a, s, busy, onChoose, uid = 'fb-later-day' }) {
   const [picking, setPicking] = useState(false)
   const [own, setOwn] = useState('')
   const picked = parseDate(own, now)
-  const day = picked && picked > today ? picked : null
+  // within a year, as the server takes it (actions_base.py check_date, lib/answers.py LATER_MAX_DAYS; round 4: a day
+  // 14 months out came back as an error the page never named)
+  const last = isoDate(now + LATER_MAX_DAYS * DAY)
+  const day = picked && picked > today && picked <= last ? picked : null
   const has = k => a.run.choices.includes(k)
   return html`<div class="fb-later-menu" role="group" aria-label=${f.later.label}>
     ${['tomorrow', 'monday', 'week'].filter(has).map(k => html`<button type="button" key=${k} class="fb-later-item" data-choice=${k} disabled=${busy}
@@ -63,7 +66,7 @@ function LaterMenu({ a, s, busy, onChoose, uid = 'fb-later-day' }) {
       onClick=${() => setPicking(!picking)}><span>${f.later.pick}</span><span class="fb-later-sub muted small">${f.later.pickSub}</span></button>` : null}
     ${picking ? html`<div class="fb-later-pick field-row">
       <label class="sr-only" for=${uid}>${f.later.pick}</label>
-      <input id=${uid} class="input" type="date" min=${days.tomorrow} value=${own} onInput=${e => setOwn(e.currentTarget.value)} />
+      <input id=${uid} class="input" type="date" min=${days.tomorrow} max=${last} value=${own} onInput=${e => setOwn(e.currentTarget.value)} />
       <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!day} onClick=${() => day && onChoose('pick', day)}>${f.later.set}<//>
     </div>` : null}
     ${has('list') ? html`<hr class="fb-later-sep" /><button type="button" class="fb-later-item" data-choice="list" disabled=${busy}

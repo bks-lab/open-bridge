@@ -26,6 +26,9 @@ export const LATER_CHOICES = ['tomorrow', 'monday', 'week', 'pick', 'list']
 // the day a point on the watch list is put off to: nobody reaches it, so it never comes back by itself (lib/answers.py)
 export const LIST_DAY = '9999-12-31'
 
+// the farthest day a Later puts a point off to, in days from today (lib/answers.py LATER_MAX_DAYS, the server's 366)
+export const LATER_MAX_DAYS = 366
+
 // the groups of the queue that are agent tabs (a tab that asks, the return card, a finished or lost start): they ask
 // the person, so they stand in Do
 const TAB_GROUPS = ['asks', 'back', 'result', 'lost']

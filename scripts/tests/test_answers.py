@@ -381,3 +381,19 @@ def test_later_in_a_count_of_days_or_weeks_and_the_watch_list_alone():
     assert [(p["nr"], p["until"]) for p in ans.parse("3 later in 3 days, 4 done", today)] == [(3, "2026-11-24"), (4, None)]
     shelf = ans.parse("2 merkliste", today)
     assert [(p["nr"], p["answer"], p["choice"], p["until"]) for p in shelf] == [(2, "later", "list", ans.LIST_DAY)]
+
+
+def test_a_picked_day_lies_within_the_days_the_server_takes():
+    # round 4: the page, the server and the chat each had their own limit
+    today = dt.date(2026, 11, 21)
+    assert ans.later_until("pick", today, (today + dt.timedelta(days=ans.LATER_MAX_DAYS)).isoformat())
+    try:
+        ans.later_until("pick", today, (today + dt.timedelta(days=ans.LATER_MAX_DAYS + 1)).isoformat())
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a day past the limit was taken")
+    base = (ROOT / "scripts" / "lib" / "bridge_cockpit" / "actions_base.py").read_text(encoding="utf-8")
+    assert f"timedelta(days={ans.LATER_MAX_DAYS})" in base
+    page = (ROOT / "scripts" / "web" / "buckets.js").read_text(encoding="utf-8")
+    assert f"LATER_MAX_DAYS = {ans.LATER_MAX_DAYS}" in page

@@ -35,6 +35,9 @@ LATER_CHOICES = ("tomorrow", "monday", "week", "pick", "list")
 MORE = ("owner", "tab", "fields", "ask")
 #: the day a point on the watch list is put off to: a day nobody reaches, so it never comes back by itself
 LIST_DAY = "9999-12-31"
+#: the farthest day a Later puts a point off to, in days from today: the cockpit's server takes no later one
+#: (actions_base.py check_date), the chat and briefing.py hide neither
+LATER_MAX_DAYS = 366
 #: the answer a letter picks ("3b"), the same for every bucket
 LETTERS = dict(zip("abcd", ANSWERS))
 
@@ -121,6 +124,8 @@ def later_until(choice: str | None, today: dt.date, day=None) -> str:
             raise ValueError(f"no day to put it off to: {day!r}") from None
         if when <= today:
             raise ValueError(f"{when} is not after today")
+        if (when - today).days > LATER_MAX_DAYS:
+            raise ValueError(f"{when} is more than {LATER_MAX_DAYS} days ahead")
         return when.isoformat()
     raise ValueError(f"no such Later: {choice!r}")
 

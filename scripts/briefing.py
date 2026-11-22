@@ -2323,8 +2323,10 @@ def settle_row(root: Path, args) -> int:
     except ValueError:
         print(f"briefing: --until {args.until!r} is no day YYYY-MM-DD", file=sys.stderr)
         return 2
-    if until <= dt.date.today() or (until.year > dt.date.today().year + 1 and not _view().answers.is_list_day(args.until)):
-        print(f"briefing: --until {args.until} is not after today (or past a year, but the watch list)", file=sys.stderr)
+    answers = _view().answers
+    if until <= dt.date.today() or ((until - dt.date.today()).days > answers.LATER_MAX_DAYS and not answers.is_list_day(args.until)):
+        print(f"briefing: --until {args.until} is not after today (or more than {answers.LATER_MAX_DAYS} days ahead, "
+              "but the watch list)", file=sys.stderr)
         return 2
     store.hide(args.key, until.isoformat(), args.key.split(":", 1)[1], done=args.done)
     print(f"{args.key}: until {until.isoformat()}" + (" (done for this time)" if args.done else ""))
