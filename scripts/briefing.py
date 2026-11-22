@@ -827,9 +827,15 @@ def sec_inbox(section: dict, ctx: Context) -> list:
 
 def sec_advise(section: dict, ctx: Context) -> list:
     advise = _load_module("briefing_advise", ROOT / "skills" / "briefing" / "scripts" / "advise.py")
-    found = advise.advise(ctx.root, now=ctx.now, calendar=ctx.calendar, inbox=_inbox())
+    return advise_rows(advise.advise(ctx.root, now=ctx.now, calendar=ctx.calendar, inbox=_inbox()))
+
+
+def advise_rows(found: list) -> list:
+    """The advice's findings as rows of its section. A collision names the inbox item it is about and the events it
+    collides with, so the view shows that item once with the collisions as its reasons (briefing_view)"""
     return [{"id": f["key"], "title": f["summary"], "state": "new", "urgency": f["urgency"], "check": f["check"],
-             "task": f.get("task"), "file": f.get("file", True), **({"days": f["days"]} if "days" in f else {})}
+             "task": f.get("task"), "file": f.get("file", True), **({"days": f["days"]} if "days" in f else {}),
+             **{k: f[k] for k in ("inbox", "item", "events") if k in f}}
             for f in found]
 
 
