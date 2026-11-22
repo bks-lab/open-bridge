@@ -458,6 +458,21 @@ def _label(title: str) -> str:
     return (title or "").split(" (")[0].strip()[:40]
 
 
+_DANGLING = re.compile(r"[\s„“\"'(\[{,;:.\-/]+$")
+
+
+def cut_words(text: str, limit: int) -> str:
+    """A text cut to at most `limit` characters at a word end, with an ellipsis (the page's jev/logic.js cutWords);
+    a text that fits stays whole, its whitespace folded. One word longer than the room gets a hard cut"""
+    t = " ".join(str(text or "").split())
+    if len(t) <= limit:
+        return t
+    room = t[:limit - 1]
+    sp = len(room) if t[limit - 1] == " " else room.rfind(" ")
+    head = _DANGLING.sub("", room[:sp] if sp >= limit * 0.4 else room)
+    return (head or room) + "…"
+
+
 def pick_rows(sections: list[dict], triage: dict | None, cfg: dict | None) -> tuple[list[dict], dict]:
     """The rows of a work page that go to Jev, each once (one without an inbox item or a task by its page key), and
     how many were left out and why: a skipped section, a private word. What the triage marked goes too"""
@@ -486,7 +501,7 @@ def pick_rows(sections: list[dict], triage: dict | None, cfg: dict | None) -> tu
             if any(w in hay for w in words):
                 skipped["private"] += 1
                 continue
-            row = {"key": key, "title": str(it["title"])[:160], "label": _label(sec.get("title") or sec.get("id") or ""),
+            row = {"key": key, "title": cut_words(it["title"], 160), "label": _label(sec.get("title") or sec.get("id") or ""),
                    "kind": "inbox" if it.get("inbox") else "task" if it.get("task") else "item"}
             row["gist"] = str(tri.get("gist") or "")[:160] or None
             if it.get("priority"):

@@ -12,7 +12,7 @@
 // and nothing (no Jev rank, no triage) moves a card across a group: a tab that asks always stands before a task.
 import { TABLES } from './text.js'
 import { areaScope, canTab, DAY, homeProjects, indexRows, isAnswered, isoDate, liveStage, nextMonday, pointName, pointOriginal, projectTone, replyOptions, replySend,
-  rowOverdue, restingIn, rowProject, tabOfTask, wantsYou, workPageOf, personOf, workViewIn, formatDay } from './logic.js'
+  rowOverdue, restingIn, rowProject, tabOfTask, wantsYou, workPageOf, personOf, workViewIn, formatDay, flowBucketsOn, waitingCount } from './logic.js'
 
 // the page's id; areas.js names it as a literal beside it (its own imports would reach this file too late)
 export const FLOW_PAGE = '@flow'
@@ -185,7 +185,10 @@ function universeOf(s) {
   const model = s?.model ?? {}
   const rows = new Map()
   const from = new Map()
-  const put = (r, src) => { if (r?.key && !rows.has(r.key)) { rows.set(r.key, r); from.set(r.key, src) } }
+  // a task the briefing folded into an inbox line (briefing_view _fold, the line's folded_tasks) stands as that line,
+  // never beside it from the task list or the files (round 2: four tasks stood twice, once without a number)
+  const folded = new Set((model.sections ?? []).flatMap(x => x.rows ?? []).flatMap(r => (r?.folded_tasks ?? []).map(slug => `task:${slug}`)))
+  const put = (r, src) => { if (r?.key && !rows.has(r.key) && !folded.has(r.key)) { rows.set(r.key, r); from.set(r.key, src) } }
   for (const id of SECTIONS) for (const r of (model.sections ?? []).find(x => x.id === id)?.rows ?? []) put(r, id)
   for (const r of model.hidden ?? []) if (r && r.settled_as == null) put(r, 'hidden')
   for (const f of Array.isArray(model.files) ? model.files : []) if (f?.slug) put(fileRow(f), 'files')
@@ -320,6 +323,9 @@ export function flowParts(s) {
   // went quiet, then it is finished; only one at work runs (a finished one runs no more and its task stands as a point
   // again), one that needs you is a point (L5)
   const runs = t => t?.state === 'working'
+  // a tab answered from here works again as far as the page knows, until the next read of its screen (round 2: its
+  // task went back to Plan for those seconds instead of standing in I'll do)
+  const busy = t => runs(t) || (!!t && wantsYou(t) && !asking(t))
   const rowOfTask = slug => (slug ? uni.get(`task:${slug}`) ?? null : null)
   const used = new Set()      // row keys a card, an entry of the lane or a group already stands for
   const usedTabs = new Set()
@@ -378,7 +384,7 @@ export function flowParts(s) {
     }
     // L4 a task's own tab (its slug) at work or quiet at its prompt
     for (const t of allTabs) {
-      const row = runs(t) && t.slug && !usedTabs.has(t.ref) ? rowOfTask(t.slug) : null
+      const row = busy(t) && t.slug && !usedTabs.has(t.ref) ? rowOfTask(t.slug) : null
       if (!row || used.has(row.key)) continue
       out.lane.push({ group: 'doing', lane: true, id: `tab:${t.ref}`, kind: 'tab', row, tab: t, stage: tabStage(t), how: 'tab', title: row.title ?? t.name,
         at: t.since_ms ?? null })
@@ -1352,13 +1358,32 @@ export function flowFields(x, s, feed = null, detail = null) {
 // flowFields stands in the fold Details at their foot
 export const SIMPLE_FIELDS = ['theme', 'area', 'who', 'due', 'readmark', 'active']
 
+const OWN_WORDS = new Set(['', 'me', 'you', 'self', 'ich', 'du', 'bridge', 'bridge_then_me'])
+
+/** Who has a point by its bucket of Work through (x.bucket, buckets.js bucketPoints): me, bridge, or the person or the
+ *  blocker it waits on; null for a point outside the buckets */
+export function bucketHolder(x, row) {
+  const b = x?.bucket
+  if (b === 'do' || b === 'plan') return 'me'
+  if (b === 'delegate') return 'bridge'
+  if (b !== 'waiting') return null
+  const named = [x?.checkin?.who, row?.checkin?.who, row?.inbox_id ? row?.who : null, row?.card?.next?.who]
+    .map(w => String(w ?? '').trim()).find(w => w && !OWN_WORDS.has(w.toLowerCase()))
+  const blocker = String(row?.blocked_by ?? row?.card?.state?.blocked_by ?? '').trim()
+  return named || (blocker ? blocker.slice(0, 60) : null)
+}
+
 /** The fields of a point split for the one point view (stage 4): {top, rest}. `top` Theme, Area, Who (who works on it,
  *  and the step's who where nobody does: `step`) and Due, or the day it asks again where a check-in is set (`ask`);
  *  `rest`, for the fold Details, the original title where the name shown is another, then every other field in its
  *  order (Prio with its picker, Urgency with its picker, Jev's bars, Team, Task check, Source, Created, Moved) */
 export function fieldsSplit(fields, x, s) {
   const row = x?.kind === 'reports' ? null : x?.row ?? null
-  const step = row?.card?.next?.what ? { who: row.card.next.who ?? null } : null
+  // with the briefing's buckets the bucket says who has it: you in Do and Plan, the Bridge in I'll do, the one it waits
+  // on in Waiting on others (round 3 of the four answers: Who said the Bridge on a card in Do, you on one in I'll do,
+  // and named nobody on a point that waits on Jordan)
+  const holder = bucketHolder(x, row)
+  const step = holder ? { who: holder } : row?.card?.next?.what ? { who: row.card.next.who ?? null } : null
   const check = row?.checkin?.until ?? row?.card?.next?.check ?? null
   const top = fields.filter(f => SIMPLE_FIELDS.includes(f.id)).map(f => (f.id === 'who' ? { ...f, step }
     : f.id === 'due' && check ? { id: 'ask', value: check } : f))
@@ -1700,6 +1725,7 @@ export const flowWaiting = s => startWaiting(s)
  *  through is off */
 export function startWaiting(s, area = null) {
   if (!flowOn(s)) return null
+  if (flowBucketsOn(s)) return waitingCount(s, area)
   const { areas, all } = flowAreas(s)
   if (!area) return all.waiting
   const want = String(area).trim().toLowerCase()

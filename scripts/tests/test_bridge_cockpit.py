@@ -1477,12 +1477,56 @@ def test_runs_on_puts_off_an_item_with_what_it_waits_on_and_quiets_a_task(world)
     world.act("runs_on", keys=["task:demo-task"], until=TOMORROW)
     assert writes(world)[0] == K(world, "wait", "demo-task", "--until", TOMORROW, "--json")
     undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+    # round 2 of the four answers: the undo also gives the task its day back and takes the wait's note out
+    trace = {k: undo["args"].pop(k) for k in ("last_updated", "drop") if k in undo["args"]}
+    assert trace["drop"] == ["Runs on until 2026-10-10: runs on"] and trace["last_updated"]
     assert undo == {"verb": "task_running", "args": {"slug": "demo-task"}}
     # the history names a task as a task (and a stream as a stream), not only as "task"
     assert [it.get("work_kind") for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0] == "task"
     world.runner.calls.clear()
     world.act(undo["verb"], **undo["args"])                                # running again: the undo
     assert writes(world)[0] == K(world, "wait", "demo-task", "--clear", "--json")
+
+
+def test_the_undo_of_runs_on_gives_a_waiting_task_back_what_it_waited_on(world):
+    # Wait on a task that waits already (Waiting on others): the undo restores its blocker and the day it began,
+    # never clears them (the round-1 sim lost "waiting for Robin to reply" this way)
+    status = world.root / "work" / "tasks" / "demo-task" / "STATUS.md"
+    text = status.read_text(encoding="utf-8")
+    status.write_text(text.replace("---\n", '---\nblocked_by: "waiting for Robin to reply"\nblocked_since: "2026-10-01"\n'
+                                   "quiet_until: 2026-10-05\n", 1) if text.startswith("---") else text, encoding="utf-8")
+    world.act("runs_on", keys=["task:demo-task"], until=TOMORROW)
+    undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+    for k in ("last_updated", "drop"):
+        undo["args"].pop(k, None)
+    assert undo == {"verb": "task_running", "args": {"slug": "demo-task", "back": True, "on": "waiting for Robin to reply",
+                                                     "since": "2026-10-01", "until": "2026-10-05"}}
+    world.runner.calls.clear()
+    world.act(undo["verb"], **undo["args"])
+    assert writes(world)[0] == K(world, "wait", "demo-task", "--back", "--on", "waiting for Robin to reply",
+                                 "--since", "2026-10-01", "--until", "2026-10-05", "--json")
+
+
+def test_task_park_puts_a_task_in_the_backlog_as_the_briefing_does_and_the_undo_gives_its_status_back(world):
+    # Park of Park or drop on a task: status backlog, the task stays in work/tasks (control.md "park = status:
+    # backlog"), never closed as declined the way shelve does
+    world.runner.calls.clear()
+    res = world.act("task_park", key="task:demo-task", reason="untouched for 52 days")
+    assert writes(world) == [K(world, "status", "demo-task", "backlog", "--note", "Parked: untouched for 52 days", "--json")]
+    assert res["ok"] is True
+    undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+    # round 2: the undo gives back what the park changed, its note and last_updated too, so the task keeps its quiet
+    # days and its place in Park or drop
+    assert undo == {"verb": "task_unpark", "args": {"slug": "demo-task", "as": "doing", "last_updated": "2026-10-08",
+                                                     "note": "Parked: untouched for 52 days"}}
+    world.runner.calls.clear()
+    world.act(undo["verb"], **undo["args"])
+    assert writes(world) == [K(world, "status", "demo-task", "doing", "--back", "--last-updated", "2026-10-08",
+                               "--drop-note", "Parked: untouched for 52 days", "--json")]
+
+
+def test_task_park_refuses_a_stream_and_an_inbox_item(world):
+    refused(world, "not_applicable", "task_park", key=f"inbox:{YES_ID}", reason="x")
 
 
 def test_shelve_parks_a_task_with_its_reason_and_reopen_takes_it_back(world):
@@ -1527,6 +1571,30 @@ def test_a_failed_shelve_leaves_the_task_and_says_so(world):
     assert res["ok"] is False and res["settled"] == [] and "other-task" not in json.dumps(world.app.history.state())
 
 
+def test_yes_is_the_briefings_yes_an_approve_and_the_bridge_starts_what_no_action_runs(world):
+    """Round 2: Do's Yes on an inbox item started a tab and left the item open, so the printed briefing still listed
+    it as "1 yes" (control.md: yes = inbox.py approve). With `yes` the item is approved, the yes of the briefing; one
+    with no action of its own the Bridge then starts on, since no runner has anything to run; only you can say yes
+    to nothing (an only-you item is started on, never approved)."""
+    world.runner.calls.clear()
+    res = world.act("do_it", keys=[f"inbox:{FILED_ID}"], yes=True)
+    # its task's tab is at work on it: the yes is given, no second agent starts
+    assert writes(world) == [I(world, "approve", FILED_ID)]
+    assert res["ok"] is True and res["settled"] == [f"inbox:{FILED_ID}"]
+    world.runner.calls.clear()
+    world.act("do_it", keys=[f"inbox:{YES_ID}"], yes=True)
+    assert writes(world) == [I(world, "approve", YES_ID)], "an action of its own runs at the runner's next pass"
+    world.runner.calls.clear()
+    world.act("do_it", keys=[f"inbox:{ONLY_ID}"], yes=True)
+    assert world.runner.of("inbox.approve") == [], "only you can do it: a yes to nothing is never recorded"
+
+
+def test_schedule_says_it_is_planned_never_later(world):
+    # Round 2: Plan's Schedule wrote the right defer, its toast called it "Later"
+    res = world.act("later", key=f"inbox:{YES_ID}", until=TOMORROW, plan=True)
+    assert world.runner.of("inbox.defer") and "Planned for" in res["note"] and "Later" not in res["note"]
+
+
 def test_do_it_with_a_sentence_never_approves_a_yes_item(world):
     # the Work through page starts every agent with a sentence, so a your-yes item is never released unseen (F3)
     world.runner.calls.clear()
@@ -1551,6 +1619,8 @@ def test_later_defers_inbox_and_hides_the_rest(world):
     assert res["settled"] == [f"inbox:{YES_ID}"] and "Later, back on 2026-10-10" in res["note"]
     world.runner.calls.clear()
     res = world.act("later", key="task:other-task", until=TOMORROW)
+    # the classic page keeps its note on a task (with the buckets on a plain Later is the cockpit's record only,
+    # test_four_answers_r4.py)
     assert writes(world) == [K(world, "note", "other-task", "--", "Later until 2026-10-10")]
     assert world.app.store.hidden() == {"task:other-task": TOMORROW}
     model = world.app.collector.model
@@ -2226,6 +2296,27 @@ def test_settle_asks_before_a_stream_ends_and_rows_say_whether_they_settle(world
     assert world.row("ref:example/repo#12")["settle"] == ["done", "not_doing"]
 
 
+def test_the_answer_obsolete_is_one_settle_for_every_kind_of_row(world):
+    """Work through's fixed last answer Obsolete (web/buckets.js obsoleteRun) sends what the classic "Drop because out
+    of date" does, as one settle with its reason as text: a task closed as declined with the reason, an inbox item
+    dropped with the note and counted as outdated, an issue hidden here (nothing on GitHub), a stream ended"""
+    tx = world.app.tx
+    world.runner.calls.clear()
+    world.act("settle", keys=["task:demo-task"], outcome="not_doing", text="obsolete")
+    assert writes(world) == [K(world, "close", "demo-task", "--declined", "--reason", tx["close_reason"]["not_doing"] + ": obsolete")]
+    world.runner.calls.clear()
+    world.act("settle", keys=[f"inbox:{ONLY_ID}"], outcome="not_doing", text="obsolete", reason="outdated")
+    assert writes(world) == [I(world, "drop", ONLY_ID, "--note", "dropped in the cockpit: obsolete", "--reason", "outdated")]
+    world.runner.calls.clear()
+    world.act("settle", keys=["ref:example/repo#12"], outcome="not_doing", text="obsolete")
+    assert not any("gh" in str(c) and "close" in str(c) for c in world.runner.calls), "never closed on GitHub"
+    assert world.app.store.dismissed()["ref:example/repo#12"]["outcome"] == "not_doing"
+    world.runner.calls.clear()
+    world.act("settle", keys=["task:quiet-task"], outcome="not_doing", text="obsolete", stream=True)
+    assert writes(world) == [K(world, "close", "quiet-task", "--stream", "--declined", "--reason",
+                               tx["close_reason"]["not_doing"] + ": obsolete")]
+
+
 def test_task_close_keeps_the_task_when_task_py_fails(world):
     world.runner.handlers["task.close"] = lambda argv: fail("no such task")
     res = world.act("task_close", keys=["task:other-task"], reason="done")
@@ -2528,11 +2619,11 @@ def test_tab_jump_send_go_on_close(world):
     world.runner.calls.clear()
     jumped = world.act("tab_jump", tab_ref="surface:7")
     assert jumped["note"]                                  # a switch says so, the window may not show it
-    world.act("tab_send", tab_ref="surface:7", text="please continue")
+    world.act("tab_send", tab_ref="surface:13", text="please continue")
     world.act("tab_go_on", tab_ref="surface:13")
     world.act("tab_close", tab_ref="surface:8")
     assert writes(world) == [W(world, "focus", "surface:7"),
-                             W(world, "send", "surface:7", "--", "please continue"),
+                             W(world, "send", "surface:13", "--", "please continue"),
                              W(world, "send", "surface:13", "--", "Keep going."),
                              W(world, "close", "surface:8")]
     # round 6d: any tab that neither works nor asks closes, so the refused close is one at work
@@ -2571,14 +2662,22 @@ def test_snapshot_verbs_and_cmux_unavailable(world, tmp_path):
         w2.close()
 
 
+def test_words_never_reach_a_dialog_whatever_the_page_named(world):
+    # Round 2: the Nachricht box and the overlay sent words without seen, expect or name, so the needs-you guard was
+    # skipped; the driver types them and presses Enter, which picks the highlighted "1. Yes" of the dialog
+    world.runner.calls.clear()
+    refused(world, "not_applicable", "tab_send", tab_ref="surface:7", text="bitte warte")
+    assert world.runner.of("workplace.send") == []
+
+
 def test_audit_line_without_texts(world):
     world.act("note", key="task:other-task", text="confidential words")
-    world.act("tab_send", tab_ref="surface:7", text="another secret line")
+    world.act("tab_send", tab_ref="surface:13", text="another secret line")
     log = (world.state / "audit.log").read_text()
     lines = log.strip().splitlines()
     assert len(lines) == 2
     assert lines[0].split()[1:] == ["note", "task:other-task", "exits=0", "ok=true"]
-    assert "surface:7" in lines[1]
+    assert "surface:13" in lines[1]
     assert "confidential" not in log and "secret" not in log and world.app.token not in log
 
 
@@ -5730,7 +5829,7 @@ def test_tab_settled_reads_the_item_and_the_task(tmp_path):
     (events / "20261017T110000Z-00-host-reopen.yaml").write_text("verb: reopen\n", encoding="utf-8")
     assert tab_settled(tmp_path, {"item": item}) is None
     (events / "20261017T111000Z-00-host-drop.yaml").write_text("verb: drop\n", encoding="utf-8")
-    assert tab_settled(tmp_path, {"item": item}) == "item"
+    assert tab_settled(tmp_path, {"item": item}) == "dropped", "closed as not done: Obsolete says so"
     done = tmp_path / "work" / "done" / "2026-10" / "a-task"
     done.mkdir(parents=True)
     (done / "STATUS.md").write_text("x", encoding="utf-8")
@@ -8761,7 +8860,7 @@ def test_a_lone_surrogate_in_a_relay_file_never_breaks_the_state(world):
 def test_do_it_with_a_note_writes_it_on_the_task_first_and_the_agent_reads_it(world):
     world.runner.calls.clear()
     res = world.act("do_it", keys=["task:other-task"], note="Bitte nur die Tests, nichts mergen")
-    assert writes(world) == [K(world, "note", "other-task", "--", "Start note: Bitte nur die Tests, nichts mergen"),
+    assert writes(world) == [K(world, "note", "other-task", "--quiet", "--", "Start note: Bitte nur die Tests, nichts mergen"),
                              launch_argv(world, "other-task", "go", "area", "--start-note")]
     assert res["ok"] is True
 
@@ -8795,14 +8894,14 @@ def test_a_note_never_types_into_a_tab_that_asks_you_something(world):
 def test_every_start_verb_takes_a_note(world, verb, mode):
     world.runner.calls.clear()
     world.act(verb, keys=["task:other-task"], note="kurz halten")
-    assert writes(world) == [K(world, "note", "other-task", "--", "Start note: kurz halten"),
+    assert writes(world) == [K(world, "note", "other-task", "--quiet", "--", "Start note: kurz halten"),
                              launch_argv(world, "other-task", mode, "area", "--start-note")]
 
 
 def test_collect_context_takes_a_note_too(world):
     world.runner.calls.clear()
     world.act("collect_context", key="task:other-task", note="nur Mails")
-    assert writes(world) == [K(world, "note", "other-task", "--", "Start note: nur Mails"),
+    assert writes(world) == [K(world, "note", "other-task", "--quiet", "--", "Start note: nur Mails"),
                              launch_argv(world, "other-task", "context", "area", "--start-note")]
 
 
@@ -10485,6 +10584,9 @@ def test_work_on_puts_an_item_with_someone_until_its_check_in_day_and_takes_it_b
     undo = [it["undo"] for e in world.app.history.state() for it in e["items"] if it["kind"] == "inbox"][0]
     assert undo["verb"] == "inbox_reopen"
     # a task: who takes its step and the check-in day, the step kept; the undo puts the old who back
+    status = world.root / "work" / "tasks" / "demo-task" / "STATUS.md"
+    status.write_text(status.read_text(encoding="utf-8").replace("origin: invented\n", "origin: invented\nnext: {what: Draft it}\n"),
+                      encoding="utf-8")
     world.runner.calls.clear()
     world.act("work_on", key="task:demo-task", who="lena", until=TOMORROW)
     assert writes(world)[0] == K(world, "next", "demo-task", "--who", "lena", "--check", TOMORROW, "--json")

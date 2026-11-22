@@ -25,7 +25,9 @@ default: true
 offer_on: ["good morning", "briefing", "what's up today"]
 
 # How the briefing is SHOWN (the sections below say where the data comes from).
-# triage sorts every row by what to do with it; `style: sources` (or no view
+# triage sorts every row by who is on the move and when (do, plan, delegate,
+# waiting), every row numbered and answered with one of four words (do, later,
+# done, obsolete: "3 later monday"); `style: sources` (or no view
 # block at all) gives one block per section instead. docs/briefings.md § Views.
 view:
   style: triage            # sources | triage | brevity | plan; `render --style` for one run
@@ -36,7 +38,6 @@ view:
   #   - {id: plan}
   #   - {id: delegate, title: "I'll do"}
   #   - {id: waiting, nudge_after_days: 7}
-  #   - {id: drop}
   # labels: {end: "That's all for today."}
   # pages:                 # dashboard tabs beside the briefing; without it, the kind decides
   #   - {id: github, title: GitHub, sections: [github-mine]}

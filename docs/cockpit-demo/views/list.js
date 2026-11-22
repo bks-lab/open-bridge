@@ -191,7 +191,7 @@ export function HomeList({ s, c }) {
       <div class="hl-hello">
         <p class="home-eyebrow">${day}</p>
         <${StagePrompt} s=${s} c=${c} greeting=${greeting} />
-        ${s.model?.headline ? html`<p class="hl-lead muted">${leadOf(s.model)}</p>` : null}
+        ${s.model?.headline ? html`<p class="hl-lead muted">${leadOf(s.model, s)}</p>` : null}
       </div>
       <div class="hl-strip">
         ${strip.length ? html`<div class="hl-kpis">${strip.map(x => html`<${Kpi} key=${x.id} x=${x} st=${stationOf(x, s, c, chosen, project)} />`)}</div>` : null}

@@ -4,14 +4,15 @@
 
 import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  detailNeedsLoad, duration, formatDay, indexRows, short,
+  canMessage, detailNeedsLoad, duration, formatDay, indexRows, short,
   stateToken, canTab, settledRefs, statusSplit, tabCloseOffer, tabNextStep, areaScope, homeAreas, startWaiting,
-  skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow, personOf
+  skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow, personOf, flowBucketsOn, tabPoint, tabWords
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ItemCard, TASK_FACTS_SKIP, describeKey, describeOf } from './card.js'
 import { ReviewBlock } from './check.js'
 import { KindTag, OriginTag, RowBar, Skeleton } from './day.js'
+import { BucketBar } from './flowbuckets.js'
 import { ReturnChip, ReturnPanel } from './home.js'
 import { PageSection } from './pages.js'
 import { Btn, SkipFix, Chip, Dot, Empty, LinkView, MarkChip, PrioChip, Spinner, StateLine, WalkBar } from './parts.js'
@@ -277,6 +278,18 @@ export function TabControls({ tab, s, c, compact = false, slim = false }) {
   }
   const id = `msg-${tab.ref}`
   const settled = !!tab.settled || settledRefs(s.model?.returns, s.tabs?.tabs, s.now || Date.now()).has(tab.ref)
+  // with the briefing's buckets on a tab that asks is answered as its card in Work through is: its own answers (the
+  // dialog's options, the ready answer, yes and no only where the server takes them), never a button it refuses
+  const point = flowBucketsOn(s) ? tabPoint(tab, s) : null
+  const answers = point ? html`<${BucketBar} x=${point} s=${s} c=${c} />` : null
+  if (slim && point) {
+    const step = {
+      close: () => html`<${TabClose} tab=${tab} s=${s} c=${c} />`,
+      jump: () => html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>`,
+      view: () => html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${t.btnTabView}<//>`,
+    }
+    return html`${answers}${tabNextStep(tab, v => canTab(s, v), settled).filter(k => step[k]).map(k => step[k]())}`
+  }
   if (slim) {
     const step = {
       yes: () => html`<${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('tab_yes', { tab_ref: tab.ref })}>${t.btnYes}<//>`,
@@ -290,17 +303,17 @@ export function TabControls({ tab, s, c, compact = false, slim = false }) {
   }
   return html`<div class="tab-ctl">
     <div class="btn-row">
-      ${tab.state === 'needs-you' && canTab(s, 'key') ? html`
+      ${answers ?? (tab.state === 'needs-you' && canTab(s, 'key') ? html`
         <${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('tab_yes', { tab_ref: tab.ref })}>${t.btnYes}<//>
-        <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_no', { tab_ref: tab.ref })}>${t.btnNo}<//>` : null}
-      ${tab.state === 'waiting' && !tab.filed_by && !settled && !tab.is_control && !tab.ask?.draft ? html`<${Btn} size="xs" variant="secondary" busy=${busy}
+        <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_no', { tab_ref: tab.ref })}>${t.btnNo}<//>` : null)}
+      ${!point && tab.state === 'waiting' && !tab.filed_by && !settled && !tab.is_control && !tab.ask?.draft ? html`<${Btn} size="xs" variant="secondary" busy=${busy}
         onClick=${() => c.act('tab_go_on', { tab_ref: tab.ref })}>${t.btnGoOn}<//>` : null}
       <${TabClose} tab=${tab} s=${s} c=${c} strong />
       ${canTab(s, 'focus') ? html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>` : null}
       ${canTab(s, 'screen') ? html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${t.btnTabView}<//>` : null}
-      ${tab.live ? html`<${Btn} size="xs" variant="ghost" pressed=${open} onClick=${() => c.setOpenMsg(open ? null : tab.ref)}>${t.btnMessage}<//>` : null}
+      ${canMessage(tab) ? html`<${Btn} size="xs" variant="ghost" pressed=${open} onClick=${() => c.setOpenMsg(open ? null : tab.ref)}>${t.btnMessage}<//>` : null}
     </div>
-    ${open ? html`<div class="field-row">
+    ${open && canMessage(tab) ? html`<div class="field-row">
       <label class="sr-only" for=${id}>${t.msgPlaceholder}</label>
       <input id=${id} class="input" type="text" maxlength="2000" placeholder=${t.msgPlaceholder} value=${text}
         onInput=${e => setText(e.currentTarget.value)} onKeyDown=${e => { if (e.key === 'Enter') send() }} />
@@ -320,7 +333,7 @@ function TabInfo({ row, s, c }) {
       <span class="muted">${tab.workspace ? `${tab.workspace} / ` : ''}${tab.name}</span>
       ${tab.since_ms ? html`<span class="mono muted">${t.sinceFor(duration(s.now - tab.since_ms))}</span>` : null}
     </div>
-    ${tab.last ? html`<p class="tab-last">${tab.last}</p>` : null}
+    ${tabWords(tab) ? html`<p class="tab-last">${tabWords(tab)}</p>` : null}
     ${tab.filed_by ? html`<p class="muted"><${StateLine} token="success" word=${t.resultFiledLong} /></p>` : null}
     <${TabControls} tab=${tab} s=${s} c=${c} />
   </div>`

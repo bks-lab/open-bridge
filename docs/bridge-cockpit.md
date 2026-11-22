@@ -127,7 +127,7 @@ their defaults:
 | `flow.seen.active_days` | `7` | a doing task is **active** while something counted moved on it within this many days (or an agent works on it, or it is pinned or in focus), else it **rests**; 1 to 366 |
 | `flow.seen.revisit_days` | `{active: 7, resting: 14, backlog: 30, question: 2, issue: 7}` | after how many days a read point comes back unread by itself when nothing new happened, by its kind: a doing task active or resting (it then asks go on, park or close), a backlog task or an idea, a question or an approval of the inbox, an issue or a pull request; 1 to 366 each. A day set with Revisit ▾ wins |
 | `flow.seen.counts` | all `true` | which movement makes a read point unread again: `note` and `status` (both read the time of the task's STATUS.md), `doc` (its deliverables), `run` (a finished AI run on it), `code` (an issue or pull request changed on GitHub), `log` (a row of `work/log.md` that names it), `inbox` (an event of the inbox item, or of one that names the task). Never: a brief describe writes, a theme, a Prio order, your own clicks in the cockpit |
-| `flow.buckets.enabled` | `true` | Work through by the briefing's buckets: every point in one bucket of the briefing profile, one card at a time with the bucket's answers, everything else under More, see [Buckets](#buckets). Off, Work through is as it was |
+| `flow.buckets.enabled` | `true` | Work through by the briefing's buckets: every point in one of the four buckets (who is on the move), one card at a time with the four answers every point takes (Do it, Later ▾, Done, Obsolete), what is out of sight only counted, everything else under More, see [Buckets](#buckets). Off, Work through is as it was |
 | `flow.prio.fallback` | `none` | `haiku`: a read-in with Jev on a click that fails (Jev busy, 5xx, a timeout, no key; never a refusal such as 401 or 403) runs Haiku instead, while `flow.prio.haiku.enabled`, within its budget, and Prio's foot says so; the daily order never falls back. `none`: the failure stands |
 | `flow.prio.haiku.enabled` | `false` | **Read in with Haiku** at Prio's foot: a small Claude model ranks the points as Jev does, see [Work through](#work-through-flow). Off, the button does not show and the route refuses (`prio_off`). Haiku needs no Jev: `integrations.typesafe` may be off |
 | `flow.prio.haiku.budget_per_day` | `6` | how many read-ins a day Haiku may run (the fallback included); `0` none. A run is counted before the call, also when it fails |
@@ -1203,64 +1203,113 @@ the line asks only. A person's page asks nothing here.
 With `cockpit.flow.buckets.enabled` (on by default, so it acts as soon as
 Work through is on; Settings, Features: **By the briefing's buckets**, de:
 **Nach den Fächern des Briefings**, feature `flow_buckets`) Work through is
-sorted the way the briefing is: every point (a task, a stream, an inbox item,
-an agent tab that asks, a check-in, a report, an issue) stands in exactly one
-of the briefing profile's buckets, by the briefing's own rule
-([Which bucket a row lands in](briefings.md#views)), so the printed briefing
-and the page never disagree. Names, order and answer words are the profile's
-`view.buckets` (the server sends them as the model's `buckets`, with the
-defaults of [docs/briefings.md](briefings.md#views) where a profile names
-none); a bucket the profile hides lends its points to the first one. On top of
-the rule the page puts what only it sees: an agent tab that asks (or finished,
-or got lost) stands in Do, a check-in whose day came in Waiting on others, a
-task the briefing does not list by who has its next move (the Bridge:
-delegate, blocked: waiting, resting: drop, else plan). A backlog task no bucket
-holds is parked already and stands in none, as in the briefing. Within a bucket a
-tab that asks comes first (it holds an agent), then the rows in the order the
-printed briefing numbers them, then the rest.
+sorted the way the briefing is. Every point answers two questions: **who is on
+the move**, and **when**.
 
-- **Left** the buckets in their order, each with how many points it holds and
-  what it means in a few words; the open one lists its points under it, a click
-  brings one to the front. A bucket that holds nothing says empty; the page
-  opens the first one that holds a point.
-- **The middle** says the open bucket's title and what its answers do, then one
-  card: its kind and facts as small marks (Agent tab, Inbox, Task, the area, the
-  due day, only you, with whom), its title (a tab's name, the task it works on
-  under it), **one sentence Next** (de: Als Nächstes): what the tab asks (the
-  question itself: the last sentence of its screen that ends with a question
-  mark, read across the lines the terminal wrapped, with the sentence before it
-  where the question alone is short), else the step of its card, else a fixed
-  sentence of its bucket;
-  no model is asked for it. Under it the bucket's answers as big buttons, the
-  first one strong, and the point's number in the printed briefing ("In the
-  briefing: no. 3 ("3 yes")", from the row's `brief_nr`). Under **More** (de:
-  Mehr) stands everything else the page offers on a point: the tab's whole
-  screen, the states, Hand over, the fields (the right column of the classic
-  view) and Description, Steps, Activity. There is no right column.
+**Who: four buckets.** Every point (a task, a stream, an inbox item, an agent
+tab that asks, a check-in, a report, an issue) stands in exactly one of the
+briefing's four buckets, by the briefing's own rule
+([Which bucket a row lands in](briefings.md#views)), so the printed briefing
+and the page never disagree:
+
+| Bucket | de | Who |
+|---|---|---|
+| do | Tun | you, today: due within the lookahead, urgency now or today, an agent tab that asks you, an only-you gate |
+| plan | Planen | you, no day yet |
+| delegate | Mache ich | the Bridge: `next.who: bridge`, an approved item waiting for its runner, a start that runs |
+| waiting | Wartet auf andere | anyone else: `blocked_by`, a step with someone else, a check-in |
+
+Names and order are the profile's `view.buckets` (the server sends them as the
+model's `buckets`, titles only; where a profile names none the page says its own
+language's defaults). An older profile's `drop` bucket and its `options` are
+accepted and ignored. There is no bucket for what rests: a point nobody touched
+for a while stays in its own bucket and carries a quiet mark, **resting for N
+days** (de: ruht seit N Tagen, the row's `resting`). On top of the rule the
+page puts what only it sees: an agent tab that asks (or finished, or got lost)
+stands in Do, a check-in whose day came in Waiting on others, a task the
+briefing does not list by who has its next move (blocked or someone else's
+step: waiting, the Bridge: delegate, else plan). Within a bucket a tab that
+asks comes first (it holds an agent), then the rows in the order the printed
+briefing numbers them, then the rest.
+
+**When: out of sight, only counted.** Under the buckets stand three counts and
+nothing else (the model's `aside`, briefing.py `aside_counts`): **Later**
+(put off to a day, it comes back on that day by itself), **Watch list** (de:
+Merkliste: a backlog task, or any other point parked without a day) and **Done
+today** (done or obsolete today).
+
+- **Left**, under **Who is on the move** (de: Wer ist dran), the four buckets in
+  their order, each with who it means and how many points it holds; the open
+  one lists its points under it, a click brings one to the front. Then the
+  three counts out of sight, then what runs.
+- **The middle** says the open bucket's title and what Do it does there, then
+  one card: its kind and facts as small marks (Agent tab, Inbox, Task, the area,
+  the due day, only you, on whom it waits, resting for N days), its title (a
+  tab's name, the task it works on under it), what the tab asks (the last
+  sentence of its screen that ends with a question mark, read across the lines
+  the terminal wrapped), **one sentence Next** (de: Als Nächstes), which says
+  what Do it does: the step of its card, else a fixed sentence of its bucket; no
+  model is asked for it. Under it the four answers, and the point's number in
+  the printed briefing with the words the chat takes ("In the briefing: no. 3
+  ("3 do", "3 later")", from the row's `brief_nr`).
 - An answer moves on by itself: the card is held by its id, so the next point
   of the bucket takes its place, and once the bucket is empty the next one that
   holds a point opens. The walk bar under the card only goes back and forth.
 
-The first answer of every bucket is the Bridge taking the next step. Each answer
-is the act the briefing's answer is (skills/briefing/references/control.md),
-by its place among the bucket's options, whatever the profile calls it:
+**The four answers.** Every point takes the same four, in this order, on every
+card, every view and in the printed briefing (lib/answers.py, the briefing's
+[control.md](../skills/briefing/references/control.md)):
 
-| Bucket | Answers (default words) | What goes out |
+| Answer | de | What goes out |
 |---|---|---|
-| do | yes · later · drop | yes: a tab's own answers win (a dialog's options, Yes and No, the ready answer of its input line, `tab_accept`); an inbox item or a task `do_it` (an item waiting for your yes is approved and run, as "3 yes" in the briefing; anything else starts an agent on its next step). later: `later` to the next briefing day. drop: `settle` not doing (an inbox item is dropped), a task `shelve` |
-| plan | schedule · later | schedule: a day picked (tomorrow, Monday, in a week, in a month, another day), then `later` to it. later: to the next briefing day |
-| delegate | go · not now | go: `do_it`. not now: `later` to the next briefing day |
-| waiting | nudge · wait | nudge: `do_it` with the check-in's sentence that only drafts a message, never sends it. wait: a day picked, then `runs_on` until it, on whom it waits |
-| drop | park · keep | park: a task `shelve` (an idea), anything else out of sight for 30 days. keep: `task_keep` |
+| Do it | Mach das | the strong one: the Bridge takes the next step. A tab that asks puts its own answers in this place (a dialog's options, Yes and No where the server takes them, the ready answer of its input line, `tab_accept`). An inbox item `do_it` with `yes`, the briefing's yes: approved, and where no action of its own runs and no tab works on it an agent starts on it too. A task `do_it`, an agent on its next step; it then stands under I'll do as running. A waiting point `do_it` with a sentence that only drafts a nudge, never sends it: while the agent writes it the point runs under I'll do, the draft it leaves stands in Do for you to send. A point an agent tab works on is never started twice: there Do it is left out |
+| Later ▾ | Später ▾ | a menu: tomorrow, Monday, in a week (each with its day), a picked day (after today), the watch list. A day is `later` until it (in Plan with `plan`, its note says "Planned for"); on a waiting point `runs_on` until it: out of sight until that day and counted as later, back with the same person (only With … a name, a check-in, stays in sight in Waiting). An undo leaves no trace on a task: its last_updated as it was and the notes of the step gone (task.py `--last-updated`, `--drop-note`), and a task back from a Later rests from that day on. The watch list is `task_park` for a task (status backlog, undone by `task_unpark`) and `later` until `9999-12-31` (lib/answers.py `LIST_DAY`) for anything else: an inbox item deferred to it, any other row hidden until it |
+| Done | Erledigt | `settle` done. On a stream **done for this time** (de: für diesmal erledigt): out of sight until tomorrow with that note, the stream runs on |
+| Obsolete | Veraltet | quiet and last, asked first in place with an optional note ("Really obsolete?", on a stream "Really end the stream?"): one `settle` with outcome not doing and the text `obsolete` (de: `veraltet`) plus the note. A task is closed as not done, an inbox item dropped with `reason: outdated` (counted under its source), an issue or any other row hidden here and left open on GitHub, a stream ended (`stream: true`) |
 
-An answer a point cannot take is left out: a stream is never dropped, and a tab
-is put off or dropped only where it asks about an inbox item (on a task or a
-stream behind it, later would put off the whole task, not the question). The
-classic card of a tab that asks shows the same question (the last sentence that
-asks, no longer its screen's first line). The Aufgaben page's columns (Me, Bridge,
-Waiting on others) and the squares of Jev in a point's fields then say the
-buckets' names too (do, delegate, waiting; do, plan, delegate, drop). With the
-switch off Work through is as it was. A person's page keeps it as it is.
+On a tab Later, Done and Obsolete act only on the inbox item it asks about: on a
+task or a stream behind it they would put off or close the whole task, not the
+question, so there the tab's own answers stand alone, on its card as in the
+tabs column. A tab whose item or stream is put off or done for this time leaves
+Do with it. A task whose own tab works (also one just answered from here, until
+the next read of its screen) stands in I'll do, marked as running. A task the
+briefing folded into its inbox line (the line's `folded_tasks`) is that line,
+never a second point. On an only-you inbox item Do it starts an agent that
+prepares it; Next says so, it gives no yes. Every answer goes out through the page's verbs, so its toast offers
+its undo. Every answer names the state the page saw its point in (`was`: an
+inbox item's state, a task's status). When another browser answered the point
+meanwhile, the server refuses the answer (409 `point_moved`), writes nothing,
+and the page fetches the point as it is now.
+
+**Under More** (de: Mehr) stands only: **With …** (de: Liegt bei …: you or the
+Bridge for a task's step, verb `task_owner`, task.py next --who, undone by
+`task_next`; a name for any point, `work_on` with a check-in in a week, so it
+waits on them), **Go to the tab** (de: Zum Tab, where the point has one),
+**Ask** (de: Fragen, the free line of views/flowinstruct.js, Instruct beside it
+with `cockpit.flow.instruct`) and the **Fields** with the tab's whole screen,
+Description, Steps and Activity. There is no right column.
+
+The Aufgaben page's columns of the Bridge and of others say the buckets' names
+(I'll do, Waiting on others); Me and To review keep the board's own. Jev's
+squares keep Jev's own words (urgency and impact, who could do it), never a
+bucket's name, so a point never names two buckets at once; its square words stand
+over the dots. With the switch off Work through is as it was. A person's page keeps
+it as it is.
+
+The other views of the work tab follow the same switch, so they differ from Work
+through only in order and grouping, never in words or answers. Every row of
+**Due**, **By source** and **By Jev**, the detail of a row and the cards of the
+agent tabs column show the row's bucket as a chip (with its number in the printed
+briefing) and the four answers: Do it strong, the rest under one **More**, each
+the same act as the card's (`views/flowbuckets.js` BucketBar, one
+`useBucketAnswer` for the card and every bar). A row whose agent tab asks is
+answered in the tab, and a row an agent already works on is never started a
+second time. Due keeps its sections under neutral titles (Now and today, From
+the inbox, ...), and a selection there offers Do it and Later for every picked
+row. By source keeps its grouping by source; its strip filters by the bucket
+names (the triage's gist stays). By Jev shows the bar under each row of the
+plan. A backlog task no bucket of the briefing holds (it is on the watch list)
+stands under Plan there. The mock takes `?buckets=1` to show it.
 
 #### Read marks
 
@@ -4332,6 +4381,7 @@ share or clean up.
 | `view.json` | the last briefing, shown at once on the next start until a fresh one arrives | yes: the whole briefing |
 | `days.json` | the day book: each quota's use per day and the counts of each day (section 3), two weeks | no: numbers under ids |
 | `launches.json` | the starts of the last days for the return channel, with model, effort and who chose them | yes: the titles |
+| `running.json` | the row keys an agent works on now (a start at work, a tab at work on a task or item), written on every pass that changes them and every five minutes; the printed briefing reads it while it is fresh (15 minutes) and puts those points in I'll do as running, as the page does | no: row keys and a time |
 | `tabs-seen.json` | since when each agent tab is in its state, so how long a tab has waited survives a restart of the server | no: tab ids and times only |
 | `launch.json` | the settings page's changes to `cockpit.launch_model` (only keys that differ from the config) | no |
 | `ticker.json` | the settings page's changes to `cockpit.ticker` (only keys that differ from the config) | no |

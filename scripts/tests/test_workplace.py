@@ -1865,3 +1865,49 @@ def test_cli_close_workspace_without_the_cap_is_refused_and_a_driver_refusal_is_
     _make_driver(repo, tmp_path / "b", answers={"close_workspace": {"report": ["ERROR workspace:2 is the last one"]}})
     assert wp.main(["--root", str(repo), "close-workspace", "workspace:2"]) == 1
     assert "ERROR workspace:2 is the last one" in capsys.readouterr().out
+
+
+def test_a_label_two_things_share_names_neither_and_a_launch_opens_under_a_unique_name(repo):
+    """Round 2 of the simulation: 'Fix the cost report for…' was the cut label of a task and of two inbox items
+    without a hash in their ids, so the tab of one was bound to the others (a false 'tab ended' on the one launched,
+    its Yes withheld on the others). A label that names two things names neither, and a launch whose label is
+    shared opens under the name only it has."""
+    task(repo, "fix-the-cost-report-for-fabrikam-retail")
+    status = repo / "work" / "tasks" / "fix-the-cost-report-for-fabrikam-retail" / "STATUS.md"
+    status.write_text(status.read_text(encoding="utf-8").replace("# Fix The Cost Report For Fabrikam Retail",
+                                                                  "# Fix the cost report for Fabrikam Retail"), encoding="utf-8")
+    ids = ["20260808-1145-fix-the-cost-report-for-rivera-household-2", "20260901-0900-fix-the-cost-report-for-contoso-logistics"]
+    for iid, who in zip(ids, ("Rivera household", "Contoso Logistics")):
+        d = repo / "work" / "inbox" / iid
+        d.mkdir(parents=True)
+        (d / "item.yaml").write_text(f"schema_version: 1\nkind: decision\nsummary: Fix the cost report for {who}\ngate: your-yes\n"
+                                     "urgency: today\ncreated: '2026-10-06T14:11:00+02:00'\nfrom: test\n", encoding="utf-8")
+    shared = wp.tab_label({"slug": "fix-the-cost-report-for-fabrikam-retail", "heading": "Fix the cost report for Fabrikam Retail"}, {})
+    assert shared == wp.inbox_label(ids[1], "Fix the cost report for Contoso Logistics"), "the three share one cut label"
+    driver = wp.NoneDriver()
+    driver.tabs = lambda: [{"name": shared, "workspace": "W", "ref": "surface:2", "state": "working"}]
+    (row,) = wp.status_rows(repo, {}, driver)
+    assert row["slug"] is None and row["item"] is None, "a shared label binds the tab to nobody"
+    (e,) = wp.build_launch(repo, {}, [ids[1]], "go")
+    assert e["label"] != shared
+    driver.tabs = lambda: [{"name": e["label"], "workspace": "W", "ref": "surface:2", "state": "working"}]
+    (row,) = wp.status_rows(repo, {}, driver)
+    assert row["item"] == ids[1] and row["slug"] is None
+    (t,) = wp.build_launch(repo, {}, ["fix-the-cost-report-for-fabrikam-retail"], "go")
+    driver.tabs = lambda: [{"name": t["label"], "workspace": "W", "ref": "surface:3", "state": "working"}]
+    (row,) = wp.status_rows(repo, {}, driver)
+    assert row["slug"] == "fix-the-cost-report-for-fabrikam-retail" and row["item"] is None
+
+
+def test_a_tab_of_an_open_item_is_never_bound_to_a_done_task_of_the_same_name(lrepo):
+    # round 2 of the four answers: a done task's cut heading equal to an open item's tab name bound that tab to the
+    # done task, the cockpit showed it as finished, and Done closed the open item while its tab still asked
+    name = next(n for n in wp.inbox_tab_index(lrepo) if wp.inbox_tab_index(lrepo)[n] == INBOX_ID)
+    d = lrepo / "work" / "done" / "2026-10" / "old-thing"
+    d.mkdir(parents=True)
+    (d / "STATUS.md").write_text("---\nslug: old-thing\nstatus: done\n---\n\n# Old thing\n", encoding="utf-8")
+    cfg = {"tab_names": {"old-thing": name}}
+    driver = wp.NoneDriver()
+    driver.tabs = lambda: [{"name": name, "workspace": "W", "ref": "surface:16", "state": "waiting"}]
+    (row,) = wp.status_rows(lrepo, cfg, driver)
+    assert row["item"] == INBOX_ID and row["slug"] is None

@@ -114,8 +114,27 @@ class SettledStore:
                      for k, d in latest.items() if d["act"] == "dismiss"}
         return set(latest), hidden, dismissed
 
+    def came_back(self, today: str) -> dict:
+        """The hides whose day came (key -> that day, YYYY-MM-DD, today or before): a point put off with Later and back
+        again. Its day counts as the point's last activity, so a task back from a Later rests from that day on (round 2
+        of the four answers: it came back still marked "resting for 54 days")"""
+        return {k: str(d["until"])[:10] for k, d in self._decisions().items()
+                if d["act"] == "hide" and not d.get("done") and str(d["until"])[:10] <= today}
+
     def hidden(self, today: str) -> dict:
         return self.state(today)[1]
+
+    def hidden_done(self, today: str) -> dict:
+        """The hides that say done for this time (a stream's Done: out of sight until tomorrow, the stream runs on),
+        lasting beyond today: key -> the day it was done. Counted as done that day, not as later"""
+        return {k: str(d.get("day") or "") for k, d in self._decisions().items()
+                if d["act"] == "hide" and d.get("done") is True and d["until"] > today}
+
+    def hidden_filed(self, today: str) -> set:
+        """The hides of rows filed to the inbox (Do it on an issue, a deadline), lasting beyond today: the filed item
+        stands for the row, so they count as no Later (round 3 of the four answers: Later went from 1 to 2)"""
+        return {k for k, d in self._decisions().items()
+                if d["act"] == "hide" and isinstance(d.get("filed"), str) and d["until"] > today}
 
     def acks(self) -> tuple[set, dict]:
         """(the finding keys the record decides, the findings marked seen: row key -> {fp, day, note, inbox})"""
@@ -172,8 +191,11 @@ class SettledStore:
             raise ValueError(f"outcome must be one of {SETTLE_OUTCOMES}")
         self._record(key, "dismiss", outcome=outcome, title=str(title)[:200])
 
-    def hide(self, key: str, until: str, title: str = "") -> None:
-        self._record(key, "hide", until=until, title=str(title)[:200] or None)
+    def hide(self, key: str, until: str, title: str = "", done: bool = False, filed: str | None = None) -> None:
+        """`filed`: the inbox item a row was filed to (Do it on an issue): that item stands for it, so the hide is
+        no Later (hidden_filed)"""
+        self._record(key, "hide", until=until, title=str(title)[:200] or None, done=True if done else None,
+                     filed=str(filed)[:120] if filed else None)
 
     def unsettle(self, key: str) -> None:
         self._record(key, "unsettle")
@@ -203,3 +225,23 @@ class SettledStore:
             if self._write(f"{LEGACY_PREFIX}{digest[:16]}-{act}.yaml", body):
                 written += 1
         return written
+
+
+def came_back_days(root: Path, today: dt.date) -> dict:
+    """{task slug: the day its Later came, as a date} of the record under work/cockpit/settled/ (SettledStore.came_back);
+    empty where there is none or it cannot be read. advise.py and workplace.py count a task's quiet days from it"""
+    folder = Path(root) / "work" / "cockpit" / "settled"
+    if not folder.is_dir():
+        return {}
+    try:
+        back = SettledStore(folder, lambda: 0).came_back(today.isoformat())
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for key, day in back.items():
+        if key.startswith("task:"):
+            try:
+                out[key[5:]] = dt.date.fromisoformat(day)
+            except ValueError:
+                continue
+    return out

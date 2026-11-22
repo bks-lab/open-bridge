@@ -22,9 +22,9 @@ from .text import EN
 ALSO_MAX = 20
 
 try:
-    from ..briefing_view import art_of_kind, asks_you, meter_of
+    from ..briefing_view import art_of_kind, aside_of_record, asks_you, meter_of
 except ImportError:      # bridge_cockpit loaded as a top-level package, scripts/lib itself on the path
-    from briefing_view import art_of_kind, asks_you, meter_of  # type: ignore[no-redef]
+    from briefing_view import art_of_kind, aside_of_record, asks_you, meter_of  # type: ignore[no-redef]
 
 ATTENTION = frozenset({"needs-you", "waiting"})
 # the two ways a row leaves the briefing in two clicks: done, or not doing it
@@ -305,7 +305,11 @@ def _base_row(**extra) -> dict:
            # the inbox ids of the asks this line took in (briefing_view._fold): they end with it
            "also_inbox": [],
            # its number in the printed briefing (briefing_view.numbered), None where it prints none
-           "brief_nr": None}
+           "brief_nr": None,
+           # a task nobody touched for a while (the briefing's advice quiet): its days, True where it names none
+           "resting": None,
+           # how long a point waits on someone else, in days (the briefing's "waiting N days")
+           "waiting_days": None}
     row.update(extra)
     return row
 
@@ -314,6 +318,15 @@ def task_row(slug: str, title: str) -> dict:
     row = _base_row(title=title, task=slug)
     row["key"] = f"task:{slug}"
     return row
+
+
+def page_tasks(view: dict) -> list[tuple]:
+    """[(slug, title)] of the tasks the pages show as tasks, in page order: an item of a taskboard section is none (its
+    page resolves task:<slug> from the folder, actions.page_entry), nor is an inbox item that names its task (it is
+    that item, never the task: round 1 of the four answers had a parked task back in Do under its item's title)"""
+    return [(it["task"], it.get("title") or it["task"]) for pg in view.get("pages", []) for sec in pg.get("sections", [])
+            if sec.get("view") != "taskboard" and sec.get("kind") != "inbox"
+            for it in sec.get("items", []) if isinstance(it.get("task"), str) and it.get("task")]
 
 
 def task_row_for(slug: str, title: str, tasks: list[dict], tx: dict = EN) -> dict:
@@ -624,11 +637,19 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
     v = _dict(data.get("view"))
     buckets = []
     seen_keys: set[str] = set()
+    # an agent tab that asks has its row and number in the briefing (briefing_view tab_asks); here it stands as the tab
+    # itself, so its number goes to the tab's point by its ref, never as a second row
+    tab_nrs: dict[str, int] = {}
     for b in _list(v.get("buckets")):
         b = _dict(b)
         rows = []
         for i in _list(b.get("items")):
             i = _dict(i)
+            if as_text(i.get("tab_ref")):
+                nr = i.get("nr")
+                if isinstance(nr, int) and not isinstance(nr, bool) and nr > 0:
+                    tab_nrs[as_text(i.get("tab_ref"))] = nr
+                continue
             base = _base_row(
                 bucket=as_text(b.get("id")), title=as_text(i.get("title")),
                 why=[w for w in (as_text(x) for x in _list(i.get("why"))) if w],
@@ -653,6 +674,11 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
                 also_inbox=[x for x in _list(i.get("also_inbox")) if isinstance(x, str)][:ALSO_MAX],
                 # the row's number in the printed briefing ("3 yes", briefing_view.numbered), None where it prints none
                 brief_nr=i["nr"] if isinstance(i.get("nr"), int) and not isinstance(i.get("nr"), bool) and i["nr"] > 0 else None,
+                resting=resting_of(i.get("resting")),
+                # how long a point waits on someone (the briefing's "waiting N days"): the card's quiet mark
+                waiting_days=resting_of(i.get("waiting_days")) if i.get("waiting_days") is not True else None,
+                # the tasks the briefing folded into this line (briefing_view _fold): no point of their own
+                folded_tasks=[x for x in _list(i.get("folded_tasks")) if isinstance(x, str) and x][:ALSO_MAX],
             )
             # Same key twice (same number from two trackers): the second gets the block added.
             key = row_key(base)
@@ -676,7 +702,9 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
         "title": as_text(data.get("title")),
         "headline": headline,
         # the headline after its own count: a dashboard says the count it shows on the Briefing tab instead
-        "headline_rest": headline.split(" · ", 1)[1] if " · " in headline else "",
+        # the day's parts without the counts of Do (briefing_view headline_day), an older briefing's text after its first part
+        "headline_rest": as_text(v.get("headline_day")) if isinstance(v.get("headline_day"), str)
+        else headline.split(" · ", 1)[1] if " · " in headline else "",
         "since": as_text_or_null(v.get("since")),
         "extras": {"clear": [as_text(x) for x in _list(v.get("clear"))],
                    "hygiene": [as_text(x) for x in _list(v.get("hygiene"))],
@@ -702,27 +730,76 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
         # the profile's buckets in its order with their titles and answers (briefing_view bucket_defs), also an
         # empty one: Work through sorts its points into them (flow.buckets)
         "bucket_defs": bucket_defs_of(v.get("bucket_defs")),
+        # what no bucket shows, only counted under them (briefing_view aside): later, the watch list, done today;
+        # None where the briefing counted nothing
+        "aside": aside_of(v.get("aside")),
+        # the same without what was settled in the cockpit: the cockpit adds its own record on every pass (aside_now)
+        "aside_base": aside_of(v.get("aside_base")),
+        # put off to a day and out of sight until it (briefing_view away): no point of the buckets, not even beside
+        # the briefing (with_tasks)
+        "away": away_of(v.get("away")),
+        # the briefing's number of each agent tab that asks, by its ref
+        "tab_nrs": tab_nrs,
         "agenda": agenda,
         "status": status,
         "pages": parse_pages(data, tx),
     }
 
 
-BRIEF_BUCKETS = ("do", "plan", "delegate", "waiting", "drop")
+# the briefing's four buckets (briefing_view BUCKETS); an older briefing's "drop" is left out, its rows stand in the four
+BRIEF_BUCKETS = ("do", "plan", "delegate", "waiting")
+ASIDE_KEYS = ("later", "list", "done_today")
 
 
 def bucket_defs_of(value: Any) -> list[dict]:
-    """[{id, title, options}] of the view's bucket_defs: the five ids of the briefing only, each once, a title and at
-    most ten answers of text; an older briefing sends none, then the list is empty and the page takes its defaults"""
+    """[{id, title}] of the view's bucket_defs: the four ids of the briefing only, each once, with a title. No bucket
+    has answers of its own: every point takes the same four (lib/answers.py). An older briefing sends none, then the
+    list is empty and the page takes its defaults"""
     out, seen = [], set()
     for b in (_dict(x) for x in _list(value)):
         bid = b.get("id")
         if bid not in BRIEF_BUCKETS or bid in seen:
             continue
         seen.add(bid)
-        out.append({"id": bid, "title": as_text(b.get("title")) or bid,
-                    "options": [o.strip() for o in _list(b.get("options")) if isinstance(o, str) and o.strip()][:10]})
+        out.append({"id": bid, "title": as_text(b.get("title")) or bid})
     return out
+
+
+def aside_of(value: Any) -> dict | None:
+    """{later, list, done_today} of the view's out-of-sight counts, each a whole number from 0; None uncounted"""
+    if not isinstance(value, dict):
+        return None
+    return {k: value[k] if isinstance(value.get(k), int) and not isinstance(value.get(k), bool) and value[k] > 0 else 0
+            for k in ASIDE_KEYS}
+
+
+def aside_now(view: dict, record: dict | None, today: str) -> dict | None:
+    """The out-of-sight counts as they stand now: the briefing's own (inbox, tasks) and the cockpit's record read on
+    this pass, so a Later, a Done or an undo kept only here moves them at once (round 3 of the four answers: they
+    lagged one step); the view's counts where it carries no base or there is no record"""
+    base = view.get("aside_base")
+    if not isinstance(base, dict) or not isinstance(record, dict):
+        return view.get("aside")
+    extra = aside_of_record(record, today)
+    return {k: int(base.get(k) or 0) + extra.get(k, 0) for k in ASIDE_KEYS}
+
+
+def away_of(value: Any) -> list[dict]:
+    """[{key, until}] of the view's `away`: a key of an inbox item or a task, a day YYYY-MM-DD"""
+    out = []
+    for a in (_dict(x) for x in _list(value)):
+        key, until = a.get("key"), a.get("until")
+        if isinstance(key, str) and re.fullmatch(r"(?:inbox|task):\S+", key) and isinstance(until, str) \
+                and re.fullmatch(r"\d{4}-\d{2}-\d{2}", until):
+            out.append({"key": key, "until": until})
+    return out
+
+
+def resting_of(value: Any) -> int | bool | None:
+    """A resting task's days (a whole number above zero), True where the briefing names none, else None"""
+    if value is True:
+        return True
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
 
 def _json_list(out: Any) -> list:
@@ -835,9 +912,11 @@ def with_tasks(view: dict, tasks: list[dict], tx: dict = EN) -> dict:
             if not t:
                 rows.append(r)
                 continue
-            # An inbox entry is a part of its task, never the task itself: the task keeps its own row.
+            # An inbox entry is a part of its task, never the task itself: the task keeps its own row, unless the
+            # briefing folded the task into this line (one matter, one line: the line stands for both)
             if r.get("inbox_id"):
                 inbox_count[t["slug"]] = inbox_count.get(t["slug"], 0) + 1
+                seen.update(r.get("folded_tasks") or [])
             else:
                 seen.add(t["slug"])
             # An inbox entry shows the area of its task, but not its priority.
@@ -858,10 +937,15 @@ def with_tasks(view: dict, tasks: list[dict], tx: dict = EN) -> dict:
                          priority=t["priority"], area=t["area"], area_names=list(t["area_names"]), task_type=t["type"],
                          status=t.get("status"), next=task_next(t, inbox_rows), origin_raw=t.get("origin"),
                          updated=t.get("updated"))
+        if t["stale"] and not t["blocked_by"]:
+            # a quiet task says how long it rests, as a row of the briefing does (the card's quiet mark)
+            base["resting"] = resting_of(t.get("age")) or True
         base["key"] = row_key(base)
         return base
 
-    rest = [t for t in tasks if t["slug"] not in seen]
+    # a task put off to a day (Later on a waiting task) is out of sight until then, beside the briefing too
+    away = {a["key"] for a in view.get("away") or []}
+    rest = [t for t in tasks if t["slug"] not in seen and f"task:{t['slug']}" not in away]
     active = [to_row(t, "tasks") for t in rest if not t["blocked_by"] and not t["stale"]]
     resting = [to_row(t, "resting") for t in rest if t["blocked_by"] or t["stale"]]
     if active:
@@ -939,9 +1023,9 @@ def is_idle(tab: dict, ask: dict | None, since_ms: float, settled: str | None, n
 
 
 def asks_something(ask: dict | None) -> bool:
-    """Whether the words read off a waiting tab's screen ask anything: a question (yes or no, a question mark),
-    options, or something typed in its prompt. Every waiting tab has its last words read, so words alone ask nothing"""
-    return bool(ask) and bool(ask.get("yes_no") or ask.get("options") or ask.get("draft"))
+    """Whether the words read off a waiting tab's screen ask anything: a question (yes or no, a question mark, also
+    one mid-text, a request for an answer: asks.question_of `asks`), options, or something typed in its prompt. Every waiting tab has its last words read, so words alone ask nothing"""
+    return bool(ask) and bool(ask.get("yes_no") or ask.get("asks") or ask.get("options") or ask.get("draft"))
 
 
 def is_live(tab: dict) -> bool:
@@ -949,8 +1033,10 @@ def is_live(tab: dict) -> bool:
 
 
 def tab_for(row: dict, tabs: list[dict]) -> dict | None:
-    mine = [t for t in tabs if (row.get("task") is not None and t.get("slug") == row.get("task"))
-            or (row.get("inbox_id") is not None and t.get("item") == row.get("inbox_id"))]
+    # an inbox row's own tab (its item) before any tab of its task (round 2 of the four answers: an item about a stream
+    # got the stream's dialog, while its own tab asked yes or no)
+    own = [t for t in tabs if row.get("inbox_id") is not None and t.get("item") == row.get("inbox_id")]
+    mine = own or [t for t in tabs if row.get("task") is not None and t.get("slug") == row.get("task")]
     for t in mine:
         if t.get("state") in ATTENTION:
             return t
@@ -1022,12 +1108,18 @@ def merge_view(base: dict, fresh: dict) -> dict:
     gone = set(fresh.get("skipped") or [])
     base_skipped = base.get("skipped") or []
     keys = {r["key"] for b in fresh["buckets"] for r in b["rows"]}
+    # a row kept from the earlier run keeps its briefing number only where the fresh run gave that number to none:
+    # two cards never say one number (round 3 of the four answers: "47 do" named two cards after a partial pass)
+    taken = {r.get("brief_nr") for b in fresh["buckets"] for r in b["rows"]} - {None}
+
+    def kept(r: dict) -> dict:
+        return {**r, "brief_nr": None} if r.get("brief_nr") in taken else r
     ids = list(dict.fromkeys([b["id"] for b in fresh["buckets"]] + [b["id"] for b in base.get("buckets", [])]))
     buckets = []
     for bid in ids:
         old = next((o for o in base.get("buckets", []) if o["id"] == bid), None)
         b = next((o for o in fresh["buckets"] if o["id"] == bid), None) or {**old, "rows": []}
-        extra = [r for r in (old["rows"] if old else []) if r.get("sources") and all(s in gone for s in r["sources"])
+        extra = [kept(r) for r in (old["rows"] if old else []) if r.get("sources") and all(s in gone for s in r["sources"])
                  and r["key"] not in keys]
         merged = {**b, "rows": list(b["rows"]) + extra}
         if merged["rows"]:
@@ -1065,6 +1157,11 @@ def merge_view(base: dict, fresh: dict) -> dict:
         "pages": pages,
         # a section a run left out still names its kind for the rows kept from the earlier run
         "section_info": {**(base.get("section_info") or {}), **(fresh.get("section_info") or {})},
+        # what is out of sight: a run that left a section out keeps what the earlier one put away from it
+        "away": list(fresh.get("away") or []) + ([a for a in base.get("away") or [] if a not in (fresh.get("away") or [])]
+                                                if fresh_is_partial else []),
+        "tab_nrs": dict(fresh.get("tab_nrs") or {}) if fresh.get("tab_nrs") or not fresh_is_partial
+        else dict(base.get("tab_nrs") or {}),
     }
 
 

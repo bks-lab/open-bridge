@@ -184,6 +184,13 @@ def s_start(w: World) -> None:
     w.act("collect_context", key="task:filed-task")
 
 
+def s_run_now(w: World) -> None:
+    # Do it on an item whose yes is given: the runner's pass now (round 3 of the four answers)
+    row = w.app.collector.resolve(f"inbox:{YES_ID}")["row"]
+    row["inbox_state"], row["has_action"] = "approved", True
+    w.act("do_it", keys=[f"inbox:{YES_ID}"], yes=True)
+
+
 def s_launch_model(w: World) -> None:
     w.act("start_agent", keys=["task:other-task"], model="haiku", effort="xhigh")
 
@@ -209,6 +216,14 @@ def s_waits(w: World) -> None:
     w.act("runs_on", keys=[f"inbox:{tbc.YES2_ID}"], until=TOMORROW, on="an answer from the vendor")
     w.act("runs_on", keys=["task:demo-task"], until=TOMORROW, on="the vendor")
     w.act("task_running", slug="demo-task")
+    # the undo of a wait on a task that waited already: its blocker back (task.py wait --back)
+    w.act("task_running", slug="demo-task", back=True, on="the vendor", since="2026-10-01", until=TOMORROW)
+
+
+def s_park(w: World) -> None:
+    """Park of Park or drop on a task: status backlog (task.py status), and its undo"""
+    w.act("task_park", key="task:demo-task", reason="untouched for 52 days")
+    w.act("task_unpark", slug="demo-task", **{"as": "doing"})
 
 
 def s_shelve(w: World) -> None:
@@ -283,7 +298,7 @@ def s_tabs(w: World) -> None:
     w.act("tab_yes", tab_ref="surface:7")
     w.act("tab_no", tab_ref="surface:7")
     w.act("tab_jump", tab_ref="surface:7")
-    w.act("tab_send", tab_ref="surface:7", text="--please continue")
+    w.act("tab_send", tab_ref="surface:13", text="--please continue")
     w.act("tab_keys", tab_ref="surface:7", steps=[{"text": "ls"}, {"key": "enter"}])
     w.act("tab_go_on", tab_ref="surface:13")
     # a reply that names the question it answers, the tab and the state: the screen is read fresh first
@@ -443,12 +458,14 @@ SCENARIOS = {
                                   "inbox.list", "inbox.close"}),
     "caps": Scenario(s_caps, {"workplace.caps"}),
     "start": Scenario(s_start, {"inbox.approve", "workplace.launch", "task.note", "inbox.note"}),
+    "run_now": Scenario(s_run_now, {"inbox.run"}),
     "launch_model": Scenario(s_launch_model, {"workplace.launch"}, config=EFFORT_CFG),
     "team": Scenario(s_team, {"workplace.launch"}),
     "resume": Scenario(s_resume, {"workplace.launch"}),
     "filed": Scenario(s_filed, {"inbox.add", "workplace.launch"}),
     "waits": Scenario(s_waits, {"inbox.defer", "task.wait"}),
     "shelve": Scenario(s_shelve, {"task.shelve"}),
+    "park": Scenario(s_park, {"task.status"}),
     "to_task": Scenario(s_to_task, {"task.new"}),
     "merge": Scenario(s_merge, {"task.merge", "task.unmerge"}, config=FLOW_CFG),
     "inbox_edits": Scenario(s_inbox_edits, {"inbox.urgency", "inbox.area", "inbox.note", "inbox.drop", "inbox.unmute", "inbox.close"}),
@@ -703,7 +720,8 @@ STATE_FIELDS = {
 }
 # the keys and types of a tab's question (asks.py), when it has one
 ASK_FIELDS = {"text": str, "options": list, "hash": str, "yes_no": bool, "draft": bool,
-              "suggestion": (str, type(None))}     # the answer the input line holds ready, None without one
+              "suggestion": (str, type(None)),     # the answer the input line holds ready, None without one
+              "asks": bool}                        # it asks, also mid-text or by "reply by number" (asks.question_of)
 
 
 def state_values(data, path: str) -> list:

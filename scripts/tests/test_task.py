@@ -1002,3 +1002,141 @@ def test_next_who_and_check_put_a_task_in_progress_with_someone_and_keep_its_ste
     assert yaml.safe_load((repo / "work/streams/river/STATUS.md").read_text(encoding="utf-8").split("---\n")[1])["next"]["who"] == "lena"
     for bad in (("next", "alpha", "--check", "11.11.2026"), ("next", "alpha", "--who", "a\nb"), ("next", "alpha", "--who", "x" * 61)):
         assert run(repo, *bad).returncode == 1, bad
+
+
+def test_next_who_on_a_step_with_a_check_in_answers_in_json(repo):
+    # round 3 of the four answers: With … du on a task with a check-in failed "Object of type date is not JSON
+    # serializable" after STATUS.md was already written, so the cockpit kept no undo for a change that happened
+    import json
+    p = repo / "work/tasks/alpha/STATUS.md"
+    p.write_text(STATUS.replace("status: doing\n", "status: doing\nnext: {what: Send the draft}\n", 1), encoding="utf-8")
+    assert run(repo, "next", "alpha", "--who", "Kim", "--check", "2026-11-29", "--json").returncode == 0
+    r = run(repo, "next", "alpha", "--who", "me", "--json")
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout)["check"] == "2026-11-29"
+
+
+def test_wait_on_a_task_that_waits_already_keeps_the_day_it_began(repo):
+    # round 3 of the four answers: Later on a task waiting for Mika since 55 days (blocked_by, no blocked_since)
+    # wrote blocked_since: today, so the row said waiting 0 days on its return
+    import yaml
+    p = repo / "work/tasks/alpha/STATUS.md"
+    text = p.read_text(encoding="utf-8")
+    text = STATUS.replace("status: doing\n", 'status: doing\nblocked_by: "waiting for Mika to reply"\n', 1)
+    p.write_text(text, encoding="utf-8")
+    was = str(yaml.safe_load(text.split("---\n")[1]).get("last_updated"))[:10]
+    assert run(repo, "wait", "alpha", "--until", "2099-11-23", "--on", "Mika").returncode == 0
+    front = yaml.safe_load(p.read_text(encoding="utf-8").split("---\n")[1])
+    assert str(front["blocked_since"]) == was
+
+
+def test_wait_back_restores_what_the_task_waited_on_before(repo):
+    # the undo of Wait on a task that already waited: its blocker, the day it began and its quiet day come back as
+    # they were, nothing else (the cockpit's runs_on hands this out)
+    p = repo / "work/tasks/alpha/STATUS.md"
+    before = STATUS.replace("status: doing\n", 'status: doing\nblocked_by: "waiting for Robin to reply"\nblocked_since: 2026-08-30\n', 1)
+    p.write_text(before, encoding="utf-8")
+    assert run(repo, "wait", "alpha", "--until", "2099-01-05").returncode == 0
+    r = run(repo, "wait", "alpha", "--back", "--on", "waiting for Robin to reply", "--since", "2026-08-30", "--json")
+    assert r.returncode == 0, r.stderr
+    text = p.read_text(encoding="utf-8")
+    assert 'blocked_by: "waiting for Robin to reply"' in text and "blocked_since: 2026-08-30" in text
+    assert "quiet_until" not in text and text.count("blocked_by:") == 1
+    # without anything to restore, --back is --clear
+    assert run(repo, "wait", "alpha", "--back").returncode == 0
+    assert "blocked_by" not in p.read_text(encoding="utf-8")
+
+
+def test_a_closed_task_keeps_what_it_waited_on_and_a_reopen_gives_it_back(repo):
+    p = repo / "work/tasks/alpha/STATUS.md"
+    p.write_text(STATUS.replace("status: doing\n", 'status: doing\nblocked_by: "waiting for Avery"\nblocked_since: 2026-08-30\n'
+                                "quiet_until: 2099-01-01\n", 1), encoding="utf-8")
+    assert run(repo, "close", "alpha", "--declined").returncode == 0
+    done = next((repo / "work" / "done").glob("*/alpha/STATUS.md")).read_text(encoding="utf-8")
+    assert "\nblocked_by:" not in done and "waited_on: \"waiting for Avery\"" in done and "waited_since: 2026-08-30" in done
+    assert run(repo, "reopen", "alpha").returncode == 0
+    back = p.read_text(encoding="utf-8")
+    assert 'blocked_by: "waiting for Avery"' in back and "blocked_since: 2026-08-30" in back and "quiet_until: 2099-01-01" in back
+    assert "waited_on" not in back and "waited_since" not in back
+
+
+def test_a_quiet_note_is_no_activity_on_the_task(repo):
+    # Round 2: the cockpit's own bookkeeping of a start (a nudge that only drafts a message) reset the briefing's
+    # "waiting 53 days" to 0 and dropped its "nudge?": a quiet note is written, last_updated stays
+    p = repo / "work/tasks/alpha/STATUS.md"
+    import re as _re
+    before = _re.search(r"^last_updated: .*$", p.read_text(encoding="utf-8"), _re.M).group(0)
+    assert run(repo, "note", "alpha", "Start note: draft a nudge, never send it", "--quiet").returncode == 0
+    text = p.read_text(encoding="utf-8")
+    assert "Start note: draft a nudge" in text and before in text
+
+
+def test_status_back_takes_a_park_back_whole_note_and_date_alike(repo):
+    # Round 2 of the cockpit simulation: the undo of a park left last_updated on today and the notes "Parked: ..." and
+    # "Park taken back", so the task lost its quiet days and its place in Park or drop. --back gives back exactly
+    # what the park changed: the status, last_updated as it was, the park's own note gone
+    p = repo / "work/tasks/alpha/STATUS.md"
+    before = p.read_text(encoding="utf-8")
+    import re as _re
+    was_date = _re.search(r"^last_updated: (.+)$", before, _re.M)
+    r = run(repo, "status", "alpha", "backlog", "--note", "Parked: in Work through", "--json")
+    assert r.returncode == 0, r.stderr
+    r = run(repo, "status", "alpha", "doing", "--back", "--last-updated", was_date.group(1).strip().strip('"') if was_date else "",
+            "--drop-note", "Parked: in Work through", "--json")
+    assert r.returncode == 0, r.stderr
+    after = p.read_text(encoding="utf-8")
+    assert "Parked: in Work through" not in after and "Park taken back" not in after
+    if was_date:
+        assert f"last_updated: {was_date.group(1).strip()}" in after
+    assert "status: doing\n" in after
+
+
+def test_status_parks_a_task_in_the_backlog_and_takes_it_back(repo):
+    # the briefing's "park" (control.md: park = status: backlog): the task stays in work/tasks, only its status moves,
+    # with a dated note; the same command with the old status is the undo
+    import datetime
+    today = datetime.date.today().isoformat()
+    p = repo / "work/tasks/alpha/STATUS.md"
+    r = run(repo, "status", "alpha", "backlog", "--note", "Parked: untouched for 52 days", "--json")
+    assert r.returncode == 0, r.stderr
+    assert _json.loads(r.stdout) == {"slug": "alpha", "status": "backlog", "was": "doing"}
+    text = p.read_text(encoding="utf-8")
+    assert text.startswith("---\nslug: alpha   # keep me\nstatus: backlog\n") and "body status: doing" in text
+    assert f"- {today}: Parked: untouched for 52 days" in text and f"last_updated: {today}" in text
+    assert "alpha" in (repo / "work" / "board.md").read_text(encoding="utf-8")
+    assert run(repo, "status", "alpha", "doing").returncode == 0
+    assert "status: doing\n" in p.read_text(encoding="utf-8")
+    assert run(repo, "status", "alpha", "done").returncode != 0            # closing is task.py close, never this
+    assert run(repo, "status", "ghost", "backlog").returncode == 1
+
+
+def test_an_undo_with_the_old_date_leaves_no_trace_reopen_wait_and_next(repo):
+    # round 2 of the four answers: the undo of Done, of Later on a waiting task and of With … moved last_updated to today
+    # and left "Closed", "Reopened", "Wait taken back" notes, so a resting task lost its quiet days
+    p = repo / "work/tasks/alpha/STATUS.md"
+    before = p.read_text(encoding="utf-8")
+    assert run(repo, "close", "alpha", "--reason", "Erledigt").returncode == 0
+    r = run(repo, "reopen", "alpha", "--last-updated", "2026-09-01", "--drop-note", "Closed: Erledigt", "--json")
+    assert r.returncode == 0, r.stderr
+    text = p.read_text(encoding="utf-8")
+    assert "last_updated: 2026-09-01" in text and "Closed" not in text and "Reopened" not in text
+    assert "status: doing" in text and "closed:" not in text
+    # a wait and its undo
+    assert run(repo, "wait", "alpha", "--until", "2026-12-01", "--on", "Robin").returncode == 0
+    r = run(repo, "wait", "alpha", "--clear", "--last-updated", "2026-09-01", "--drop-note", "Runs on until 2026-12-01: Robin")
+    assert r.returncode == 0, r.stderr
+    text = p.read_text(encoding="utf-8")
+    assert "last_updated: 2026-09-01" in text and "Runs on" not in text and "Running again" not in text
+    assert "blocked_by" not in text
+    # --drop-note alone is refused
+    assert run(repo, "next", "alpha", "--clear", "--drop-note", "x").returncode != 0
+    body = lambda t: [ln for ln in t.split("---", 2)[2].splitlines() if ln.strip() and ln.strip() != "## Notes"]
+    assert body(text) == body(before)
+
+
+def test_a_wait_on_a_task_that_waited_without_a_blocker_counts_from_its_last_move(repo):
+    # round 2: Later on a point waiting 52 days (a step with someone else) said "waiting 0 days" afterwards
+    p = repo / "work/tasks/alpha/STATUS.md"
+    p.write_text(STATUS.replace("status: doing\n", "status: doing\nnext: {what: \"Send the numbers\", who: Robin}\n"), encoding="utf-8")
+    assert run(repo, "wait", "alpha", "--until", "2026-12-01", "--on", "Robin").returncode == 0
+    assert "blocked_since: 2026-09-01" in (repo / "work/tasks/alpha/STATUS.md").read_text(encoding="utf-8")

@@ -638,14 +638,16 @@ kbd {
 .tabcard { position: relative; }
 /* slim: two lines, the state with its age and "more" above, the name with its one next step below */
 .tabcard.is-slim {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "head head more" "name acts acts";
+  /* the name keeps room of its own: a long answer button wraps or cuts, it never squeezes the name to nothing */
+  display: grid; grid-template-columns: minmax(min(9em, 45%), 1fr) minmax(0, max-content) auto; grid-template-areas: "head head more" "name acts acts";
   align-items: center; column-gap: 8px; row-gap: 2px; padding: 6px 10px;
 }
 .tabcard.is-slim > * { grid-column: 1 / -1; }
 .tabcard.is-slim .tabcard-head { grid-area: head; }
 .tabcard.is-slim .tabcard-name { grid-area: name; min-width: 0; }
 .tabcard.is-slim .tabcard-name .btn-link { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
-.tabcard.is-slim > .btn-row { grid-area: acts; justify-self: end; }
+.tabcard.is-slim > .btn-row { grid-area: acts; justify-self: end; min-width: 0; max-width: 100%; flex-wrap: wrap; justify-content: flex-end; }
+.tabcard.is-slim > .btn-row .btn { max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabcard.is-slim .tabcard-more { grid-area: more; position: static; }
 .tabgrid:has(.is-slim) { gap: 6px; }
 .tabcard-more { position: absolute; right: 12px; bottom: 8px; font-size: 11.5px; color: var(--on-surface-muted); }

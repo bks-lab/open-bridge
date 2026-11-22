@@ -13,12 +13,12 @@ import { AGENTS_PAGE, App, CHAT_PAGE, CHECK_PAGE, SETTINGS_PAGE, START_PAGE, WOR
 import {
   CONN_GRACE_MS, DAY, alertToasts, dismissState, giveTwin, notesOpenedState, pushNoteState, actionFailNote, replyRefusal, attentionTabs, createFailNote, createLoaders, displayedRows, errorText, freshMore, indexRows, invalidateDetails,
   isTypingTarget, isoDate, themeOverride, modalKeyAllowed, createWithBusy, createToastTimers, letterShortcut, planBusy, toastLinger, reviewHome, nextMonday, parseShortcut, planShortcut, railOn, railShown, rowByNumber, short, startRefusal,
-  codeSeen, reloadSafe, personOf, upsertRecord, addFeed, feedEvents, workersDue, setAreaAliases, setAreaTags, areaOfWord, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
+  backOnline, codeSeen, reloadSafe, personOf, upsertRecord, addFeed, feedEvents, workersDue, setAreaAliases, setAreaTags, areaOfWord, workPageOf, withLaunch, routesToFetch, newerTicker, tickerRemember,
   applyQuickLive, quickLiveSnapshot, whenShown, pruneAnswered, organizeGroups, organizeTicks, roomsOf, askContext,
   tabWalkView, walkRefs, inProject, areasOff, areaKey, workspacesOn, AREA_PAGES, areaScope, scopeKeep, scopeRow, escapeStep, keyScope, fileClick, scopedFileQueue, TOUR_VERSION, settingsAreaOf, tourIndex, tourOffered, tourSteps, queueLiveKeys, queueView, dayQueue, workViewIn, flowPageFor, flowMode,
   focusIndex, liveDescribeAfter, homeChosen, homeListParts, homeQueue, homeView, openStream, mergePages, commandSearch, workViewWrites, focusStep,
   canTab, flowArm, flowSettings, prepRunner, themesAsker, flowEarlyKept, prioOn, prioRows, prioLoaded, jevReady, workViewGo, workViewsIn, dayPagesOnWork, ghFilterKept,
-  FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace, infoPoint, pointOpen, pointViewOn,
+  FILES_PAGE, filesMoved, ASK_ARCHIVE_DAYS, roomKept, USAGE_FLUSH_MS, createUsageLog, usageArea, usageControl, usagePlace, infoPoint, pointOpen, pointViewOn, flowBucketsOn,
   pointBack, pointList, ghWalkAt, flowOpenKey, machineModel, restartStep, RESTART_SLOW_MS, lostRestart, helloReload, savableSettings,
 } from './logic.js'
 import { T, language, setControl, setLanguage } from './text.js'
@@ -253,7 +253,7 @@ const store = createStore({
     flowLeftAt: null, flowSolo: null, flowLine: 'instruct', flowAsk: null,
     // Work through by the briefing's buckets (cockpit.flow.buckets, views/flowbuckets.js): the bucket open and the
     // point in front, held by its id so the next one moves up after an answer
-    flowBucket: null, flowBucketAt: null,
+    flowBucket: null, flowBucketAt: null, flowAnswered: {},
     // stage 2: a finished AI run of Finished, to read open in the middle ({id, i}), null for the list
     flowReadAt: null,
     // stage 3: the list a way to the point in front came from ({items, i, back}, logic.js pointList): the walk walks it,
@@ -716,6 +716,12 @@ function onConn(conn) {
     return s.conn === next ? s : { ...s, conn: next, connMs: Date.now(), now: Date.now() }
   })
   clearTimeout(graceTimer)
+  // back: a toast that says the server does not answer is no longer true
+  if (conn === 'open') {
+    const left = backOnline(store.get().toasts, T())
+    for (const x of store.get().toasts) if (!left.includes(x)) toastTimers.stop(x.id)
+    if (left.length !== store.get().toasts.length) store.set(s => ({ ...s, toasts: backOnline(s.toasts, T()) }))
+  }
   // the warning shows once the stream has not been open for CONN_GRACE_MS: re-render then
   if (conn !== 'open') graceTimer = setTimeout(() => store.set(s => ({ ...s, now: Date.now() })), CONN_GRACE_MS + 100)
   if (conn === 'down' && !probeTimer) {
@@ -777,6 +783,8 @@ async function act(verb, args = {}, opts = {}) {
       else if (res.status === 401) failNote(res)
       else pushNote(actionFailNote(res, T()))
       if (res.error) refusals.set(args, replyRefusal(res))
+      // another browser answered the point meanwhile: the page fetches it as it is now, so it never answers it twice
+      if (res.error?.code === 'point_moved') api.state().then(st => (st.ok ? applyState(st.data) : null))
       return null
     }
     const r = res.data
@@ -1508,8 +1516,11 @@ const ctl = {
   flowChip: chip => setUi({ flowChip: chip, flowAt: null }),
   flowDecided: () => setUi(ui => ({ flowDecided: (ui.flowDecided ?? 0) + 1 })),
   // the briefing's buckets: a bucket opened (its first point in front), a point of it brought to the front
-  flowBucket: id => setUi({ flowBucket: id ?? null, flowBucketAt: null }),
-  flowBucketGo: (id, i) => setUi({ flowBucketAt: { id, i } }),
+  flowBucket: id => setUi({ flowBucket: id ?? null, flowBucketAt: null, flowView: 'buckets', flowSolo: null }),
+  flowBucketGo: (id, i) => setUi({ flowBucketAt: { id, i }, flowView: 'buckets', flowSolo: null }),
+  // a point answered on the card leaves its bucket at once (buckets.js answeredHere); entries older than a minute go
+  flowAnswered: (key, bucket, then = null) => setUi(ui => ({ flowAnswered: { ...Object.fromEntries(Object.entries(ui.flowAnswered ?? {})
+    .filter(([, a]) => Date.now() - (a?.ms ?? 0) < 60000)), [key]: { ms: Date.now(), bucket, ...(then ? { then } : {}) } } })),
   // the read marks (cockpit.flow.seen): points read, quietly (an open, Read, Mark all read), at once in the page and
   // then on the server in calls of at most 50 keys; a refusal leaves them unread, as the next state says
   flowSeen: async keys => {
@@ -2155,7 +2166,8 @@ const ctl = {
       return false
     }
     const s = store.get()
-    const byNumber = rowByNumber(s.model, indexRows(areaScope(s).model))   // a number of a hidden row finds nothing
+    // a number of a hidden row finds nothing; with the buckets on a number is the printed briefing's
+    const byNumber = rowByNumber(s.model, indexRows(areaScope(s).model), flowBucketsOn(s))
     await runPlan(planShortcut(codes, n => byNumber.get(n)))
     return true
   },
@@ -2426,6 +2438,7 @@ async function boot() {
       auth: params.get('auth') === '0' ? false : undefined, tour: params.get('tour') === '1',
       work: params.get('work'), focusToFiles: params.get('focus_to_files') === '1', filesScope: params.get('files_scope'),
       flow: params.get('flow') !== '0', seen: params.get('seen') === '1', served: params.get('served') === '1', workPage: params.get('work_page') === '1', taskboard: params.get('taskboard') === '1', chat: params.get('chat'),
+      buckets: params.get('buckets') === '1',
       views: params.get('views') ? params.get('views').split(',').map(x => x.trim()).filter(Boolean) : null,
     })
   }

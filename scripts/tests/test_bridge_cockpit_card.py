@@ -656,3 +656,11 @@ def test_a_task_the_ai_found_done_says_so_with_why_a_stream_or_a_closed_task_nev
 def test_an_inbox_card_the_ai_found_done_says_so_with_why():
     c = cd.card_of(inbox_row(), inbox_ctx({"brief": {**BRIEF, "verdict": "done", "verdict_why": "Merged on 10.11."}}))
     assert c["verdict"] == {"word": "done", "why": "Merged on 10.11."}
+
+
+def test_who_takes_the_step_is_the_tasks_also_where_its_step_comes_from_an_inbox_item():
+    # round 1 of the four answers: With … > Bridge wrote next.who bridge, but the step of the card came from the
+    # task's open inbox item, so the card said "you", the point stayed in Plan and the owner could not be set back
+    item_next = {"what": "Decide with Noa: keep or cancel", "from": "inbox", "since": "2026-10-20", "key": "inbox:x"}
+    c = cd.card_of(row(next=item_next), ctx(tasks={"invoices": {**TASK, "next_who": "bridge"}}))
+    assert c["next"]["who"] == "bridge" and c["next"]["what"] == "Decide with Noa: keep or cancel"

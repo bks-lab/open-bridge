@@ -195,3 +195,179 @@ test('the Jev page goes through the controller and keeps its own motion copy out
   assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b|rgb\(/, 'colours only from tokens')
   for (const src of [page, fs.readFileSync(path.join(WEB, 'jev', 'logic.js'), 'utf8')]) assert.doesNotMatch(src, /[–—]/)
 })
+
+// ---------------------------------------------------------------- calm animation and a readable matrix
+
+test('cutWords cuts at a word end with an ellipsis, a short text stays whole', () => {
+  assert.equal(logic.cutWords('Den Demo-Bericht prüfen', 40), 'Den Demo-Bericht prüfen')
+  const long = '„Demo Mi 25.11. 17:30: Produktvision lesen“ am Wed 25.11 17:30 überschneidet sich mit „Produktplanung“'
+  const cut = logic.cutWords(long, 80)
+  assert.ok(cut.endsWith('…'), cut)
+  assert.ok(cut.length <= 80)
+  assert.ok(long.startsWith(cut.slice(0, -1).trimEnd()), 'a prefix of the text')
+  assert.doesNotMatch(cut, /„Produ…$/, 'never mid-word')
+  assert.match(cut, /\S…$/, 'no space before the ellipsis')
+  assert.doesNotMatch(cut, /[„(,:;-]…$/, 'no dangling quote or punctuation before the ellipsis')
+  // one long word gets a hard cut, still with the ellipsis
+  assert.equal(logic.cutWords('abcdefghijklmnopqrstuvwxyz', 10), 'abcdefghi…')
+  assert.equal(logic.cutWords('', 10), '')
+  assert.equal(logic.cutWords(null, 10), '')
+  assert.equal(logic.cutWords('a  b\n c', 10), 'a b c', 'whitespace folds')
+})
+
+test('cutWords of a title the server cut mid-word drops the broken word', () => {
+  // a title that arrives cut (it is as long as the server's limit) ends with a broken word: drop it, add the ellipsis
+  assert.equal(logic.trimCut('am Mi überschneidet sich mit „Produ', 35), 'am Mi überschneidet sich mit…')
+  assert.equal(logic.trimCut('Kurz und ganz', 160), 'Kurz und ganz')
+  assert.equal(logic.trimCut('Schon mit Ellipse…', 18), 'Schon mit Ellipse…', 'a cut that says so stays')
+})
+
+test('playFor: the intro only for a first rating or a replay, an update only for a changed digest', () => {
+  const a = { digest: 'd1', at_ms: 1, plan: { items: [{ key: 'k' }] } }
+  assert.equal(logic.playFor(null, a), 'intro')
+  assert.equal(logic.playFor({ plan: { items: [] } }, a), 'intro')
+  assert.equal(logic.playFor(a, { ...a, changed: true, today: {} }), 'keep', 'the kept rating answered again: nothing plays')
+  assert.equal(logic.playFor(a, { ...a, digest: 'd2', at_ms: 2 }), 'update')
+  assert.equal(logic.playFor(a, { ok: true, empty: true, plan: { items: [] } }), 'none')
+  assert.equal(logic.playFor(a, a, { replay: true }), 'intro')
+})
+
+test('readingFor: a background check never shows the reading scene over a drawn picture', () => {
+  assert.equal(logic.readingFor({ force: true, hasPlan: true }), 'now')
+  assert.equal(logic.readingFor({ force: true, hasPlan: false }), 'now')
+  assert.equal(logic.readingFor({ force: false, hasPlan: true }), 'never')
+  assert.equal(logic.readingFor({ force: false, hasPlan: false }), 'later')
+  // a background check while a click's rating runs waits for it instead of cancelling it
+  assert.equal(logic.checkWins({ force: false, running: 'force' }), false)
+  assert.equal(logic.checkWins({ force: true, running: 'force' }), true)
+  assert.equal(logic.checkWins({ force: false, running: 'check' }), true)
+  assert.equal(logic.checkWins({ force: false, running: null }), true)
+})
+
+test('cursorShown: the typing cursor shows only while the line types', () => {
+  assert.equal(logic.cursorShown(2.0, 2.7, 1.1), false, 'not before')
+  assert.equal(logic.cursorShown(3.0, 2.7, 1.1), true, 'while typing')
+  assert.equal(logic.cursorShown(3.9, 2.7, 1.1), false, 'gone once the line stands')
+  assert.equal(logic.cursorShown(100, 2.7, 1.1), false)
+})
+
+const overlap = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1
+const circleHitsRect = (c, r) => {
+  const nx = Math.max(r.x0, Math.min(c.x, r.x1)), ny = Math.max(r.y0, Math.min(c.y, r.y1))
+  return Math.hypot(c.x - nx, c.y - ny) < c.r
+}
+
+test('separate pushes overlapping points apart, deterministic and inside the matrix', () => {
+  const pts = ['a', 'b', 'c', 'd', 'e'].map((key, i) => ({ key, x: 500, y: 300, r: 10 + i }))
+  const box = { x0: logic.X0, x1: logic.X1, y0: logic.Y1, y1: logic.Y0 }
+  const out = logic.separate(pts, { gap: 4, box })
+  assert.deepEqual(logic.separate(pts, { gap: 4, box }), out, 'same input, same picture')
+  const list = pts.map(p => out.get(p.key))
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const d = Math.hypot(list[i].x - list[j].x, list[i].y - list[j].y)
+      assert.ok(d >= list[i].r + list[j].r + 4 - 0.5, `${pts[i].key}/${pts[j].key} ${d.toFixed(1)}`)
+    }
+    assert.ok(list[i].x - list[i].r >= box.x0 && list[i].x + list[i].r <= box.x1)
+    assert.ok(list[i].y - list[i].r >= box.y0 && list[i].y + list[i].r <= box.y1)
+  }
+  // points that do not touch stay where they are
+  const apart = [{ key: 'p', x: 300, y: 200, r: 8 }, { key: 'q', x: 700, y: 400, r: 8 }]
+  const kept = logic.separate(apart, { box })
+  assert.deepEqual(kept.get('p'), apart[0])
+  // a fixed obstacle (the crown above the first point) pushes the others away, never the first point sideways
+  const crowd = [{ key: 'f', x: 500, y: 300, r: 12 }, { key: 'g', x: 500, y: 270, r: 8 }]
+  const c2 = logic.separate(crowd, { box, crownOf: 'f' })
+  const f = c2.get('f'), g = c2.get('g'), crown = logic.crownAt(f)
+  assert.ok(Math.hypot(g.x - crown.x, g.y - crown.y) >= g.r + crown.r - 0.5, 'nothing sits on the crown')
+})
+
+test('separate keeps points and the crown off the quadrant words', () => {
+  const box = { x0: logic.X0, x1: logic.X1, y0: logic.Y1, y1: logic.Y0 }
+  const word = { x0: 820, y0: 60, x1: 950, y1: 84 }
+  const out = logic.separate([{ key: 'a', x: 900, y: 75, r: 10 }], { box, rects: [word] })
+  assert.ok(!circleHitsRect(out.get('a'), word), 'a dot leaves the word')
+  const head = logic.separate([{ key: 'f', x: 900, y: 120, r: 12 }], { box, rects: [word], crownOf: 'f' })
+  assert.ok(!circleHitsRect(logic.crownAt(head.get('f')), word), 'the crown leaves the word')
+  assert.deepEqual(logic.separate([{ key: 'b', x: 300, y: 300, r: 10 }], { box, rects: [word] }).get('b'), { key: 'b', x: 300, y: 300, r: 10 })
+})
+
+test('placeLabels: no label covers a point, another label or a quadrant word; what cannot be placed hides', () => {
+  const dots = new Map([['a', { x: 400, y: 300, r: 12 }], ['b', { x: 445, y: 300, r: 10 }], ['c', { x: 400, y: 340, r: 10 }],
+    ['d', { x: 400, y: 262, r: 10 }]])
+  const avoid = [{ x0: 360, y0: 200, x1: 600, y1: 230 }]
+  const labels = [{ key: 'a', text: 'Den Demo-Bericht prüfen' }, { key: 'b', text: 'Die Issue-Labels aufräumen' },
+    { key: 'c', text: 'Am Sonntag die Tunnel' }, { key: 'd', text: 'Idee: Abzeichen' }]
+  const box = { x0: logic.X0, x1: logic.X1, y0: logic.Y1, y1: logic.Y0 }
+  const out = logic.placeLabels(dots, labels, { avoid, box })
+  assert.deepEqual(logic.placeLabels(dots, labels, { avoid, box }), out)
+  const shown = [...out.entries()].filter(([, l]) => !l.hidden)
+  assert.ok(shown.length >= 3, `placed ${shown.length}`)
+  for (const [key, l] of shown) {
+    for (const [k2, d] of dots) assert.ok(!circleHitsRect({ x: d.x, y: d.y, r: d.r + 4 }, l.rect), `${key} on point ${k2}`)
+    for (const a of avoid) assert.ok(!overlap(l.rect, a), `${key} on a quadrant word`)
+    for (const [k2, m] of shown) if (k2 !== key) assert.ok(!overlap(l.rect, m.rect), `${key} on ${k2}`)
+    assert.ok(l.rect.x0 >= box.x0 && l.rect.x1 <= box.x1)
+    // the label sits by its point: next to it, or with a leader line when it had to go further
+    const d = dots.get(key)
+    if (l.leader) assert.ok(Math.hypot(l.leader.x2, l.leader.y2) > d.r)
+  }
+  // a point walled in on every side gets no label (it shows on hover)
+  const wall = new Map([['z', { x: 500, y: 300, r: 10 }]])
+  const tight = logic.placeLabels(wall, [{ key: 'z', text: 'Wall' }], { avoid: [{ x0: 0, y0: 0, x1: 1000, y1: 296 }, { x0: 0, y0: 304, x1: 1000, y1: 600 }], box })
+  assert.equal(tight.get('z').hidden, true)
+})
+
+test('layoutMatrix: ten tasks judged alike stand apart, labels clear, crown free', () => {
+  const items = Array.from({ length: 10 }, (_, i) => ({ key: `task:${i}`, title: `Aufgabe Nummer ${i} mit einem längeren Titel`,
+    urgency: 0.8, impact: 0.8, priority: 0.6 - i * 0.03, rank: i + 1 }))
+  const lay = logic.layoutMatrix(items, { first: items[0], avoid: [] })
+  assert.deepEqual(logic.layoutMatrix(items, { first: items[0], avoid: [] }), lay)
+  const pts = items.map(it => lay.spots.get(it.key))
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+    assert.ok(Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y) >= pts[i].r + pts[j].r + 2, `${i}/${j}`)
+  }
+  const crown = logic.crownAt(pts[0])
+  const words = logic.quadWordRects({ now: 'Jetzt selbst', plan: 'Einplanen', hand: 'Abgeben', drop: 'Loslassen' })
+  const lay2 = logic.layoutMatrix(items, { first: items[0], avoid: words })
+  for (const it of items) for (const w of words) assert.ok(!circleHitsRect({ ...lay2.spots.get(it.key), r: lay2.spots.get(it.key).r + 4 }, w), 'no dot on a quadrant word')
+  for (const w of words) assert.ok(!circleHitsRect(logic.crownAt(lay2.spots.get(items[0].key)), w), 'no crown on a quadrant word')
+  for (const p of pts.slice(1)) assert.ok(Math.hypot(p.x - crown.x, p.y - crown.y) >= p.r + crown.r - 0.5)
+  const shown = [...lay.labels.values()].filter(l => !l.hidden && l.shown)
+  for (const l of shown) {
+    for (const p of pts) assert.ok(!circleHitsRect({ ...p, r: p.r + 4 }, l.rect))
+    assert.ok(!circleHitsRect({ ...crown }, l.rect), 'no label over the crown')
+  }
+  // labels of the first four only; the rest name themselves on hover
+  assert.ok([...lay.labels.entries()].every(([key, l]) => l.shown === (items.find(it => it.key === key).rank <= 4)))
+  assert.ok(shown.every(l => !/\S…\S/.test(l.text) && l.text.length <= 27))
+})
+
+test('matrixWords: the squares and the legend say the profile\'s bucket words where they map', () => {
+  const t = { quads: { now: 'Jetzt selbst', plan: 'Einplanen', hand: 'Abgeben', drop: 'Loslassen' }, me: 'du', delegate: 'abgeben' }
+  assert.deepEqual(logic.matrixWords({ columns: {}, quadrant: {} }, t), { quads: t.quads, me: 'du', delegate: 'abgeben' })
+  const words = { quadrant: { now: 'Tun (du, heute)', plan: 'Planen', hand: 'Mache ich', drop: 'Parken oder streichen' } }
+  assert.deepEqual(logic.matrixWords(words, t), { quads: words.quadrant, me: 'Tun (du, heute)', delegate: 'Mache ich' })
+  assert.deepEqual(logic.matrixWords(null, t).quads, t.quads)
+})
+
+test('the Jev page uses the calm helpers: its own words, no reading flash, word cuts', () => {
+  const page = fs.readFileSync(path.join(WEB, 'jev', 'page.js'), 'utf8')
+  // round 2 of the four answers: Jev's own words, never the bucket names (a point stood in the square Do with the chip
+  // Plan); its square words drawn over the dots
+  assert.doesNotMatch(page, /bucketWords\(/)
+  assert.match(page, /matrixWords\(null/)
+  assert.ok(page.indexOf('data-qlabel') > page.indexOf('data-dot'), 'the square words over the dots')
+  // the plan's rows run in at once on a first visit, no second of an empty plan between the waiting list and Jev's
+  const start = /const k = intro \? spring\(Ti, ([\d.]+) \+ i \* [\d.]+, \{ w: 8, zeta: 0\.95 \}\)/.exec(page)
+  assert.ok(start && Number(start[1]) < 0.5, 'rows run in at once')
+  assert.match(page, /readingFor\(/)
+  assert.match(page, /playFor\(/)
+  assert.match(page, /layoutMatrix\(/)
+  assert.doesNotMatch(page, /const short = /, 'no cut of its own mid-word')
+  assert.doesNotMatch(page, /cursorOn\(/)
+  // round 3: on a first visit nothing fades from nothing, types in late or counts up from 0 % sure
+  assert.match(page, /el\.style\.opacity = \(1 - 0\.3 \* read\)/)
+  assert.match(page, /const typeAt = P\.firstChanged && glide \? 0\.3 : null/)
+  assert.doesNotMatch(page, /countTo\(Ti, base/)
+})

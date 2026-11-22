@@ -129,7 +129,7 @@ class TabVerbs:
     def v_tab_jump(self, ctx: Ctx, tab_ref: str) -> None:
         tab = self.tab(tab_ref)
         if self.jump_to(ctx, tab):
-            ctx.note(self.tx["jumped"].format(label=m.short(tab.get("label") or tab["ref"], 40)), go={"kind": "tab", "ref": tab["ref"]})
+            ctx.note(self.tx["jumped"].format(label=m.short(tab.get("label") or tab.get("name") or tab["ref"], 40)), go={"kind": "tab", "ref": tab["ref"]})
 
     def send_to(self, ctx: Ctx, tab: dict, text: str) -> bool:
         run = ctx.call("workplace.send", tab["ref"], self.app.workplace("send", tab["ref"], "--", text), SHORT_TIMEOUT)
@@ -145,14 +145,22 @@ class TabVerbs:
         tab = self.tab(tab_ref)
         if not m.is_live(tab):
             raise self.not_applicable("the tab holds no agent", "tab_ref")
-        if seen is not None or expect is not None or name is not None:
-            tab, _ = self.guard_fresh(ctx, tab_ref, expect, seen, name, True)
-            if not m.is_live(tab):
+        # always guarded against a draft in the input line: typed words would be appended to it (a '#' there makes
+        # the answer a memory in Claude Code), whether the page named the question it answers or not
+        guarded = seen is not None or expect is not None or name is not None
+        # a dialog takes its options (tab_option), never typed words, whatever the page named: the driver types the
+        # words and presses Enter, which picks the highlighted option (round 2: "bitte warte" approved a deploy)
+        if tab["state"] == "needs-you":
+            raise self.not_applicable("a dialog takes its options, not text", "tab_ref")
+        tab, _ = self.guard_fresh(ctx, tab_ref, expect, seen, name, True)
+        if not m.is_live(tab):
+            # the tab died since the page saw it: a named question moved on, an unnamed one has no agent to type to
+            # (round 4: the unguarded path sent to a tab that stopped between the two reads)
+            if guarded:
                 raise ActionError(409, "tab_moved", self.tx["tab_moved"], None)
-            # a dialog takes its options (tab_option), never typed words: a digit typed there would pick
-            # an option past the option's own guard
-            if tab["state"] == "needs-you":
-                raise self.not_applicable("a dialog takes its options, not text", "tab_ref")
+            raise self.not_applicable("the tab holds no agent", "tab_ref")
+        if tab["state"] == "needs-you":
+            raise self.not_applicable("a dialog takes its options, not text", "tab_ref")
         self.send_to(ctx, tab, text)
 
     def v_tab_go_on(self, ctx: Ctx, tab_ref: str, seen: str | None = None, name: str | None = None) -> None:

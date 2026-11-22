@@ -77,14 +77,14 @@ def _load_inbox_locked():
 # a language not here reads English
 TEXTS = {
     "en": {"collides": "“{item}” at {start} collides with “{event}” {e_start} to {e_end}",
-           "blocked": "{slug} blocked for {idle} days: nudge? ({why})",
-           "quiet": "{slug} untouched for {idle} days", "quiet_customer": " (customer: push or park?)",
-           "quiet_park": " (park?)", "wip": "{n} tasks active, cap {cap}: close or park one",
+           "blocked": "{slug} blocked for {idle} days ({why})",
+           "quiet": "{slug} untouched for {idle} days", "quiet_customer": " (customer)",
+           "wip": "{n} tasks active, cap {cap}: close one or put one on the watch list",
            "waiting": "waits on you since {day}: {item}", "due": "due {day}: {item}"},
     "de": {"collides": "„{item}“ am {start} überschneidet sich mit „{event}“ {e_start} bis {e_end}",
-           "blocked": "{slug} seit {idle} Tagen blockiert: nachhaken? ({why})",
-           "quiet": "{slug} seit {idle} Tagen unberührt", "quiet_customer": " (Kunde: anschieben oder parken?)",
-           "quiet_park": " (parken?)", "wip": "{n} Aufgaben aktiv, Grenze {cap}: eine schließen oder parken",
+           "blocked": "{slug} seit {idle} Tagen blockiert ({why})",
+           "quiet": "{slug} seit {idle} Tagen unberührt", "quiet_customer": " (Kunde)",
+           "wip": "{n} Aufgaben aktiv, Grenze {cap}: eine schließen oder auf die Merkliste setzen",
            "waiting": "wartet seit {day} auf dich: {item}", "due": "fällig {day}: {item}"},
 }
 
@@ -142,9 +142,25 @@ def _tasks(root: Path) -> list:
     return out
 
 
-def _finding(check, subject, summary, urgency, task=None, file=True) -> dict:
-    return {"check": check, "key": f"{KEY_PREFIX}{check}:{subject}", "summary": summary,
-            "urgency": urgency, "task": task, "file": file}
+def _came_back(root: Path, today: dt.date) -> dict:
+    """{slug: the day a Later on it came} from the cockpit's record (bridge_cockpit/settled.py came_back_days); a task
+    back from a Later rests from that day on. Empty when the record cannot be read: advice never fails for it"""
+    lib = str(REPO / "scripts" / "lib")
+    if lib not in sys.path:
+        sys.path.insert(0, lib)
+    try:
+        from bridge_cockpit.settled import came_back_days
+    except ImportError:
+        return {}
+    return came_back_days(root, today)
+
+
+def _finding(check, subject, summary, urgency, task=None, file=True, days=None) -> dict:
+    out = {"check": check, "key": f"{KEY_PREFIX}{check}:{subject}", "summary": summary,
+           "urgency": urgency, "task": task, "file": file}
+    if days is not None:
+        out["days"] = days      # how long it rests (quiet): the briefing marks the task "resting for N days"
+    return out
 
 
 def advise(root: Path, *, now: dt.datetime | None = None, calendar: list | None = None,
@@ -180,23 +196,26 @@ def advise(root: Path, *, now: dt.datetime | None = None, calendar: list | None 
                     "now" if start.date() == today else "today", item.task))
 
     tasks = _tasks(root)
+    back = _came_back(root, today)
     for t in tasks:
         if not t["updated"]:
             continue
+        if back.get(t["slug"]) and back[t["slug"]] > t["updated"]:
+            t = {**t, "updated": back[t["slug"]]}      # back from a Later: it rests from that day on
         if t["quiet_until"] and t["quiet_until"] >= today:    # "runs on": nobody asks before the day it names
             continue
         idle = (today - t["updated"]).days
         if t["blocked_by"]:
             if idle >= int(cfg["blocked_days"]):
                 found.append(_finding("blocked", t["slug"],
-                                      w["blocked"].format(slug=t["slug"], idle=idle, why=str(t["blocked_by"])[:80]),
+                                      w["blocked"].format(slug=t["title"], idle=idle, why=str(t["blocked_by"])[:80]),
                                       "later", t["slug"]))
         elif idle >= int(cfg["stale_days"]):
             customer = t["context"] in (cfg["customer_contexts"] or [])
             found.append(_finding("quiet", t["slug"],
                                   w["quiet"].format(slug=t["title"], idle=idle)
-                                  + (w["quiet_customer"] if customer else w["quiet_park"]),
-                                  "today" if customer else "later", t["slug"]))
+                                  + (w["quiet_customer"] if customer else ""),
+                                  "today" if customer else "later", t["slug"], days=idle))
     if max_active and len(tasks) > int(max_active):
         found.append(_finding("wip", "cap", w["wip"].format(n=len(tasks), cap=max_active),
                               "later"))

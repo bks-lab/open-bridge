@@ -793,9 +793,10 @@ test('every list named waiting on you shows the asks, so its count is the count 
   // the station's panel and the start page's shelf carry the label "waiting on you" and a count: an idea or a
   // report of Now there would make them disagree with the number on the tile
   const stage = fs.readFileSync(path.join(WEB, 'views', 'stage.js'), 'utf8')
-  assert.match(stage, /x\.id === 'c:waiting'\) \{\n\s*const rows = \(s\.model\?\.sections \?\? \[\]\)\.find\(r => r\.id === 'now'\)\?\.rows\?\.filter\(asksYou\) \?\? \[\]/)
+  // with the briefing's buckets on, all of them show the rows of Do (you, today) instead (buckets.js waitingRows)
+  assert.match(stage, /x\.id === 'c:waiting'\) \{\n\s*const rows = flowBucketsOn\(s\) \? waitingRows\(s\) : \(s\.model\?\.sections \?\? \[\]\)\.find\(r => r\.id === 'now'\)\?\.rows\?\.filter\(asksYou\) \?\? \[\]/)
   const home = fs.readFileSync(path.join(WEB, 'views', 'home.js'), 'utf8')
-  assert.match(home, /const waiting = waitingAll\.filter\(r => asksYou\(r\) && inProject\(r, project\)\)/)
+  assert.match(home, /const waiting = flowBucketsOn\(s\) \? waitingRows\(s, project\) : waitingAll\.filter\(r => asksYou\(r\) && inProject\(r, project\)\)/)
 })
 
 // ---------------------------------------------------------------- the area bar of the stage (round: start areas)

@@ -320,11 +320,13 @@ def inbox_settled(root: Path, item: str) -> bool:
 
 
 def tab_settled(root: Path, tab: dict) -> str | None:
-    """Whether a tab has nothing left to do, and why: its inbox item is settled ("item") or its task moved to
-    work/done/ ("task"). Read from the Bridge, never from the tab"""
+    """Whether a tab has nothing left to do, and why: its inbox item is settled ("item", "dropped" when it was closed
+    as not done: Obsolete, a drop or a reject) or its task moved to work/done/ ("task"). Read from the Bridge, never
+    from the tab"""
     item, slug = tab.get("item"), tab.get("slug")
     if isinstance(item, str) and item and inbox_settled(root, item):
-        return "item"
+        end = end_event(root, item) or {}
+        return "dropped" if TERMINAL.get(str(end.get("verb") or "")) == "dropped" else "item"
     if isinstance(slug, str) and slug and task_done(root, slug):
         return "task"
     return None
@@ -401,6 +403,37 @@ def build(launches: list, tabs: list, rows: dict, root: Path, now: float, lang: 
     return out
 
 
+#: written again at least this often while the set stays the same, so the briefing knows the cockpit still runs
+RUNNING_REFRESH_MS = 5 * 60 * 1000
+
+
+def running_keys(returns: list, tabs: list) -> list:
+    """The row keys an agent works on now, the Bridge's in I'll do as running (the page's lane): a start that is
+    starting or at work, and a tab at work bound to a task or an inbox item"""
+    keys = {r["key"] for r in returns or [] if r.get("stage") in ("started", "working") and isinstance(r.get("key"), str)}
+    for t in tabs or []:
+        if t.get("is_control") or t.get("state") != "working":
+            continue
+        if isinstance(t.get("slug"), str) and SLUG_RE.match(t["slug"]):
+            keys.add(f"task:{t['slug']}")
+        if isinstance(t.get("item"), str) and INBOX_ID_RE.match(t["item"]):
+            keys.add(f"inbox:{t['item']}")
+    return sorted(keys)
+
+
+def write_running(state_dir: Path, keys: list, now_ms: float) -> bool:
+    """<state_dir>/running.json, what the printed briefing reads (briefing.py running_record) to put a running point
+    in I'll do as the page does: written when the keys change and every RUNNING_REFRESH_MS; True when written"""
+    path = Path(state_dir) / "running.json"
+    old = read_json(path)
+    if (isinstance(old, dict) and old.get("keys") == keys
+            and now_ms - float(old.get("at_ms") or 0) < RUNNING_REFRESH_MS):
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(path, {"v": 1, "at_ms": int(now_ms), "keys": keys})
+    return True
+
+
 def _done_words(x: dict, item: str, stage: str, result: dict | None, root: Path, lang: str) -> dict:
     """A done start's plain sentence, when its item ended and when the person read it; nothing for any other stage"""
     if stage != "done":
@@ -423,9 +456,11 @@ def _words(lang: str) -> dict:
     return LINES["de" if str(lang).startswith("de") else "en"]
 
 
-def start_line(mode: str, lang: str) -> str:
+def start_line(mode: str, lang: str, word: str | None = None) -> str:
+    """The note a start leaves in its item's own log; `word` names the act as the page did (Do it of the four answers,
+    round 2: it still said "AI machen lassen"), else the mode's own word"""
     w = _words(lang)
-    return f"{w['head']}: {w['start'].format(mode=w['mode'].get(mode, mode))}"
+    return f"{w['head']}: {w['start'].format(mode=word or w['mode'].get(mode, mode))}"
 
 
 def log_line(r: dict, lang: str) -> tuple[str, str, str] | None:

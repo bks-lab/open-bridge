@@ -6,11 +6,13 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from '../vendor/ht
 import {
   attentionTabs, duration, formatDay, indexRows, pageWarnings, sectionRows, short, stateToken, canTab, actionRow,
   pageItemActs, workPageOf, workViews, flowOn, startMode, parseDate, isoDate, launchChoice, rowKind, repoGroups, originOf, ORIGIN_CATEGORIES,
-  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey, personOf
+  SECTION_ORDER, dueWhen, rowBudgets, whyWithoutDue, tabStateKey, personOf, flowBucketsOn, rowPoint, tabPoint, doWord, nextBriefingDay, shownNumber,
+  bucketSections
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ItemCardLine, titleOf } from './card.js'
 import { CheckButton } from './check.js'
+import { BucketBar } from './flowbuckets.js'
 import { AlarmBanner } from './header.js'
 import { PinStar, ReturnChip } from './home.js'
 import { LaunchPick } from './launch.js'
@@ -37,7 +39,7 @@ export function KindTag({ row, s, c, link = false, bare = false }) {
       : short(title, 48)}</span>` : null
   const detail = k.kind === 'issue' ? html` <span class="mono">${k.ref}</span>` : null
   return html`<span class=${`kind kind-${k.kind}`} title=${t.kindTitle[k.kind]}>
-    <span class="kind-mark" aria-hidden="true">${KIND_MARK[k.kind]}</span><span>${t.kind[k.kind]}${detail}</span></span>${about}`
+    <span class="kind-mark" aria-hidden="true">${KIND_MARK[k.kind]}</span><span>${(k.kind === 'inbox' && t.kindArt?.[row?.art]) || t.kind[k.kind]}${detail}</span></span>${about}`
 }
 
 // the dot of an origin chip, from the existing tokens (no colour of its own): a cue beside the word, never instead
@@ -186,7 +188,9 @@ function RowPanel({ rows, s, c, part, close, anchor, seed }) {
     ${one ? group(t.grp.ask, html`${one.bucket === 'waiting' ? item(t.action.follow_up, () => done(() => c.ask('follow_up', { key: one.key }))) : null}
       ${item(t.askChat, () => done(() => c.ask('row', { key: one.key })))}`) : null}`
   const person = !!personOf(s)      // what is no verb of theirs stands out of the panel (access.py)
-  const settlePart = () => html`${group(t.grp.close, html`${item(t.settleDone, () => settle('done'), { token: 'success', ref: first })}
+  // an issue or PR closes nowhere from here, done only hides it on this page: its word says so
+  const hides = rows.every(r => r.ref && !r.task && !r.inbox_id)
+  const settlePart = () => html`${group(t.grp.close, html`${item(hides ? t.flow.hide : t.settleDone, () => settle('done'), { token: 'success', ref: first })}
       ${item(t.settleNot, discard, { token: 'on-surface-muted' })}
       ${streams ? html`<span class="settle-hint muted small">${t.streamHint}</span>` : null}
       ${rows.some(r => r.task && r.tab?.live) ? html`<span class="settle-hint muted small">${t.taskDoneLiveTab}</span>` : null}`)}
@@ -296,10 +300,19 @@ export function SettleMenu({ rows, s, c, size = 'xs', seed }) {
 
 /** The buttons of a row, one order on every view: start, close, pin. `tab` is an agent tab a view found for the
  *  row's task in the tab list, when the row itself names none */
-export function RowBar({ row, s, c, pin = true, size = 'xs', tab = null }) {
+export function RowBar({ row, s, c, pin = true, size = 'xs', tab = null, nr = false }) {
   const r = tab && !row.tab ? { ...row, tab: { ref: tab.ref, state: tab.state, live: tab.live ?? tab.state !== 'shell' } } : row
+  if (flowBucketsOn(s)) return html`<${BucketRowBar} row=${r} s=${s} c=${c} size=${size} pin=${pin} nr=${nr} />`
   return html`<${StartMenu} row=${r} s=${s} c=${c} size=${size} /><${SettleMenu} rows=${[r]} s=${s} c=${c} size=${size} />${pin
     ? html`<${PinStar} rowKey=${r.key} s=${s} c=${c} />` : null}`
+}
+
+/** A row's bar with the briefing's buckets on (cockpit.flow.buckets): its bucket's answers, as the card of Work
+ *  through offers them, so one view differs from another only in order and grouping, never in words or answers */
+function BucketRowBar({ row, s, c, size, pin, nr = false }) {
+  // the row's number stands at its start (shownNumber) on Due: the bar names no second one; a list whose rows start
+  // with something else (By source starts with the date) has the bar name it (`nr`)
+  return html`<${BucketBar} x=${rowPoint(row, s)} s=${s} c=${c} size=${size} nr=${nr} />${pin ? html`<${PinStar} rowKey=${row.key} s=${s} c=${c} />` : null}`
 }
 
 /** The buttons of a page row that is no inbox item or task but a person can hand on: the same bar as a work row.
@@ -325,9 +338,9 @@ function RowItem({ row, s, c }) {
   const selected = s.ui.selectedKey === row.key
   const focused = s.ui.focusKey === row.key
   const picked = s.ui.picked.includes(row.key)
-  const n = s.model?.numbers?.[row.key] ?? row.number
+  const n = shownNumber(row, s)
   return html`<li class=${`row${selected ? ' is-selected' : ''}${focused ? ' is-focused' : ''}${row.tab?.waiting ? ' is-waiting' : ''}`} data-key=${row.key}>
-    <span class="row-num mono"><span class="sr-only">${t.numberLabel(n)}</span><span aria-hidden="true">${n}</span></span>
+    <span class="row-num mono">${n != null ? html`<span class="sr-only">${t.numberLabel(n)}</span><span aria-hidden="true">${n}</span>` : null}</span>
     ${row.selectable
       ? html`<input class="row-pick" type="checkbox" checked=${picked} aria-label=${t.select(short(row.title, 40))}
           onChange=${() => c.togglePick(row.key)} />`
@@ -359,7 +372,7 @@ function SectionBody({ section, s, c, byKey, budget }) {
     ? (section.rows ?? rows).map(r => r.key).filter(k => (s.model?.approvable ?? []).includes(k)) : []
   return html`<section class="sec" aria-labelledby=${`sec-${section.id}`}>
     <header class="sec-head">
-      <h2 class="sec-title" id=${`sec-${section.id}`}>${t.section[section.id] ?? section.id}
+      <h2 class="sec-title" id=${`sec-${section.id}`}>${section.title ?? (flowBucketsOn(s) ? t.flow.buckets.section : t.section)[section.id] ?? section.id}
         <span class="sec-count mono">${section.total}</span></h2>
       <span class="sec-tools">
         ${section.id === 'work' ? html`<${CheckButton} s=${s} c=${c} size="xs" />` : null}
@@ -392,7 +405,8 @@ function TabMini({ tab, s, c }) {
       ${tab.long ? html`<span class="chip chip-warn-outline">${t.tabLong}</span>` : null}
     </span>
     <span class="tabmini-acts">
-      ${tab.state === 'needs-you' && canTab(s, 'key') ? html`
+      ${flowBucketsOn(s) && tabPoint(tab, s) ? html`<${BucketBar} x=${tabPoint(tab, s)} s=${s} c=${c} />`
+        : tab.state === 'needs-you' && canTab(s, 'key') ? html`
         <${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('tab_yes', { tab_ref: tab.ref })}>${t.btnYes}<//>
         <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_no', { tab_ref: tab.ref })}>${t.btnNo}<//>` : null}
       ${canTab(s, 'focus') ? html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>` : null}
@@ -418,6 +432,20 @@ function WaitingTabs({ s, c }) {
   </section>`
 }
 
+/** A selection with the briefing's buckets on: Do it (do_it, the Bridge starts) and Later (to tomorrow) for every
+ *  picked row, the same acts as the card's answers */
+function BucketMany({ rows, s, c }) {
+  const lang = language()
+  const f = T().flow.buckets
+  const go = rows.filter(r => (r.inbox_id || r.task) && r.inbox_state !== 'approved' && !r.tab?.live)
+  const until = nextBriefingDay(s.now || Date.now())
+  const later = f.answers.laterPlain
+  const busy = rows.some(r => s.ui.busy[r.key])
+  return html`${go.length ? html`<${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('do_it', { keys: go.map(r => r.key) })}>
+      ${f.many(doWord(s, lang), go.length)}<//>` : null}
+    <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => rows.forEach(r => c.act('later', { key: r.key, until }))}>${f.many(later, rows.length)}<//>`
+}
+
 function SelectionBar({ s, c }) {
   const t = T()
   // the picks the page shows (under a filter the model holds only those): the count and the acts agree
@@ -428,8 +456,8 @@ function SelectionBar({ s, c }) {
   return html`<div class="selbar" role="region" aria-label=${t.picked(n)}>
     <strong>${t.picked(n)}</strong>
     <span class="selbar-acts">
-      <${StartMany} rows=${rows} s=${s} c=${c} />
-      <${SettleMenu} rows=${rows} s=${s} c=${c} />
+      ${flowBucketsOn(s) ? html`<${BucketMany} rows=${rows} s=${s} c=${c} />` : html`<${StartMany} rows=${rows} s=${s} c=${c} />
+      <${SettleMenu} rows=${rows} s=${s} c=${c} />`}
       <${Btn} size="xs" variant="ghost" onClick=${c.clearPicks}>${t.btnClear}<//>
     </span>
   </div>`
@@ -532,10 +560,12 @@ export function DayColumn({ s, c, byKey }) {
       <div class="day-counts muted"><span class="day-asof">${t.sourceAsOf(m.collected_at)}</span></div>
       ${s.layout === 'wide' ? null : html`<${WaitingTabs} s=${s} c=${c} />`}
       ${total === 0 && !attentionTabs(s.tabs?.tabs).length ? html`<div class="callout">${t.emptyHint}</div>` : null}
-      ${total === 0 ? null : SECTION_ORDER.map(id => {
-        const sec = (m.sections ?? []).find(x => x.id === id)
-        return sec ? html`<${Section} key=${id} section=${sec} s=${s} c=${c} byKey=${byKey} budget=${budgets[id] ?? 0} />` : null
-      })}
+      ${total === 0 ? null : flowBucketsOn(s) && !personOf(s)
+        ? bucketSections(s, language()).map(sec => html`<${Section} key=${sec.id} section=${sec} s=${s} c=${c} byKey=${byKey} budget=${0} />`)
+        : SECTION_ORDER.map(id => {
+          const sec = (m.sections ?? []).find(x => x.id === id)
+          return sec ? html`<${Section} key=${id} section=${sec} s=${s} c=${c} byKey=${byKey} budget=${budgets[id] ?? 0} />` : null
+        })}
       <${HiddenList} s=${s} c=${c} />
     </div>
   </div>`

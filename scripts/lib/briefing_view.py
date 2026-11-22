@@ -6,8 +6,9 @@ reader sees. Four styles, chosen per profile (`view.style`) or once on the comma
 line (`briefing.py render --style <style>`):
 
   sources  one block per section, in profile order: the briefing as it always was
-  triage   every row sorted by what to DO with it: do, plan, delegate, waiting,
-           drop; a thing two sources carry is shown once; housekeeping goes last
+  triage   every row sorted by who is on the move and when: do (you, today), plan
+           (you, no day yet), delegate (the Bridge), waiting (anyone else); a thing
+           two sources carry is shown once; housekeeping goes last
   brevity  the bottom line, then the top three with why each matters
   plan     the day: your rows laid into the free gaps of today's calendar, what
            the Bridge does meanwhile, and when the day ends
@@ -28,17 +29,28 @@ import urllib.parse
 from pathlib import Path
 
 try:
+    from lib import answers
     from lib.inbox_verbs import art_of_kind
 except ImportError:  # loaded by path (briefing.py, the tests) with scripts/ not on the path
     import importlib.util as _ilu
-    _spec = _ilu.spec_from_file_location("inbox_verbs", Path(__file__).resolve().parent / "inbox_verbs.py")
-    assert _spec is not None and _spec.loader is not None
-    _verbs = _ilu.module_from_spec(_spec)
-    _spec.loader.exec_module(_verbs)
-    art_of_kind = _verbs.art_of_kind
+    import sys as _sys
+
+    def _sibling(name: str):
+        if name in _sys.modules:
+            return _sys.modules[name]
+        spec = _ilu.spec_from_file_location(name, Path(__file__).resolve().parent / f"{name}.py")
+        assert spec is not None and spec.loader is not None
+        module = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    art_of_kind = _sibling("inbox_verbs").art_of_kind
+    answers = _sibling("answers")
 
 STYLES = ("sources", "triage", "brevity", "plan", "report", "calm")
-BUCKETS = ("do", "plan", "delegate", "waiting", "drop")
+BUCKETS = ("do", "plan", "delegate", "waiting")
+# a bucket an older profile may still list: accepted, and its rows stand in the four (a long-resting task in its own
+# bucket, marked "resting for N days")
+LEGACY_BUCKETS = ("drop",)
 VIEW_KEYS = {"style", "headline", "dayline", "agenda", "overview", "report", "since_last", "lookahead_days", "max_items", "answer_keys", "hygiene", "color",
              "width", "labels", "buckets", "plan", "pages", "page_rest", "page_skip", "marks", "off_days"}
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -46,13 +58,17 @@ MARK_KEYS = {"label", "match", "color"}
 MARK_COLORS = ("red", "green", "yellow", "blue", "magenta", "cyan", "gray", "white")
 # Where a mark looks: the row's own words and what names its source, never a body.
 MARK_FIELDS = ("id", "project", "url", "task", "context", "area", "repo", "labels")   # never `tracker`: the source's name
+# `options` is accepted for older profiles and ignored: every bucket takes the same four answers (lib/answers.py)
 BUCKET_KEYS = {"id", "title", "options", "nudge_after_days"}
 DEFAULT_BUCKETS = {
-    "do": {"title": "Do (you, today)", "options": ["yes", "later", "drop"]},
-    "plan": {"title": "Plan", "options": ["schedule", "later"]},
-    "delegate": {"title": "I'll do", "options": ["go", "not now"]},
-    "waiting": {"title": "Waiting on others", "options": ["nudge", "wait"], "nudge_after_days": 7},
-    "drop": {"title": "Park or drop", "options": ["park", "keep"]},
+    "do": {"title": "Do (you, today)"},
+    "plan": {"title": "Plan"},
+    "delegate": {"title": "I'll do"},
+    "waiting": {"title": "Waiting on others", "nudge_after_days": 7},
+}
+BUCKET_TITLES = {
+    "en": {b: c["title"] for b, c in DEFAULT_BUCKETS.items()},
+    "de": {"do": "Tun", "plan": "Planen", "delegate": "Mache ich", "waiting": "Wartet auf andere"},
 }
 LABELS = {
     # the headline counts the asks (asks_you); what else stands in Do (reports, ideas) is counted apart
@@ -80,7 +96,6 @@ LABELS = {
     "task": "task {slug}",
     "next_step": "next: {what}",
     "waiting_for": "Waiting for: {title}",
-    "nudge": "nudge?",
     "new": "new",
     "housekeeping": "Housekeeping",
     "no_next": "{n} task(s) without a next step: {slugs}",
@@ -89,6 +104,7 @@ LABELS = {
     "hidden": "{n} hidden (bucket not shown: {ids})",
     "error": "{title} failed: {reason}",
     "workplace": "Tabs: {n} proposed ({new} new, {resume} to resume, {open} already open). Open them?",
+    "tab_asks": "Agent tab asks: {name}",
     "off_day": "Off today: {n} more wait for the next working day",
     "collapsed": "Not listed one by one: {items}",
     "status_rows": "{n} → {rows}",
@@ -106,7 +122,18 @@ LABELS = {
     "calm_until_short": "until {date}",
     "calm_rest": "{n} more in the cockpit.",
     "calm_rest_off": "{n} more wait for the next working day.",
-    "calm_answer": "Answer with a number, e.g. “{n} yes”.",
+    "calm_answer": "Answer with a number and a word, e.g. “{n} do” or “{n} later monday”.",
+    # every numbered row takes the same four answers (lib/answers.py): one line says them, below the buckets
+    "answer_legend": "Answer with a number and a word: {words}",
+    # a task nobody touched for a while (advice quiet) stays in its own bucket and says so
+    "resting": "resting for {n} days",
+    "running": "running",
+    "resting_one": "resting for {n} day",
+    # out of sight, only counted below the buckets: put off to a day, on the watch list, done or obsolete today
+    "aside": "Out of sight: {items}",
+    "aside_later": "later {n}",
+    "aside_list": "watch list {n}",
+    "aside_done_today": "done today {n}",
     "more": "+{n} more",
     "end": "That's all for today.",
     "why": "why",
@@ -300,7 +327,6 @@ LABELS_DE = {
     "task": "Aufgabe {slug}",
     "next_step": "nächster Schritt: {what}",
     "waiting_for": "Wartet auf: {title}",
-    "nudge": "nachfassen?",
     "new": "neu",
     "housekeeping": "Pflege",
     "no_next": "{n} Aufgaben ohne nächsten Schritt: {slugs}",
@@ -309,6 +335,7 @@ LABELS_DE = {
     "hidden": "{n} ausgeblendet (Fach nicht gezeigt: {ids})",
     "error": "{title} fehlgeschlagen: {reason}",
     "workplace": "Tabs: {n} vorgeschlagen ({new} neu, {resume} fortsetzen, {open} schon offen). Öffnen?",
+    "tab_asks": "Agent-Tab fragt: {name}",
     "off_day": "Heute frei: {n} weitere warten auf den nächsten Arbeitstag",
     "collapsed": "Nicht einzeln aufgeführt: {items}",
     "status_rows": "{n} → {rows}",
@@ -326,7 +353,15 @@ LABELS_DE = {
     "calm_until_short": "bis {date}",
     "calm_rest": "{n} weitere im Cockpit.",
     "calm_rest_off": "{n} weitere warten auf den nächsten Arbeitstag.",
-    "calm_answer": "Antwort mit Nummer, z. B. „{n} ja“.",
+    "calm_answer": "Antwort mit Nummer und Wort, z. B. „{n} mach“ oder „{n} später montag“.",
+    "answer_legend": "Antwort mit Nummer und Wort: {words}",
+    "resting": "ruht seit {n} Tagen",
+    "running": "läuft",
+    "resting_one": "ruht seit {n} Tag",
+    "aside": "Außer Sicht: {items}",
+    "aside_later": "später {n}",
+    "aside_list": "Merkliste {n}",
+    "aside_done_today": "fertig heute {n}",
     "more": "+{n} weitere",
     "end": "Das war's für heute.",
     "why": "warum",
@@ -502,9 +537,12 @@ LABEL_TABLES = {"en": LABELS, "de": LABELS_DE}
 BRIEFING_KINDS = ("inbox", "advise", "tasks")
 PAGE_OF_KIND = {"inbox": "work", "tasks": "work", "command": "status", "calendar": "dates", "tracker": "trackers",
                 "commits": "today", "activity": "today"}
+# what an inbox id looks like in an advice's key (advise.py: advise:<check>:<inbox id>)
+INBOX_ID_LIKE = re.compile(r"^[0-9]{8}-[0-9]{4}-\S+$")
 DEFAULT_PAGES = ("work", "status", "dates", "trackers", "today")
-# where a default page sits: work and status in front, the rest behind More, today's activity under the day list
-DEFAULT_PAGE_GROUP = {"work": "main", "status": "main", "dates": "more", "trackers": "more", "today": "day"}
+# where a default page sits: work in front as the "by source" view of the work tab, status in front, the rest behind
+# More, today's activity under the day list
+DEFAULT_PAGE_GROUP = {"work": "work", "status": "main", "dates": "more", "trackers": "more", "today": "day"}
 REST_PAGE = "more"
 # the cockpit's Setup page (briefing.py collect --setup, scripts/bridge-setup.py): its three sections and how each
 # stands there; a profile may place any of them on a page of its own, the rest stand on this page
@@ -645,7 +683,7 @@ def problems(view, mutes) -> list:
             buckets = []
         seen = set()
         for n, b in enumerate(buckets, 1):
-            if not isinstance(b, dict) or b.get("id") not in BUCKETS:
+            if not isinstance(b, dict) or b.get("id") not in BUCKETS + LEGACY_BUCKETS:
                 bid = b.get("id") if isinstance(b, dict) else b
                 out.append(f"view.buckets {n}: bucket id {bid!r} is not one of {', '.join(BUCKETS)}")
                 continue
@@ -995,15 +1033,19 @@ def _matches(when: dict, item: dict) -> bool:
     return True
 
 
-def _bucket_cfg(view: dict) -> tuple:
-    """(shown bucket configs in order, ids hidden). No list = all five in the default order."""
+def _bucket_cfg(view: dict, language: str | None = None) -> tuple:
+    """(shown bucket configs in order, ids hidden). No list = all four in the default order, titled in the
+    profile's language. A listed `drop` (an older profile) shows nothing: its rows stand in the four. A
+    bucket's `options` are ignored: every bucket takes the same four answers (lib/answers.py)."""
     listed = view.get("buckets")
-    if not isinstance(listed, list) or not listed:
+    if not isinstance(listed, list) or not any(isinstance(b, dict) and b.get("id") in BUCKETS for b in listed):
         listed = [{"id": b} for b in BUCKETS]
+    titles = BUCKET_TITLES["de" if str(language or "").lower().startswith("de") else "en"]
     shown = []
     for b in listed:
         if isinstance(b, dict) and b.get("id") in BUCKETS:
-            shown.append({"id": b["id"], **DEFAULT_BUCKETS[b["id"]], **{k: v for k, v in b.items() if k != "id"}})
+            shown.append({"id": b["id"], **DEFAULT_BUCKETS[b["id"]], "title": titles[b["id"]],
+                          **{k: v for k, v in b.items() if k not in ("id", "options")}})
     ids = [b["id"] for b in shown]
     return shown, [b for b in BUCKETS if b not in ids]
 
@@ -1108,6 +1150,14 @@ def task_who(item: dict, you) -> dict:
     return {"lane": "waiting", "who": _text(nxt.get("who")) or None, "until": _text(nxt.get("check")) or None}
 
 
+def in_sight_deferred(on, check=False) -> bool:
+    """Whether an inbox item put off stays in sight in a bucket: one with someone until a check-in day (With …, inbox.py
+    defer --on --check) waits on them, one put off to the Bridge is the Bridge's. Any other Later is out of sight until
+    its day, tomorrow too, also one that keeps the person it waits on (Later on a waiting point, defer --on without
+    --check), and counted as later (briefing.py aside_counts; round 2 of the four answers: it stood on in Waiting)"""
+    return bool(on) and (check is True or _is_bridge(on))
+
+
 def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetime) -> dict:
     sections_cfg = {}
     for s in profile.get("sections") or []:
@@ -1123,6 +1173,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             nudge_days = _int(b.get("nudge_after_days"), nudge_days, 1)
 
     out = {"rows": {}, "order": [], "hygiene": [], "tend": [], "no_next": [], "muted": 0, "settled": 0, "events": [], "workplace": None,
+           "away": [],
            "activity": [], "boards": [], "clear": [], "status": []}
 
     def tend(kind: str, text: str, **facts) -> None:
@@ -1131,8 +1182,11 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
         out["tend"].append({"kind": kind, "text": text, **facts})
 
     def items_of(s):
-        # The section's own `max:` still caps what it contributes.
-        return s.get("items") or []
+        # Every item of a section (its `all`), past its own `max:` too: the buckets sort every point, and the view's
+        # max_items cuts what is printed. Round 1 of the four answers: an item past `max:` stood as the advice
+        # "waits on you since ..." in another bucket, and which items fell past it moved with every unrelated answer
+        every = s.get("all")
+        return every if isinstance(every, list) else s.get("items") or []
 
     def muted(sid, item):
         return any(m.get("section") == sid and _matches(m["when"], item) for m in mutes)
@@ -1140,8 +1194,11 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
     def usable(s):
         return s.get("status") == "ok" and sections_cfg.get(s.get("id"), {}).get("bucket") != "none"
 
-    # First pass: what the advice says about tasks (a quiet task is shown once, under drop).
-    quiet, blocked = set(), set()
+    # First pass: what the advice says about tasks. A quiet task stays in its own bucket and is marked as resting
+    # for its days (the bucket "park or drop" is gone, 21.11.2026); its advice stands alone only without a task row.
+    quiet: dict = {}            # task -> the days it rests (None when the advice does not say)
+    quiet_titles: dict = {}     # a quiet task's own title, from its tasks section (the advice names it in a sentence)
+    blocked = set()
     for s in result.get("sections") or []:
         if s.get("kind") != "advise" or not usable(s):
             continue
@@ -1149,7 +1206,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
             if muted(s["id"], item):
                 continue
             if item.get("check") == "quiet" and item.get("task"):
-                quiet.add(item["task"])
+                quiet[item["task"]] = item.get("days") if _pos_int(item.get("days")) else None
             if item.get("check") == "blocked" and item.get("task"):
                 blocked.add(item["task"])
 
@@ -1194,6 +1251,10 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
              "origin_section_kind": kind, "origin_provider": item.get("tracker") or provider}
         if _pos_int(item.get("estimate_min")):
             r["estimate"] = item["estimate_min"]
+        if item.get("stream") is True:
+            # a stream's row says so: its Done is done for this time, its Obsolete ends it (answers.effect; round 4:
+            # "3 erledigt" on a stream gave task.py close, which a stream refuses)
+            r["stream"] = True
         return {**r, **extra}
 
     carried = []      # advice that only stands when no other row carries it
@@ -1255,7 +1316,12 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                     out["boards"].append(b)
                     have.add((b.get("org"), b.get("number")))
         if kind == "workplace":
-            tabs = [i for i in items_of(s) if i.get("state") != "warning"]
+            for i in items_of(s):
+                if i.get("state") == "asks" and i.get("tab_ref"):
+                    # an agent tab that asks in a dialog: yours today, answered in the tab (answers.effect kind tab)
+                    add(f"tab:{i['tab_ref']}", row(sid, i, "do", labels["tab_asks"].format(name=_short(i.get("title"), 60)),
+                                                   (), 0, tab_ref=str(i["tab_ref"])))
+            tabs = [i for i in items_of(s) if i.get("state") not in ("warning", "asks")]
             for i in items_of(s):
                 if i.get("state") == "warning":
                     tend("note", str(i.get("title")))
@@ -1271,6 +1337,13 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 continue
             iid = str(item.get("id"))
             if kind == "inbox":
+                back = _when(item.get("until")) if item.get("state") == "deferred" else None
+                if back is not None and back.date() > now.date() and cfg.get("deferred") != "all" \
+                        and not in_sight_deferred(item.get("waiting_on"), item.get("check")):
+                    # put off to a day is out of sight until that day, also within the lookahead: counted as later
+                    # (round 1 of the four answers: the cockpit hid it, the printed briefing kept it in Do)
+                    out["away"].append({"key": f"inbox:{iid}", "until": str(item.get("until"))[:10]})
+                    continue
                 due = _when(item.get("due"))
                 why = []
                 own = forced           # the section's forced bucket, unless the item is no row of it
@@ -1298,6 +1371,11 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                     who_until = {"who": item.get("waiting_on"), "until": item.get("until")}
                     if bucket == "waiting":
                         why.insert(0, labels["with"].format(who=item["waiting_on"]))
+                elif item.get("state") == "approved" and item.get("gate") != "only-you":
+                    # a yes given (inbox.py approve, the cockpit's Yes) is the Bridge's to run, never asked again in Do
+                    # (round 2 of the cockpit simulation, 21.11.2026: "1 yes" stood after the yes); an only-you item
+                    # stays yours, since no runner executes it
+                    bucket = "delegate"
                 elif item.get("waits_for") is True:
                     # filed for when something has happened (inbox.py waits_for): it asks nobody yet, and says so
                     # instead of stating the hoped-for outcome as a fact (29.10.)
@@ -1307,7 +1385,11 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                     # a report asks nobody: what can wait is the Bridge's to look at first, not your plan (07.11.)
                     bucket = "delegate"
                 else:
-                    bucket = "do" if item.get("urgency") in ("now", "today") or soon else "plan"
+                    # an ask only you can answer (gate only-you) is yours today, with a day or without one (round 2 of
+                    # the four answers: such a decision stood in Plan); an idea asks nobody
+                    # a report whose last step only you take (sign, send) too (round 3: it stood in Plan)
+                    mine = item.get("gate") == "only-you" and art_of_kind(item.get("kind")) in ("ask", "report")
+                    bucket = "do" if item.get("urgency") in ("now", "today") or soon or mine else "plan"
                 rank = 0 if item.get("urgency") == "now" else 1 if soon else 2
                 # An item the briefing filed from a tracker row is that row: one line, not two. So is an item filed
                 # by "ask about this row" on a tracker row (the cockpit's `ask:<owner/repo#n>`).
@@ -1335,7 +1417,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 if check == "wip":
                     tend("note", str(item.get("title")))
                 elif check == "quiet":
-                    add(f"task:{item.get('task')}", row(sid, item, forced or "drop", item.get("title"), (), 5))
+                    carried.append((sid, item, forced))
                 elif check == "collision":
                     add(f"advise:{iid}", row(sid, item, forced or "do", item.get("title"), [labels["collides"]], 0))
                 elif check in ("blocked", "waiting", "due"):
@@ -1344,12 +1426,17 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                     add(f"advise:{iid}", row(sid, item, forced or "plan", item.get("title")))
             elif kind == "tasks":
                 if iid in quiet:
-                    continue
+                    quiet_titles[iid] = str(item.get("title") or "").strip()
                 nxt = _task_next(item)
                 lane = task_who(item, you)["lane"]
                 age = _days_since(item.get("changed_at"), now)
                 if lane == "none":
                     out["no_next"].append(iid)
+                elif item.get("blocked_by") and (_when(item.get("quiet_until")) or now).date() > now.date():
+                    # put off to a day while it waits (Later on a waiting task, task.py wait --until): out of sight
+                    # until that day and counted as later, as an inbox item put off is (round 2 of the four answers)
+                    out["away"].append({"key": f"task:{iid}", "until": str(item.get("quiet_until"))[:10]})
+                    continue
                 elif item.get("blocked_by"):
                     age = _days_since(item.get("blocked_since"), now) if item.get("blocked_since") else age
                     why = [labels["waiting_days"].format(n=age) if age is not None else "",
@@ -1361,7 +1448,8 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                         why.append(labels["look_again"].format(when=_fmt_when(item["quiet_until"], now, labels)))
                         nudge = look.date() <= now.date()
                     add(f"task:{iid}", row(sid, item, forced or "waiting", item.get("title"), why, 3, nudge=nudge,
-                                           task=iid, priority=item.get("priority"), origin_raw=item.get("origin")))
+                                           task=iid, priority=item.get("priority"), origin_raw=item.get("origin"),
+                                           waiting_days=age))
                 else:
                     due = _when(nxt.get("due"))
                     # the row is named by its task (its H1) and says its step apart: a name glued to a step stood
@@ -1382,6 +1470,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                         why = [labels["with"].format(who=nxt.get("who")),
                                labels["waiting_days"].format(n=age) if age is not None else ""] + why
                         extra["nudge"] = age is not None and age >= nudge_days
+                        extra["waiting_days"] = age
                     # your own next step outranks a card nobody has looked at (OWN_RANK)
                     add(f"task:{iid}", row(sid, item, forced or bucket, item.get("title"), why,
                                            1 if bucket == "do" else 3, step=nxt["what"], **extra))
@@ -1410,13 +1499,52 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
     told = set()
     for sid, item, forced in sorted(carried, key=lambda c: c[1].get("check") != "due"):    # "due" says the most
         check = item.get("check")
+        if check == "quiet":
+            # a quiet task without a row of its own (no tasks section, or no next step): the advice is its row,
+            # yours without a day; with a row the task carries the mark itself (below)
+            slug = item.get("task")
+            if f"task:{slug}" not in out["rows"]:
+                # named by the task's own title (round 2 had the advice as the title on the card, the list and the
+                # toast); beside it only the quiet mark "resting for N days" (below), never a question to answer
+                title = str(item.get("title") or "")
+                own = quiet_titles.get(slug)
+                if own and title.startswith(own):
+                    title = own
+                add(f"task:{slug}", row(sid, item, forced or "plan", title, (), 5, task=slug))
+            continue
         subject = str(item.get("id") or "").split(":", 2)[-1]
         carrier = f"task:{item.get('task')}" if check == "blocked" else f"inbox:{subject}"
         if carrier in out["rows"] or carrier in told:
             continue
         told.add(carrier)
-        bucket = {"blocked": "waiting", "due": "do", "waiting": "plan"}[check]
-        add(f"advise:{item.get('id')}", row(sid, item, forced or bucket, item.get("title"), (), 2))
+        # an item urgent now or today is yours today, as its own row would be (the inbox rule above)
+        bucket = {"blocked": "waiting", "due": "do",
+                  "waiting": "do" if item.get("urgency") in ("now", "today") else "plan"}[check]
+        # the inbox item a waiting or due advice stands for where the item itself is not in the view (past its
+        # section's `max:`): a cockpit pass, which reads that item, gives it this row's number and bucket (_row_ident)
+        about = {"advise_inbox": subject} if check in ("waiting", "due") and INBOX_ID_LIKE.match(subject) else {}
+        add(f"advise:{item.get('id')}", row(sid, item, forced or bucket, item.get("title"), (), 2, **about))
+    # a resting task says so beside its own title, in whichever bucket its next step puts it
+    for slug, days in quiet.items():
+        have = out["rows"].get(f"task:{slug}")
+        if have is not None:
+            have["resting"] = days or True
+            said = _count(labels, "resting", days) if days else None
+            if said and said not in have["why"]:
+                have["why"].append(said)
+    # what an agent of the cockpit works on since Do it (the cockpit's running record, briefing.py running_record) is
+    # the Bridge's: it stands in I'll do, marked as running and resting no more, as the cockpit shows it (round 3: the
+    # cockpit had it in I'll do, the printed briefing in Do or in Plan "resting for 55 days")
+    running = {k for k in (result.get("running") or ()) if isinstance(k, str)}
+    for key in out["order"]:
+        have = out["rows"][key]
+        if running and _settled_key(have) in running and "delegate" in BUCKETS:
+            have["bucket"], have["running"] = "delegate", True
+            have.pop("resting", None)
+            rest_words = labels["resting"].split("{n}")[0]
+            have["why"] = [w for w in have["why"] if not (rest_words and str(w).startswith(rest_words))]
+            if labels["running"] not in have["why"]:
+                have["why"].insert(0, labels["running"])
     _drop_settled(out, result.get("settled"), now)
     _fold(out, view, labels)
     return out
@@ -1472,6 +1600,9 @@ def _fold(out: dict, view: dict, labels: dict) -> None:
                 have[k] = row[k]
         if row.get("inbox_id"):
             have.setdefault("also_inbox", []).append(row["inbox_id"])
+        if key.startswith("task:") and row.get("origin_section_kind") == "tasks":
+            # the task's own row is part of this line now: the cockpit shows it once, as this line (round 1)
+            have.setdefault("folded_tasks", []).append(key[len("task:"):])
         have["new"] = have["new"] or row["new"]
         have["changed"] = have["changed"] or row["changed"]
 
@@ -1522,8 +1653,8 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
     labels = _labels(view, profile.get("_language"))
     now = _when(result.get("collected_at")) or dt.datetime.now()
     data = _rows(result, profile, view, labels, now)
-    shown, hidden_ids = _bucket_cfg(view)
-    titles = {b: DEFAULT_BUCKETS[b]["title"] for b in BUCKETS} | {b["id"]: b["title"] for b in shown}
+    shown, hidden_ids = _bucket_cfg(view, profile.get("_language"))
+    titles = {b["id"]: b["title"] for b in _bucket_cfg({}, profile.get("_language"))[0]} | {b["id"]: b["title"] for b in shown}
 
     # An info event (an `info_calendars` calendar, e.g. a family one) is someone else's:
     # it is listed, but it neither makes the reader busy nor raises a clash.
@@ -1635,9 +1766,19 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
     width = view.get("width")
     out = {"style": style, "collected_at": result.get("collected_at"), "headline": None, "since": None,
            "buckets": [], "hygiene": hygiene, "tend": tend,
-           # every shown bucket in profile order with its title and its answers, also an empty one: the cockpit
-           # sorts its points into them (docs/bridge-cockpit.md, the buckets of Work through)
-           "bucket_defs": [{"id": b["id"], "title": b["title"], "options": list(b.get("options") or [])} for b in shown], "workplace": data["workplace"], "more": 0, "titles": titles,
+           # every shown bucket in profile order with its title, also an empty one: the cockpit sorts its points into
+           # them (docs/bridge-cockpit.md, the buckets of Work through). A bucket has no answers of its own: every
+           # point takes the four of `answers` (lib/answers.py), which the cockpit reads from here
+           "bucket_defs": [{"id": b["id"], "title": b["title"]} for b in shown],
+           "answers": answers.defs(profile.get("_language")),
+           # what is out of sight, only counted: put off to a day, on the watch list, done or obsolete today
+           # (briefing.py aside_counts; none when the caller did not count)
+           "aside": _aside(result.get("aside")),
+           # the same counts without the cockpit's record (aside_of_record): the cockpit adds its own on every pass
+           "aside_base": _aside(result.get("aside_base")),
+           "workplace": data["workplace"], "more": 0, "titles": titles,
+           # put off to a day, out of sight until it (counted as later): the cockpit leaves these out of its buckets
+           "away": data["away"],
            "answer_keys": view.get("answer_keys", True) is not False,
            "show_hygiene": view.get("hygiene", "bottom") != "hide",
            "color": view.get("color", "auto"), "width": width if _pos_int(width) and width >= 40 else 100,
@@ -1652,6 +1793,7 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
 
     if view.get("headline", True) is not False:
         out["headline"] = _headline(visible, events, now, labels, day_end)
+        out["headline_day"] = " · ".join(_headline_parts(visible, events, now, labels, day_end)[1])
     out["dayline"] = None
     if view.get("dayline", True) is not False and style != "brevity":
         out["dayline"] = _dayline(events, now, day_start, day_end)
@@ -1663,35 +1805,134 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
                                                    changed=sum(1 for r in visible if r["changed"] and not r["new"]))
 
     cap = _int(view.get("max_items"), 3 if style == "brevity" else 12, 1)
+    if style in ("brevity", "plan"):
+        # every row has its number in these styles too, in the order of the buckets the cockpit shows (round 4 of the
+        # four answers: they returned before the numbers, so no card said one and "3 später" pointed at nothing). A
+        # cockpit pass carries the printed numbers over (_printed_numbers numbers these styles as triage does)
+        if profile.get("_whole"):
+            printed, out["number_book"] = _printed_numbers(result, profile)
+            for r in visible:
+                got = printed.get(_row_ident(r))
+                if got:
+                    r["nr"] = got[0]
+        else:
+            whole = _capped(shown, visible, max(1, len(visible)))[0]
+            out["number_book"] = _number(_tabs_last([r for b in whole for r in b["items"]]), result.get("number_book"))
     if style == "brevity":
         cap = min(cap, 3)
         pick = ([r for r in visible if r["bucket"] == "do"] +
                 [r for r in visible if r["bucket"] == "waiting" and r.get("nudge")] +
                 [r for r in visible if r["bucket"] in ("plan", "delegate")] +
-                [r for r in visible if r["bucket"] == "waiting" and not r.get("nudge")] +
-                [r for r in visible if r["bucket"] == "drop"])
+                [r for r in visible if r["bucket"] == "waiting" and not r.get("nudge")])
         out["top"] = [{**r, "why": r["why"] or [titles[r["bucket"]]]} for r in pick[:cap]]
         out["more"] = max(0, len(visible) - len(out["top"]))
         return out
 
     if style == "plan":
-        # The plan shows every row (laid out, meanwhile, waiting, drop, later): nothing is "more".
+        # The plan shows every row (laid out, meanwhile, waiting, later): nothing is "more".
         out["plan"] = _plan(visible, events, now, plan_cfg, day_start, day_end)
         return out
 
+    # the printed run reads the same items as a cockpit pass, so every row stands in the same bucket in both
+    printed, book = _printed_numbers(result, profile) if profile.get("_whole") else ({}, None)
     out["buckets"], out["more"], out["dropped"] = _capped(shown, visible, cap)
     # The number every row has in the printed briefing ("3 yes"), one rule for every renderer (numbered). A cockpit
-    # pass (`_whole`, every row) numbers as the printed briefing would: the profile's own style and max_items, and
-    # without what the person settled in the cockpit (`numbering_settled`), so its cards say the briefing's number.
-    printed, num_style = out["buckets"], style
+    # pass (`_whole`, every row) numbers as the printed briefing would: the view the printed briefing builds (each
+    # section within its own `max:`, the profile's own style and max_items, without what the person settled in the
+    # cockpit), its numbers carried over row by row, so its cards say the briefing's number and a row the printed
+    # briefing does not show says none.
     if profile.get("_whole"):
-        num_style = style_of(profile)
-        gone = _settled_keys(result.get("numbering_settled"), now)
-        kept = [r for r in visible if _settled_key(r) not in gone] if gone else visible
-        printed = _capped(shown, kept, _int(profile.get("_print_max"), 12, 1))[0]
-    for n, r in enumerate(numbered({**out, "style": num_style, "buckets": printed}), 1):
-        r["nr"] = n
+        out["number_book"] = book
+        for r in visible:
+            got = printed.get(_row_ident(r))
+            if got:
+                r["nr"] = got[0]
+        _by_number(out, style, result)
+        return out
+    # every row is numbered by its place in the whole list, also one this print leaves out past max_items: a short and
+    # a long print, the cockpit's cards and the chat then name a row by one number (round 2 of the four answers: the
+    # long print named the waiting rows 92 to 96, their cards said 10 to 12). A short print shows its rows with gaps
+    whole = _capped(shown, visible, max(1, len(visible)))[0]
+    # calm numbers every row of every bucket as triage does (round 3: it numbered the 5 Plan and 3 I'll do rows it
+    # shows, so 41 of 96 cards had no number and one row had two numbers by style); it prints a few of them
+    order = ([r for b in whole for r in b["items"]] if style == "calm" else
+             numbered({**out, "style": style, "buckets": whole}))
+    out["number_book"] = _number(_tabs_last(order), result.get("number_book"))
+    _by_number(out, style, result)
     return out
+
+
+def _tabs_last(order: list) -> list:
+    """The rows in the order they are numbered: an agent tab that asks after every other row, so a tab that starts or
+    stops asking moves no other row's number (the cockpit still shows it first in Do, as the print does)"""
+    return [r for r in order if not r.get("tab_ref")] + [r for r in order if r.get("tab_ref")]
+
+
+def _number(order: list, book) -> dict | None:
+    """Number the rows in `order`, 1 first. With the day's number book (`number_book`, {row ident: nr}, briefing.py
+    keeps it per profile and day) a row keeps the number it had today, and a row new today gets the next number nobody
+    had: an answer moves no other row's number, so "3 do" typed from an older print still names the row it named
+    (round 4 of the four answers: one Done renumbered every row after it). Returns the book with today's numbers, None
+    without a book."""
+    if not isinstance(book, dict):
+        for n, r in enumerate(order, 1):
+            r["nr"] = n
+        return None
+    held = {k: v for k, v in book.items() if isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool) and v > 0}
+    used: set = set()
+    fresh = []
+    for r in order:
+        n = held.get(_row_ident(r))
+        if n is not None and n not in used:
+            r["nr"] = n
+            used.add(n)
+        else:
+            fresh.append(r)
+    nxt = max([0, *held.values()]) + 1
+    for r in fresh:
+        r["nr"] = nxt
+        held[_row_ident(r)] = nxt
+        nxt += 1
+    return held
+
+
+def _by_number(out: dict, style: str, result: dict) -> None:
+    """With a number book the numbers no longer run in the order of the rows: each bucket then lists its rows by their
+    numbers (an asking tab first), as the cockpit's buckets order their points, so the print and the page agree"""
+    if not isinstance(result.get("number_book"), dict) or style not in ("triage", "calm"):
+        return
+    big = 10 ** 9
+    for b in out.get("buckets") or []:
+        b["items"].sort(key=lambda r: (0 if r.get("tab_ref") else 1, r.get("nr") or big))
+
+
+def _row_ident(row: dict) -> str:
+    """A row the same in two builds of one result: its inbox item, task or ref, else its title and sources. An advice
+    that stands for an inbox item past its section's `max:` is that item (round 2 of the cockpit simulation: the
+    printed no. 4 "waits on you since ..." had no card of that number)"""
+    if row.get("advise_inbox"):
+        return f"inbox:{row['advise_inbox']}"
+    if row.get("tab_ref"):
+        return f"tab:{row['tab_ref']}"
+    return _settled_key(row) or f"{row.get('title')}|{','.join(map(str, row.get('sources') or []))}|{row.get('url') or ''}"
+
+
+def _printed_numbers(result: dict, profile: dict) -> tuple:
+    """({row ident: (nr, bucket)}, the number book) of the briefing as it is printed from this result: the same items (a view reads every
+    item of a section, past its `max:` too), the profile without the pass's
+    max_items (its own, `_print_max`), what was settled in the cockpit left out as a printed run leaves it out"""
+    printed = {k: v for k, v in result.items() if k != "numbering_settled"}
+    printed.update(settled=result.get("numbering_settled"))
+    view = dict(profile.get("view") if isinstance(profile.get("view"), dict) else {})
+    # the numbers are the whole list's (build): a print as long as the list carries every one of them
+    view["max_items"] = 10 ** 6
+    # brevity and plan show a few rows or lay them into the day, and number every row in bucket order as triage does
+    if style_of({**profile, "view": view}) in ("brevity", "plan"):
+        view["style"] = "triage"
+    plain = {k: v for k, v in profile.items() if k not in ("_whole", "_print_max")}
+    built = build(printed, {**plain, "view": view})
+    return ({_row_ident(r): (r["nr"], r.get("bucket")) for b in built.get("buckets") or [] for r in b["items"] if r.get("nr")},
+            built.get("number_book"))
 
 
 def _capped(shown: list, visible: list, cap: int) -> tuple:
@@ -1712,8 +1953,7 @@ def _capped(shown: list, visible: list, cap: int) -> tuple:
         take = mine[b["id"]][:room[b["id"]]]
         more += len(mine[b["id"]]) - len(take)
         if take:
-            buckets.append({"id": b["id"], "title": b["title"], "options": list(b.get("options") or []),
-                            "items": take, "total": len(mine[b["id"]])})
+            buckets.append({"id": b["id"], "title": b["title"], "items": take, "total": len(mine[b["id"]])})
         else:
             dropped += len(mine[b["id"]])
     return buckets, more, dropped
@@ -1722,14 +1962,13 @@ def _capped(shown: list, visible: list, cap: int) -> tuple:
 def numbered(view: dict) -> list:
     """The rows of a built view in the order the printed briefing numbers them, 1 first: every row of every bucket
     (triage), the rows listed first and per bucket (report), Today, Next days, Waiting on others and what the Bridge
-    offers (calm); the styles without numbers (brevity, plan, sources) none. The renderers print these numbers and
+    offers (calm); brevity and plan carry their numbers on the rows (build), sources none. The renderers print these numbers and
     the cockpit shows them on its cards, so "3 yes" means the same row in the chat and on the page"""
     style = view.get("style")
     if style == "report":
         return _report_listing(view)[0]
     if style == "calm":
-        parts = _calm_parts(view)
-        return parts["today"] + parts["next"] + parts["waiting"] + parts["offer"]
+        return [r for _bid, rows in _calm_parts(view) for r in rows]
     if style == "triage":
         return [r for b in view.get("buckets") or [] for r in b["items"]]
     return []
@@ -1743,12 +1982,20 @@ def asks_you(row: dict) -> bool:
 
 
 def _headline(rows: list, events: list, now: dt.datetime, labels: dict, day_end: str) -> str:
+    counts, day = _headline_parts(rows, events, now, labels, day_end)
+    return " · ".join(counts + day)
+
+
+def _headline_parts(rows: list, events: list, now: dt.datetime, labels: dict, day_end: str) -> tuple:
+    """(the counts of Do, the day's parts): the cockpit says its own count of Do in front of the day's parts
+    (headline_day), so one count never reads two ways on one page (round 4: "11 asks · 4 reports" beside 15)"""
     do = [r for r in rows if r["bucket"] == "do"]
     asks = sum(1 for r in do if asks_you(r))
-    parts = [_count(labels, "yours_today", asks)]
+    counts = [_count(labels, "yours_today", asks)]
     if len(do) > asks:
         # Do holds reports and ideas too: counted apart, so the number above a longer Do list explains itself (29.10.)
-        parts.append(_count(labels, "do_reports", len(do) - asks))
+        counts.append(_count(labels, "do_reports", len(do) - asks))
+    parts: list = []
     current = next((e for e in events if e[0] <= now < e[1]), None)
     upcoming = next((e for e in events if e[0] > now and e[0].date() == now.date()), None)
     if current:
@@ -1765,7 +2012,7 @@ def _headline(rows: list, events: list, now: dt.datetime, labels: dict, day_end:
     if dated:
         _, title, raw = dated[0]
         parts.append(labels["next_date"].format(when=_fmt_when(raw, now, labels), title=_topic(title, 48)))
-    return " · ".join(parts)
+    return counts, parts
 
 
 DAYLINE_CELLS = 40
@@ -1806,19 +2053,23 @@ def _plan(rows, events, now, cfg, day_start, day_end) -> dict:
     free = [f for f in free if f[1] > f[0]]
     slots = [{"start": _clock(s), "end": _clock(e), "title": t, "kind": "event"} for s, e, t in busy]
     later = []
+
+    def named(r):
+        # a row by its number, as the cockpit's card names it ("3 später" from the chat)
+        return f"{r['nr']}. {r['title']}" if r.get("nr") else r["title"]
+
     for r in [r for r in rows if r["bucket"] == "do"] + [r for r in rows if r["bucket"] == "plan"]:
         length = r.get("estimate") or minutes
         gap = next((f for f in free if f[1] - f[0] >= length), None)
         if gap is None:
-            later.append(r["title"])
+            later.append(named(r))
             continue
         slots.append({"start": _clock(gap[0]), "end": _clock(gap[0] + length), "title": r["title"],
-                      "kind": "work", "why": r["why"]})
+                      "kind": "work", "why": r["why"], **({"nr": r["nr"]} if r.get("nr") else {})})
         gap[0] += length
     slots.sort(key=lambda s: (s["start"], s["kind"] != "event"))
-    return {"slots": slots, "parallel": [r["title"] for r in rows if r["bucket"] == "delegate"],
-            "waiting": [r["title"] for r in rows if r["bucket"] == "waiting"],
-            "drop": [r["title"] for r in rows if r["bucket"] == "drop"], "later": later, "shutdown": day_end}
+    return {"slots": slots, "parallel": [named(r) for r in rows if r["bucket"] == "delegate"],
+            "waiting": [named(r) for r in rows if r["bucket"] == "waiting"], "later": later, "shutdown": day_end}
 
 
 # ---------------------------------------------------------------- draw
@@ -1868,16 +2119,16 @@ def draw(view: dict, color: bool = False, width: int | None = None) -> str:
     if view["style"] == "brevity":
         for r in view.get("top", []):
             out.append("")
-            out += wrap(_marked(r) + r["title"], style="1")
+            out += wrap((f"{r['nr']}. " if r.get("nr") else "") + _marked(r) + r["title"], style="1")
             out += wrap(f"{labels['why']}: " + " · ".join(r["why"]), indent="  ", hang="  ", style="2")
     elif view["style"] == "plan" and view.get("plan"):
         plan = view["plan"]
         out.append("")
         for s in plan["slots"]:
-            line = f"  {s['start']}-{s['end']}  {s['title']}"
+            line = f"  {s['start']}-{s['end']}  " + (f"{s['nr']}. " if s.get("nr") else "") + s["title"]
             out += wrap(line, hang=" " * 15, style="2" if s["kind"] == "event" else None)
         for key, title, style in (("parallel", labels["meanwhile"], None), ("waiting", titles["waiting"], "2"),
-                                  ("drop", titles["drop"], "2"), ("later", labels["later"], "2")):
+                                  ("later", labels["later"], "2")):
             if plan.get(key):
                 out += wrap(f"{title}: " + " · ".join(plan[key]), indent="  ", hang="    ", style=style)
         out += wrap(labels["shutdown"].format(time=plan["shutdown"]), indent="  ", style="1")
@@ -1886,25 +2137,20 @@ def draw(view: dict, color: bool = False, width: int | None = None) -> str:
         for b in view["buckets"]:
             out.append("")
             head = f"── {b['title']} · {b.get('total', len(b['items']))} ──"
-            if view.get("answer_keys") and b.get("options"):
-                letters = "abcdefghij"
-                head += " " + " · ".join(f"{letters[i]} {o}" for i, o in enumerate(b["options"][:10]))
-            out += wrap(head, style="1;31" if b["id"] == "do" else "2" if b["id"] in ("waiting", "drop") else "1")
+            out += wrap(head, style="1;31" if b["id"] == "do" else "2" if b["id"] == "waiting" else "1")
             for r in b["items"]:
                 n += 1
-                num = f"{n:>3}  " if view.get("answer_keys") else "  -  "
+                num = f"{r.get('nr') or n:>3}  "
                 extras = list(r["why"])
                 if len(r["sources"]) > 1:
                     extras.append("+".join(r["sources"]))
-                if r.get("nudge"):
-                    extras.append(labels["nudge"])
                 if r["new"]:
                     extras.append(labels["new"])
                 text = _marked(r) + r["title"] + (f"  ({' · '.join(extras)})" if extras else "")
                 lines = textwrap.wrap(text, width=width, initial_indent=num, subsequent_indent=" " * len(num),
                                       break_long_words=False, break_on_hyphens=False)
                 urgent = b["id"] == "do" and r["rank"] <= 1
-                dim = b["id"] in ("waiting", "drop") and not r.get("nudge")
+                dim = b["id"] == "waiting" and not r.get("nudge")
                 lines = [c("31", line) if urgent else c("2", line) if dim else line for line in lines]
                 ref, url = r.get("ref"), str(r.get("url") or "")
                 if use and ref and url.startswith(("https://", "http://")):
@@ -1912,6 +2158,12 @@ def draw(view: dict, color: bool = False, width: int | None = None) -> str:
                     link = f"\x1b]8;;{url}\x1b\\{ref}\x1b]8;;\x1b\\"
                     lines = [line.replace(ref, link, 1) if ref in line else line for line in lines]
                 out += lines
+        if n and view.get("answer_keys"):
+            out.append("")
+            out += wrap(_legend(view), style="2")
+        if _aside_line(view):
+            out.append("")
+            out += wrap(_aside_line(view), style="2")
 
     if view.get("overview", "inline") != "file":
         out += _overview_lines(view, width, c, wrap)
@@ -1929,6 +2181,54 @@ def draw(view: dict, color: bool = False, width: int | None = None) -> str:
         out += wrap(labels["more"].format(n=view["more"]), style="2")
     out += wrap(labels["end"], style="2")
     return "\n".join(out)
+
+
+ASIDE = ("later", "list", "done_today")
+
+
+def _aside(counts) -> dict | None:
+    """The out-of-sight counts a view carries: {later, list, done_today}, each a whole number; None uncounted"""
+    if not isinstance(counts, dict):
+        return None
+    return {k: _int(counts.get(k), 0, 0) for k in ASIDE}
+
+
+def aside_of_record(record, today: str) -> dict:
+    """The out-of-sight counts of what was settled in the cockpit (briefing.py settled_record's shape): a row hidden
+    until a later day is later, one on the watch list's day the watch list, a stream done for this time and a row
+    marked done or not doing today done today; an inbox item counts in the inbox, a row filed to an item (Do it on
+    an issue) not at all. The cockpit counts its own record by this one rule on every pass, so an answer kept there
+    moves the counts at once (round 3 of the four answers: they lagged one step)"""
+    out = {k: 0 for k in ASIDE}
+    record = record if isinstance(record, dict) else {}
+    done_on = record.get("hidden_done") or {}
+    filed = set(record.get("hidden_filed") or ())
+    for key, until in (record.get("hidden") or {}).items():
+        if str(key).startswith("inbox:") or key in filed:
+            continue
+        if key in done_on:
+            out["done_today"] += str(done_on[key])[:10] == today
+            continue
+        if answers.is_list_day(until):
+            out["list"] += 1
+        elif str(until) > today:
+            out["later"] += 1
+    out["done_today"] += sum(1 for key, day in (record.get("dismissed_on") or {}).items()
+                             if not str(key).startswith("inbox:") and str(day)[:10] == today)
+    return out
+
+
+def _aside_line(view: dict) -> str | None:
+    """"Out of sight: later 2 · watch list 5 · done today 1", the counts that are not zero; None for none"""
+    counts, labels = view.get("aside") or {}, view["labels"]
+    items = [labels[f"aside_{k}"].format(n=counts[k]) for k in ASIDE if counts.get(k)]
+    return labels["aside"].format(items=" · ".join(items)) if items else None
+
+
+def _legend(view: dict) -> str:
+    """The one line that says the four answers every numbered row takes, in the view's language"""
+    said = [a["say"] for a in (view.get("answers") or answers.defs(None))["answers"]]
+    return view["labels"]["answer_legend"].format(words=" · ".join(said))
 
 
 def _overview_lines(view: dict, width: int, c, wrap) -> list:
@@ -2003,8 +2303,6 @@ def _why(r: dict, labels: dict) -> str:
                 extras.append(f"[{ref}]({url})" if url.startswith(("https://", "http://")) else ref)
             continue
         extras.append(w)
-    if r.get("nudge"):
-        extras.append(labels["nudge"])
     if r["new"]:
         extras.append(labels["new"])
     # one date per row: a due date says it, "back on" and "look again" beside it only contradict (07.11.)
@@ -2092,10 +2390,7 @@ def draw_report(view: dict) -> str:
         body.append("")
     for b, rest, pick in per:
         firsts = sum(1 for r in b["items"] if id(r) in shown_first)
-        head = f"### {b['title']} · {b.get('total', len(b['items'])) - firsts}"
-        if view.get("answer_keys") and b.get("options"):
-            head += "  *(" + " · ".join(f"{'abcdefghij'[i]} {o}" for i, o in enumerate(b["options"][:10])) + ")*"
-        body += [head, ""]
+        body += [f"### {b['title']} · {b.get('total', len(b['items'])) - firsts}", ""]
         for r in pick:
             body += _report_row(number[id(r)], {**r, "new": r["new"] and not flood}, labels, False)
         hidden = len(rest) - len(pick) + (b.get("total", len(b["items"])) - len(b["items"]))
@@ -2108,6 +2403,10 @@ def draw_report(view: dict) -> str:
         body += [f"*{labels['off_day'].format(n=view['off_day'])}*", ""]
     if view.get("collapsed"):
         body += [f"*{labels['collapsed'].format(items=' · '.join(view['collapsed']))}*", ""]
+    if _aside_line(view):
+        body += [f"*{_aside_line(view)}*", ""]
+    if listed and view.get("answer_keys"):
+        body += [f"*{_legend(view)}*", ""]
 
     failed = [st for st in view.get("status") or [] if st.get("status") == "error"]
     warn = [st for st in view.get("status") or [] if st.get("health") and not st.get("status") and st["count"]]
@@ -2185,19 +2484,22 @@ def _calm_title(r: dict, labels: dict, limit: int = 80, step: bool = True) -> st
     return f"{_marked(r)}[{text}]({link})" if link else f"{_marked(r)}{text}"
 
 
-def _calm_parts(view: dict) -> dict:
-    """The rows calm shows, in their order: Today (do), Next days (plan, dated ones first, `per_bucket` of them),
-    Waiting on others, and up to three the Bridge offers (delegate)"""
+def _calm_parts(view: dict) -> list:
+    """The rows calm shows, bucket by bucket in the view's order (the cockpit's order, so the numbers match):
+    Today (do), Next days (plan: `per_bucket` of them, dated ones taken first, shown in the bucket's order), up to
+    three the Bridge offers (delegate), Waiting on others. [(bucket id, rows)]"""
     per = _int((view.get("report") or {}).get("per_bucket"), 5, 1)
-    by = {b["id"]: b for b in view.get("buckets") or []}
-
-    def items(bid):
-        return list((by.get(bid) or {}).get("items") or [])
-
-    plan = items("plan")
-    dated = sorted([r for r in plan if r.get("due")], key=lambda r: str(_when(r["due"])))
-    return {"today": items("do"), "next": (dated + [r for r in plan if not r.get("due")])[:per],
-            "waiting": items("waiting"), "offer": items("delegate")[:3]}
+    out = []
+    for b in view.get("buckets") or []:
+        rows = list(b.get("items") or [])
+        if b["id"] == "plan":
+            dated = sorted([r for r in rows if r.get("due")], key=lambda r: str(_when(r["due"])))
+            keep = {id(r) for r in (dated + [r for r in rows if not r.get("due")])[:per]}
+            rows = [r for r in rows if id(r) in keep]
+        elif b["id"] == "delegate":
+            rows = rows[:3]
+        out.append((b["id"], rows))
+    return out
 
 
 def draw_calm(view: dict) -> str:
@@ -2215,8 +2517,8 @@ def draw_calm(view: dict) -> str:
     by = {b["id"]: b for b in view.get("buckets") or []}
     total = sum(b.get("total", len(b["items"])) for b in by.values())
     parts = _calm_parts(view)
-    today, nxt, waiting, offer = parts["today"], parts["next"], parts["waiting"], parts["offer"]
-    waiting_n = (by.get("waiting") or {}).get("total", len(waiting))
+    today = next((rows for bid, rows in parts if bid == "do"), [])
+    waiting_n = (by.get("waiting") or {}).get("total", len(next((rows for bid, rows in parts if bid == "waiting"), [])))
 
     out = [f"**{title.strip(', ')}**",
            ((labels["calm_off"] + " ") if view.get("off_today") else "")
@@ -2226,43 +2528,42 @@ def draw_calm(view: dict) -> str:
         out.append(labels["calm_failed"].format(items=", ".join(st["title"] for st in failed)))
     n = 0
     first = None
-    for head, rows, dated_rows in ((labels["calm_today"], today, False), (labels["calm_next"], nxt, True)):
+    # the four buckets' own titles, as every other style and the cockpit say them (round 2 of the four answers: calm said
+    # Today, Next days and "I'll do it if you want"); the calm words only where a view names no title
+    heads = {"do": labels["calm_today"], "plan": labels["calm_next"], "delegate": labels["calm_delegate"],
+             "waiting": labels["calm_waiting"]}
+    heads.update({b["id"]: b["title"] for b in (view.get("bucket_defs") or view.get("buckets") or [])
+                  if isinstance(b, dict) and b.get("id") in heads and b.get("title")})
+    for bid, rows in parts:
         if not rows:
             continue
-        out += ["", f"**{head}**"]
+        out += ["", f"**{heads[bid]}**"]
         for r in rows:
             n += 1
-            first = first or n
+            first = first or r.get("nr") or n
+            if bid == "waiting":
+                # each row numbered like the others (21.11.2026), so "4 do" names it as the cockpit's card does; on a
+                # line of its own each row names its topic too: "Ada until 31.12" twice said nothing apart
+                who = str(r.get("who") or "").strip()
+                topic = _calm_title({**r, "url": None, "task": None, "mark": None}, labels, step=False)
+                name = f"{who} ({_topic(topic, 40)})" if who else _topic(topic, 50)
+                if r.get("until"):
+                    name += " " + labels["calm_until_short"].format(date=_fmt_when(r["until"], now, labels))
+                out.append(f"{r.get('nr') or n}. {name}")
+                continue
             when = ""
-            if dated_rows and r.get("due"):
+            if bid == "plan" and r.get("due"):
                 when = labels["calm_until"].format(date=_fmt_when(r["due"], now, labels))
-            out.append(f"{n}. {when}{_calm_title(r, labels)}")
-    if waiting:
-        # each row numbered like the others (21.11.2026), so "4 nudge" names it as the cockpit's card does
-        out += ["", f"**{labels['calm_waiting']}**"]
-        for r in waiting:
-            n += 1
-            first = first or n
-            who = str(r.get("who") or "").strip()
-            # on a line of its own each row names its topic too: "Ada until 31.12" twice said nothing apart
-            topic = _calm_title({**r, "url": None, "task": None, "mark": None}, labels, step=False)
-            name = f"{who} ({_topic(topic, 40)})" if who else _topic(topic, 50)
-            if r.get("until"):
-                name += " " + labels["calm_until_short"].format(date=_fmt_when(r["until"], now, labels))
-            out.append(f"{n}. {name}")
-    if offer:
-        out += ["", f"**{labels['calm_delegate']}**"]
-        for r in offer:
-            n += 1
-            first = first or n
-            out.append(f"{n}. {_calm_title(r, labels)}")
-    shown = len(today) + len(nxt) + len(waiting) + len(offer)
+            out.append(f"{r.get('nr') or n}. {when}{_calm_title(r, labels)}")
+    shown = sum(len(rows) for _bid, rows in parts)
     rest = max(0, total - shown) + (view.get("off_day") or 0) + (view.get("collapsed_n") or 0)
     tail = []
     if rest:
         tail.append(labels["calm_rest_off" if view.get("off_today") else "calm_rest"].format(n=rest))
     if first:
         tail.append(labels["calm_answer"].format(n=first))
+    if _aside_line(view):
+        tail.append(_aside_line(view))
     if tail:
         out += [""] + tail
     return "\n".join(out)

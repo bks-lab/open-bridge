@@ -10,6 +10,8 @@
 .jev-actions { display: flex; gap: 8px; flex: 0 0 auto; }
 .jev-error { border: 1px solid var(--danger); color: var(--danger); border-radius: var(--radius-lg); padding: 10px 14px;
   background: color-mix(in srgb, var(--danger) 8%, var(--surface-raised)); }
+/* inside the picture it lies over it: the orbit and the plan never jump while they come in (round 2) */
+.jev-stage > .jev-error { position: absolute; top: 10px; left: 12px; right: 12px; z-index: 2; }
 
 .jev-grid { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
 /* by the page's own width, not the window's: the task detail beside the page narrows it */
@@ -57,7 +59,8 @@
 .jev-quad-plan { fill: color-mix(in srgb, var(--accent) 10%, transparent); }
 .jev-quad-hand { fill: color-mix(in srgb, var(--jev-give) 9%, transparent); }
 .jev-quad-drop { fill: color-mix(in srgb, var(--on-surface-faint) 8%, transparent); }
-.jev-qlabel { font-size: 15px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; fill: var(--on-surface-faint); }
+.jev-qlabel { font-size: 15px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; fill: var(--on-surface-muted);
+  paint-order: stroke; stroke: var(--surface); stroke-width: 5px; stroke-linejoin: round; pointer-events: none; }
 .jev-qlabel-now { fill: var(--jev-hot); }
 .jev-axis { stroke: var(--border-strong); stroke-width: 1.5; }
 .jev-axis-label { fill: var(--on-surface-muted); font-size: 13px; font-family: var(--font-mono); }
@@ -76,6 +79,8 @@
 .jev-dot-rank { fill: var(--surface-raised); font-size: 11px; font-weight: 700; font-family: var(--font-mono); pointer-events: none; }
 .jev-dot-label { fill: var(--on-surface); font-size: 13px; font-weight: 600; paint-order: stroke; stroke: var(--surface-raised);
   stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
+/* a label that had to stand further from its dot points back to it */
+.jev-leader { stroke: var(--on-surface-faint); stroke-width: 1; pointer-events: none; }
 .jev-ripple { fill: none; stroke: var(--jev-hot); stroke-width: 2; }
 .jev-crown { fill: var(--jev-hot); }
 
@@ -113,6 +118,7 @@ button.jev-row-title:hover { color: var(--secondary); }
 .jev-pill.jev-quick { border-color: var(--jev-quick); color: var(--on-surface); }
 .jev-conf { font-size: 11px; color: var(--on-surface-faint); }
 .jev-bar { display: block; height: 4px; border-radius: var(--radius-full); background: var(--surface-muted); overflow: hidden; }
+.jev-row-bar { display: block; margin-top: 2px; }
 .jev-bar-fill { display: block; height: 100%; width: 100%; transform-origin: left center; transform: scaleX(0); border-radius: inherit; }
 .jev-bar-fill.jev-me { background: var(--jev-me); }
 .jev-bar-fill.jev-delegate { background: var(--jev-give); }

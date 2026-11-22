@@ -7,7 +7,7 @@
 // views/, which imports what it uses from the others. app.js imports from here only.
 
 import { html, useEffect, useLayoutEffect, useState } from './vendor/htm-preact-3.1.1.module.js'
-import { areaScope, cardPlan, indexRows, logLayout, personOf, railOn, triageKey, workKinds, workPageOf } from './logic.js'
+import { areaScope, cardPlan, indexRows, logLayout, personOf, railOn, sourceSections, triageKey, workKinds, workPageOf } from './logic.js'
 import { T } from './text.js'
 import { TriageBar } from './triage.js'
 import { InnerRoom } from './inner.js'
@@ -98,7 +98,7 @@ export function PageView({ s, c }) {
   const whole = work ?? (s.model?.pages ?? []).find(p => p.id === s.ui.page)
   if (!whole) return html`<div class="col col-page"><div class="panel panel-pad"><${Empty}>${t.pageEmpty}<//></div></div>`
   // a page with inbox and task rows filters by kind; everything below sees only the chosen sections
-  const kinds = workKinds(whole.sections, t.workOrder.kinds)
+  const kinds = workKinds(sourceSections(whole.sections, s, indexRows(s.model)), t.workOrder.kinds)
   const kind = kinds.find(k => k.label === s.ui.workKind) ?? null
   // the task check stands under the tasks label of the page where inbox and tasks stand together; once it
   // has run, its table takes the place of the plain task list
@@ -142,6 +142,7 @@ export function PageView({ s, c }) {
       : page.overview ? html`<${OverviewBoard} page=${page} s=${s} c=${c} />` : null}
     ${kinds.length > 1 ? html`<${KindBar} kinds=${kinds} active=${kind} c=${c} />` : null}
     ${page.sections?.some(listed) ? html`<${TriageBar} s=${s} c=${c} byKey=${indexRows(s.model)}
+      more=${whole.sections.filter(listed).filter(sec => (sec.more ?? 0) > 0 && !s.more[`${whole.id}/${sec.id}`]).map(sec => `${whole.id}/${sec.id}`)}
       items=${(kind ? whole.sections.filter(sec => kind.sections.includes(sec.id)) : whole.sections)
         .filter(listed).flatMap(sec => s.more[`${whole.id}/${sec.id}`]?.items ?? sec.items ?? [])} />` : null}
     ${checkHere ? html`<${ReviewBody} s=${s} c=${c} inline />`

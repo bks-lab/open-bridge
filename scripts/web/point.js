@@ -21,7 +21,8 @@
 // Where Work through is off (cockpit.flow.enabled false, the default of open-bridge) none of it applies: the item
 // drawer (views/overlays.js ItemDrawer) and the file card of the Files tab (views/dossier.js OpenFile) stay as they
 // were. No DOM, no network, no state; logic.js passes every name on, the point test imports it under node.
-import { TABLES } from './text.js'
+import { TABLES, language } from './text.js'
+import { bucketPoints, flowBucketsOn } from './buckets.js'
 import { ACTIVITY_FILTERS, areaScope, CONTEXT_MAX, coveredKeys, DAY, duration, fileContext, fileFacts, flowMode, flowParts, flowUniverse, flowWhere,
   flowSettings, isoDate, leftPlan, pageStepsOf, rowProject, sessionsInFlow, startNote, triageKey } from './logic.js'
 
@@ -43,6 +44,14 @@ export function pointOpen(s, key, file = null) {
   const work = areaScope({ ...s, ui: { ...ui, page: 'briefing' } })
   const to = file ? null : flowWhere(work, key)
   const base = { flowPicked: [], flowPlan: null }
+  // Work through by the briefing's buckets: the point's own card in its own bucket (buckets.js), never the first card
+  // of the first bucket; a row no bucket holds opens as below, a point of its own
+  if (!file && flowBucketsOn(work)) {
+    for (const b of bucketPoints(work, language()).buckets) {
+      const i = b.points.findIndex(x => x.id === key)
+      if (i >= 0) return { ...base, flowView: 'buckets', flowBucket: b.id, flowBucketAt: { id: key, i } }
+    }
+  }
   if (to?.view === 'point') return { ...base, flowView: 'point', flowAt: { id: to.id, i: 0 }, flowSide: { ...(ui.flowSide ?? {}), [flowMode(s)]: null } }
   if (to?.view === 'run') return { ...base, flowView: 'run', flowRunId: to.id, flowRunFrom: 'overview' }
   // a finished AI run (stage 2): in its group Finished, to read, held as the queue holds a point

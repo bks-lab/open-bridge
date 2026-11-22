@@ -42,8 +42,9 @@ from .actions_base import *  # noqa: F401,F403
 from .actions_base import (ACCOUNT_STATUSES, ASK_HASH_RE, BOARD_DEFAULTS, BOARD_MODES, BY_CHOICES, CLOSE_REASONS, CMUX_VERBS, CONTROL_RE,
                            DROP_REASONS, INBOX_ID_RE, LAYOUT_VERBS, LOCAL_VERBS, NEEDS_CAP, PAGE_ID_RE, PRIORITIES,
                            READ_ONLY_VERBS, REASON_MAX, FINDING_KEY_RE, ROUTE_BY, ROW_REF_RE, ROW_STEP_RE, RUN_ID_RE, SESSION_ID_RE, SLUG_RE, SPEC, TAB_REF_RE,
-                           STEP_MAX, TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, TOUR_HOW, UNDO_TOKEN_RE, URGENCIES, WORKER_REF_RE, WS_REF_RE,
-                           ActionError, Ctx, bad_arg, check_date, check_day, check_key, check_term_steps, check_text)
+                           POINT_STATES, STEP_MAX, TAB_STATES, TEAM_RE, TILE_ID_RE, TITLE_MAX, TOUR_HOW, UNDO_TOKEN_RE, URGENCIES, WORKER_REF_RE, WS_REF_RE,
+                           ActionError, Ctx, bad_arg, check_date, check_day, check_key, check_later_day, check_term_steps,
+                           check_text)
 from .actions_chats import ChatVerbs
 from .actions_launch import LaunchSteps
 from .actions_pages import PageVerbs
@@ -107,6 +108,7 @@ CHOICE_KINDS: dict[str, tuple[tuple, str]] = {
     "board_default": (BOARD_DEFAULTS, "off, mine, all or profile"),
     "route_by": (ROUTE_BY, f"must be one of {', '.join(ROUTE_BY)}"),
     "tab_state": (TAB_STATES, f"must be one of {', '.join(TAB_STATES)}"),
+    "point_state": (POINT_STATES, f"must be one of {', '.join(POINT_STATES)}"),
     "tab_kind": (("agent", "shell"), "agent or shell"),
     "workspace_kind": (("agent", "shell", "none"), "agent, shell or none"),
     "palette_color": (tuple(og.COLORS), "not a palette colour"),
@@ -268,7 +270,18 @@ def _brief(actions: "Actions", value: Any, name: str, today: dt.date) -> dict:
     return clean
 
 
+def _notes(actions: "Actions", value: Any, name: str, today: dt.date) -> list[str]:
+    # the notes an undo takes out again (task.py --drop-note): up to four lines of text, each one line
+    if not isinstance(value, list) or len(value) > 4 or not all(isinstance(x, str) for x in value):
+        raise bad_arg(name, "must be a list of up to 4 notes")
+    out = [" ".join(check_text(x, name, 600).split()) for x in value]
+    if any(not x for x in out):
+        raise bad_arg(name, "a note must not be empty")
+    return out
+
+
 SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
+    "notes": _notes,
     "keys": _keys,
     "key": lambda actions, value, name, today: check_key(value, name),
     "launch_settings": _settings,
@@ -276,6 +289,7 @@ SPECIAL_KINDS: dict[str, Callable[["Actions", Any, str, dt.date], Any]] = {
     "features_settings": _settings,
     "tile_ids": _tile_ids,
     "date": lambda actions, value, name, today: check_date(value, name, today),
+    "later_day": lambda actions, value, name, today: check_later_day(value, name, today),
     "day": lambda actions, value, name, today: check_day(value, name),
     "text": lambda actions, value, name, today: check_text(value, name, 2000),
     "term_steps": lambda actions, value, name, today: check_term_steps(value, name),
@@ -491,6 +505,9 @@ class Actions(LaunchSteps, WorkVerbs, TabVerbs, ChatVerbs, PageVerbs):
         handler = getattr(self, f"v_{verb}")
         ctx.pick = {k: clean.pop(k) for k in ("model", "effort") if k in clean}
         ctx.by = clean.pop("by", None)
+        was = clean.pop("was", None)
+        if was is not None:
+            self.guard_was(clean.get("keys") or [clean.get("key")], was)
         touched = self.touched(clean)
         absorbs = bool(touched) and verb not in NO_ABSORB and hasattr(self.app, "seen_pre")
 

@@ -58,7 +58,7 @@ PERSON_LANGUAGES = ("de", "en")
 PERSON_THEMES = ("auto", "light", "dark")
 OWNER_VERBS = frozenset("""
     a2a_ask a2a_forget a2a_poll account_status adopt advise approve_all area ask_via_tab chat_remind chat_tab checkin_stuck
-    task_next work_on
+    task_next task_owner work_on
     collect_context describe_apply describe_discard describe_run do_it explain_note files_ask finding_ack
     features_preset features_reset features_restart features_save
     finding_unack flow_activity_summary flow_attach flow_instruct flow_merge flow_theme_move flow_theme_new
@@ -68,7 +68,8 @@ OWNER_VERBS = frozenset("""
     seen_focus seen_read seen_unread
     return_analyse return_forget return_read return_task return_task_undo return_unread row_action row_undo run_seen runs_on session_link session_resume session_unlink shelve snapshot
     snapshot_list start_agent start_control tab_accept tab_close tab_done tab_go_on tab_jump tab_keys tab_move tab_new tab_no
-    tab_option tab_rename tab_send tab_yes task_keep task_reopen task_review task_running task_unmerge team_role
+    tab_option tab_rename tab_send tab_yes task_keep task_park task_reopen task_review task_running task_unmerge task_unpark
+    team_role
     ticker_edit ticker_profile ticker_refresh ticker_settings ticker_settings_reset timeline_ask to_task
     to_task_undo tour_done tour_reset unhide worker_advise workspace_active workspace_close workspace_delete
     workspace_new workspace_plan workspace_rename workspace_switch workspaces_enabled view_switch""".split())
@@ -112,7 +113,9 @@ MODEL_NEUTRAL: dict[str, Any] = {
     "stale": False, "profile": "", "title": "", "headline": "", "headline_rest": "", "since": None, "skipped": [], "agenda": [], "status": [],
     "extras": {"clear": [], "hygiene": [], "workplace": None}, "pages": [], "alarms": [], "teams": [], "briefing_badge": 0,
     "review": {"running": False, "error": None, "last": None, "keys": []}, "days": {"quota": {}, "counts": {}},
-    "week": {"quota": {}, "counts": {}}, "returns": [], "buckets": []}
+    "week": {"quota": {}, "counts": {}}, "returns": [], "buckets": [],
+    # the owner's out-of-sight counts (later, watch list, done today) count rows a person does not see
+    "aside": None, "away": [], "tab_nrs": {}}
 
 # a date as a person gets it: what the calendar says, nothing a page of the owner hangs on it. No overlaps: they name
 # the events beside it, which may stand in a calendar that is not theirs. No figures either, they count all of them
@@ -131,7 +134,8 @@ ROW_FIELDS = frozenset({
     "slug", "label", "age", "stale", "type", "kind", "blocked_by", "path_kind"})
 ROW_NEUTRAL: dict[str, Any] = {"url": None, "link": None, "inbox_key": None, "tab": None, "actions": [], "starting": False,
                                "adopt_candidates": [], "team": None, "team_suggestions": [], "review": None,
-                               "also_inbox": [], "on_board": None, "describe": None, "selectable": False, "brief_nr": None}
+                               "also_inbox": [], "on_board": None, "describe": None, "selectable": False, "brief_nr": None,
+                               "resting": None, "waiting_days": None, "folded_tasks": []}
 TASK_FIELDS = frozenset({"ok", "slug", "kind", "work_kind", "origin", "front", "sections", "brief", "files", "inbox", "card"})
 TASK_NEUTRAL: dict[str, Any] = {"related": [], "log": [], "describe": None}
 TASK_DROPPED = frozenset({"path"})       # where it lies on this machine, the page of a person needs no folder

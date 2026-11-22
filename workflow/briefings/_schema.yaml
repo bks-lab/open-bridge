@@ -90,7 +90,8 @@ $defs:
         enum: [sources, triage, brevity, plan, report]
         description: |
           sources: one block per section (default, the briefing as it always was).
-          triage: rows sorted by what to do: do, plan, delegate, waiting, drop.
+          triage: rows sorted by who is on the move and when: do (you, today), plan
+          (you, no day yet), delegate (the Bridge), waiting (anyone else).
           brevity: the bottom line and the top three with why.
           plan: your rows laid into today's free calendar gaps.
           report: Markdown by exception: one status line naming only what failed
@@ -123,7 +124,7 @@ $defs:
         minimum: 0
         description: "Due dates and deferred items within today + N days count as now. Default 1."
       max_items: {type: integer, minimum: 1, description: "Rows in the whole briefing, then '+N more'. Default 12."}
-      answer_keys: {type: boolean, description: "Number rows and name a letter per answer ('1a 3b'). Default true."}
+      answer_keys: {type: boolean, description: "Say the four answers every numbered row takes once below the buckets ('3 do', '3 later monday'). Rows are numbered either way. Default true."}
       hygiene: {enum: [bottom, hide], description: "Housekeeping last, or not at all. Default bottom."}
       color: {enum: [auto, meaning, none], description: "auto/meaning: colour only where it means something."}
       width: {type: integer, minimum: 40, description: "Wrap column. Default 100. Rows wrap at a word."}
@@ -226,14 +227,14 @@ $defs:
       labels:
         type: object
         propertyNames:
-          enum: [activity_title, agenda_title, all_clear, also_asked, also_asked_one, back_on, boards_title, bucket_more, busy_until, capped, clash_row, clashes, col_board, col_branch, col_commits, col_days, col_note, col_repo, col_what, col_when, collides, commits, commits_today, do_reports, do_reports_one, due, end, error, first_title, free_rest, free_until, hidden, housekeeping, info_tag, lage, later, look_again, meanwhile, more, muted, new, next_date, next_step, no_next, nudge, only_you, overview_file, owed, page_dates, page_empty, page_more, page_status, page_today, page_trackers, page_work, parallel, report_title, repos_skipped, section_activity, section_advise, section_calendar, section_inbox, section_next_up, section_runs_on, section_tasks, section_workplace, shutdown, since, st_blocked, st_in_progress, st_new, st_ready, st_review, task, today, tomorrow, until, untasked, waiting_days, waiting_for, why, with, workplace, yours_today, yours_today_one]
+          enum: [activity_title, agenda_title, all_clear, also_asked, also_asked_one, answer_legend, aside, aside_done_today, aside_later, aside_list, back_on, boards_title, bucket_more, busy_until, capped, clash_row, clashes, col_board, col_branch, col_commits, col_days, col_note, col_repo, col_what, col_when, collides, commits, commits_today, do_reports, do_reports_one, due, end, error, first_title, free_rest, free_until, hidden, housekeeping, info_tag, lage, later, look_again, meanwhile, more, muted, new, next_date, next_step, no_next, nudge, only_you, overview_file, owed, page_dates, page_empty, page_more, page_status, page_today, page_trackers, page_work, parallel, report_title, repos_skipped, resting, resting_one, section_activity, section_advise, section_calendar, section_inbox, section_next_up, section_runs_on, section_tasks, section_workplace, shutdown, since, st_blocked, st_in_progress, st_new, st_ready, st_review, task, today, tomorrow, until, untasked, waiting_days, waiting_for, why, with, workplace, yours_today, yours_today_one]
         additionalProperties: {type: string}
         description: |
           Any word the reader sees, by label name (docs/briefings.md lists them). A
           placeholder must be one the default label has; `briefing.py validate` checks it.
       buckets:
         type: array
-        description: "Order, titles, answer options. A bucket left out is hidden and counted."
+        description: "Order and titles. A bucket left out is hidden and counted. `drop` (older profiles) is accepted and shows nothing: its rows stand in the four. `options` is accepted and ignored: every bucket takes the same four answers."
         items:
           type: object
           required: [id]
@@ -241,7 +242,7 @@ $defs:
           properties:
             id: {enum: [do, plan, delegate, waiting, drop]}
             title: {type: string}
-            options: {type: array, items: {type: string}}
+            options: {type: array, items: {type: string}, description: "Ignored: every point takes the four answers (do, later, done, obsolete). Kept so older profiles validate."}
             nudge_after_days: {type: integer, minimum: 1}
       plan:
         type: object
@@ -346,7 +347,7 @@ $defs:
           A failed or skipped section never claims it.
       bucket:
         enum: [do, plan, delegate, waiting, drop, none]
-        description: "triage: put every row of this section in one bucket (none: leave it out of the view)."
+        description: "triage: put every row of this section in one bucket (none: leave it out of the view). `drop` (older profiles) is accepted: the rows take the bucket their own rule gives them."
       to_inbox:
         type: array
         items: {$ref: "#/$defs/rule"}

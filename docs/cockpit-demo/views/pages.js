@@ -7,11 +7,11 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   indexRows, stateToken, toneToken, gaugeArc, gaugeBands, gaugePoint, gaugeSection, meterScale, meterText,
   meterView, TONE_FILTERS, FILTER_TONE, actionRow, filterRows, groupRows, tagFacets, toneFilter, detailText,
-  sectionStamp, triageKey, triageShows, sectionTile, jobCounts, machineLines, pageSummary, short, tokenText, usageToday, tabStateKey,
+  sectionStamp, triageKey, sectionTile, jobCounts, machineLines, pageSummary, short, tokenText, usageToday, tabStateKey,
   jevList, TASK_LANES, taskLane, noiseRows, rowActionKey,
   skipFixable, skipText,
   cardPlan, moneyText, costBoard, itemRow, ghFiltered, ghMyLogin,
-  areaLog,
+  areaLog, workShows, flowBucketsOn, settingsAreaOf, adviceFolded,
 } from '../logic.js'
 import { reducedMotion } from '../motion.js'
 import { T, language } from '../text.js'
@@ -150,6 +150,12 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
   const tri = s.triage?.items?.[triageKey(it)] ?? null
   const [open, setOpen] = useState(false)
   const tone = it.tone ?? null
+  // with the briefing's buckets on, an inbox item or a task carries its bucket's bar with its number in the briefing,
+  // and nothing beside it the other views do not offer (round 2: Seen and Ask stood beside it only here)
+  // a row of Settings, Setup is configuration, no point of work: no bucket and no answers there (round 1: its rows
+  // wore "Planen" with Do it beside Seen and Steps)
+  const setup = !!settingsAreaOf(s.model, page)
+  const bar = flowBucketsOn(s) && !setup && !!actionRow(it, byKey) && !!(it.inbox || it.task)
   // an inbox item or task opens its drawer: a click anywhere on the row but its controls, or Enter on the row
   const itemKey = (section === 'tasks' || section === 'inbox' || it.inbox) ? triageKey(it) : null
   // an inbox item or task opens its own drawer, every other row the general detail
@@ -187,11 +193,12 @@ function InfoRow({ it, page, section, s, c, byKey, scale = 0, lead = null, queue
       ${it.link?.kind === 'web' ? html`<a class="btn btn-ghost btn-xs" href=${it.link.href} target="_blank" rel="noopener noreferrer">
         <${Icon} name="external" size=${14} /><span class="btn-label">${t.openLink}</span></a>` : null}
       ${it.link?.kind === 'file' ? html`<${Btn} size="xs" variant="ghost" icon="copy" cls="act-quiet" title=${it.link.path} onClick=${() => c.copy(it.link.path)}>${t.copyPath}<//>` : null}
-      <${PageItemActions} it=${it} s=${s} c=${c} /><${SeenBtn} k=${it.key} acked=${it.acked} loud=${tone === 'bad' || tone === 'warn'} c=${c} />
-      ${it.ask ? html`<${RowAsk} s=${s} c=${c} rowKey=${it.key} onAsk=${() => c.ask('info', { page, section, index: it.index })} />` : null}
+      ${setup && flowBucketsOn(s) ? null : html`<${PageItemActions} it=${it} s=${s} c=${c} />`}${bar ? null : html`<${SeenBtn} k=${it.key} acked=${it.acked} loud=${tone === 'bad' || tone === 'warn'} c=${c} />`}
+      ${it.ask && !bar ? html`<${RowAsk} s=${s} c=${c} rowKey=${it.key} onAsk=${() => c.ask('info', { page, section, index: it.index })} />` : null}
       ${(it.lines ?? []).length ? html`<${Btn} size="xs" variant="ghost" cls=${open ? '' : 'act-quiet'} pressed=${open} onClick=${() => setOpen(!open)}>${t.btnLines}<//>` : null}
       ${it.actions?.length && it.row_id ? html`<${RowSteps} it=${it} page=${page} section=${section} s=${s} c=${c} as=${steps} />` : null}
-      ${actionRow(it, byKey) && (it.inbox || it.task) ? html`<${RowBar} row=${actionRow(it, byKey)} s=${s} c=${c} tab=${it.tab} pin=${false} />` : null}
+      ${bar ? html`<${RowBar} row=${actionRow(it, byKey)} s=${s} c=${c} tab=${it.tab} pin=${false} nr />` : !(setup && flowBucketsOn(s)) && actionRow(it, byKey) && (it.inbox || it.task)
+        ? html`<${RowBar} row=${actionRow(it, byKey)} s=${s} c=${c} tab=${it.tab} pin=${false} />` : null}
     </span></td>
   </tr>`
 }
@@ -476,7 +483,8 @@ export function PageSection({ page, section, s, c, q = '', topic = null }) {
   const all = more ? more.items : (section.items ?? [])
   // (the taskboard draws no triage bar to undo it, so it shows every task: components.js listed)
   const kept = (section.kind === 'tasks' || section.kind === 'inbox') && section.view !== 'taskboard'
-    ? all.filter(it => triageShows(it, s.triage?.items, s.ui.triageFilter)) : gh ? all.filter(it => ghShows(it, ghFilter, ghMyLogin(all))) : all
+    ? all.filter(it => workShows(it, s, byKey, s.ui.triageFilter)) : gh ? all.filter(it => ghShows(it, ghFilter, ghMyLogin(all)))
+    : all.filter(it => !adviceFolded(it, section, s, byKey))
   // the words of the page's search (views/timeline.js PageSearch): the rows that hold every one
   const words = q.trim()
   // the topic chip of a log (views/logpage.js): the rows of that context alone
@@ -759,7 +767,7 @@ export function JevList({ page, s, c }) {
   }, [page.id])
   const sections = (page.sections ?? []).map(sec => {
     const all = s.more[`${page.id}/${sec.id}`]?.items ?? sec.items ?? []
-    return { ...sec, items: all.filter(it => triageShows(it, s.triage?.items, s.ui.triageFilter)) }
+    return { ...sec, items: all.filter(it => workShows(it, s, byKey, s.ui.triageFilter)) }
   })
   const list = jevList(sections, s.jevOrder[page.id]?.order, t.workOrder.kinds)
   // one queue over both parts: after Jev's last row the detail walks on into the rest

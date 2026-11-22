@@ -182,11 +182,11 @@ why as "next: <step>" (the cockpit shows it as the point's step line). `who:` me
 | `style` | What the reader gets |
 |---|---|
 | `sources` | One block per section, in profile order. The default: a profile without `view:` looks as it always did. |
-| `triage` | Every row sorted by what to do with it: **do** (you, now), **plan** (you, no date), **delegate** (the Bridge does it), **waiting** (on someone else, with how long), **drop** (park it?). A thing two sources carry (the same issue on GitHub and on a board) is one row naming both. Housekeeping comes last. |
+| `triage` | Every row sorted by who is on the move and when: **do** (you, today), **plan** (you, no day yet), **delegate** (the Bridge does it), **waiting** (anyone else, with how long). A thing two sources carry (the same issue on GitHub and on a board) is one row naming both. Below the buckets one line says the four answers and one counts what is out of sight. Housekeeping comes last. |
 | `brevity` | The bottom line, then the top three with why each matters, then how many more. For a phone or a busy day. |
 | `plan` | Your rows laid into today's free calendar gaps, what the Bridge does meanwhile, and when the day ends. |
 | `report` | Markdown that reads like a report, by exception: one **status** line naming only what failed (✗) or needs a look (⚠, a `report_ok` section with rows) and the green ones in one go (✓), the calendar (a table from two events on), the **first** rows in bold, then each bucket as a short numbered list. A bucket shows `view.report.per_bucket` rows (default 5): first every row with a date or from a `report_ok` section, then the rest taken in turn from each source so one source cannot fill it, and counts the rest. A bucket's count leaves out the rows already shown under first. The status line names the numbers of the rows it warns about (`⚠ Upstream (1 → 7)`). When most rows are new, "new" is said once under the status line instead of on every row. `view.report.collapse` lists sections (a board, a tracker) that are counted in one line instead of listed; an item filed from them to the inbox still stands as a row. Each row has its title on one line and its facts on the next, with one date (a due date wins over "back on" and "look again"); a Do row does not repeat "only you", and a one-word category from a producer is left out. Tables only where rows compare. Issue and PR ids are links; internal ids stay out. |
-| `calm` | The report's rows said quietly, for a person who found the report restless: a date line and one sentence ("A free day. 3 for you today, 4 waiting on others."), then **Today**, **Next days** (dated rows first, the date in front: "Until 30.11: …"), **Waiting on others** with each row numbered, its name, its topic and its date, **I'll do it if you want** (delegate), one count of the rest and how to answer ("3 yes"). Bold only for headings; no italics, no brackets of facts, no answer letters, no status line unless a section failed. A task row says its next step; a title opens its issue or PR, else its task's `STATUS.md`. Waiting items that come back later need a section `{kind: inbox, deferred: runs, bucket: waiting}`. Uses `view.report.per_bucket`, `view.report.collapse` and `view.off_days`. |
+| `calm` | The report's rows said quietly, for a person who found the report restless: a date line and one sentence ("A free day. 3 for you today, 4 waiting on others."), then the buckets in the profile's order under their own titles, the same as every style and the cockpit (Do, Plan with dated rows taken first, the date in front: "Until 30.11: …", I'll do and Waiting on others; de: Tun, Planen, Mache ich, Wartet auf andere) with each row numbered, its name, its topic and its date, one count of the rest, what is out of sight and how to answer ("3 do", "3 later monday"). Bold only for headings; no italics, no brackets of facts, no answer letters, no status line unless a section failed. A task row says its next step; a title opens its issue or PR, else its task's `STATUS.md`. Waiting items that come back later need a section `{kind: inbox, deferred: runs, bucket: waiting}`. Uses `view.report.per_bucket`, `view.report.collapse` and `view.off_days`. |
 
 ```yaml
 view:
@@ -198,19 +198,18 @@ view:
   overview: inline         # inline | file: Boards and Activity below the buckets, or in a file
   agenda: true             # Calendar block: every event from now through the lookahead, overlaps marked
   since_last: true         # "since 07:18: 2 new, 1 changed"
-  lookahead_days: 1        # due within today + 1 day counts as now; deferred items coming back show
+  lookahead_days: 1        # due within today + 1 day counts as now (a view with buckets keeps put-off items out of sight)
   max_items: 12            # the whole briefing, then "+N more" and an explicit end
-  answer_keys: true        # numbered rows, letters per bucket: answer "1a 3b"
+  answer_keys: true        # one line below the buckets says the four answers: "3 do", "3 later monday"
   hygiene: bottom          # bottom | hide
   color: auto              # colour only where it means something; none = never
   width: 100               # rows wrap at a word, never cut inside one
   labels: {end: "That's all for today."}
-  buckets:                 # order, titles, answer letters; a bucket left out is hidden and counted
-    - {id: do, title: "Do (you, today)", options: [yes, later, drop]}
+  buckets:                 # order and titles; a bucket left out is hidden and counted
+    - {id: do, title: "Do (you, today)"}
     - {id: delegate, title: "I'll do"}
     - {id: plan}
     - {id: waiting, nudge_after_days: 7}
-    - {id: drop}
   plan:                    # style plan only
     workday: {start: "08:00", end: "17:00"}
     default_minutes: 30
@@ -245,10 +244,12 @@ which agent renders it, and the cockpit's Work through sorts its points by the s
 
 | Source | Bucket |
 |---|---|
-| inbox item, urgency `now`/`today`, or due within the lookahead | do |
+| inbox item, urgency `now`/`today`, due within the lookahead, or an ask only you can answer (`only-you`) | do |
 | inbox report (`finding`, `result`) that is not `now`/`today`, not due within the lookahead and not `only-you` | delegate: the Bridge looks at it first |
 | inbox item otherwise | plan |
-| inbox item deferred and back within the lookahead | do if only you can or it is due within the lookahead, else plan |
+| inbox item deferred to a day after today (Later), tomorrow too, also one that keeps whom it waits on (`defer --on` without `--check`) | none: out of sight until that day, counted as later (one with someone until a check-in, `--check`, or put off to the Bridge stands in its bucket, below) |
+| task waiting (`blocked_by`) and put off to a day after today (`quiet_until`, task.py wait) | none: out of sight until that day, counted as later |
+| inbox item you said yes to (`inbox.py approve`, the cockpit's Yes), not `only-you` | delegate: the Bridge runs it, it is not asked again |
 | inbox item deferred waiting on the Bridge (`inbox.py defer --on Bridge`) | delegate, or do when only you can take its next click (`only-you`: a login, a send); never waiting, also in a section forced to `bucket: waiting` |
 | inbox item the briefing filed from a tracker row (`to_inbox`) | the same row as that tracker row, not a second one |
 | inbox item waiting for a condition (`waits_for`, [inbox.md](inbox.md)) | waiting, worded "Waiting for: …" (label `waiting_for`) |
@@ -258,7 +259,7 @@ which agent renders it, and the cockpit's Work through sorts its points by the s
 | task with `next.who` naming anyone else | waiting, with days since `last_updated` |
 | task with `blocked_by` | waiting, with days since `blocked_since` (else `last_updated`); a nudge once `nudge_after_days` passed |
 | task without a next step | housekeeping: "N tasks without a next step" |
-| advice `quiet` | drop (the task shows once, there) |
+| advice `quiet` | no bucket of its own: the task stays where its next step puts it and says "resting for N days" (label `resting`, `resting` on the row); a quiet task without a row (no tasks section, no next step) stands in plan under its own title, the advice beside it |
 | advice `collision` | do · `wip`: housekeeping · `blocked`, `waiting`, `due`: carried by their row |
 | tracker row in review or `category: qa` | do · `blocked`: waiting · done/removed: left out · else plan |
 | tracker rows with `untasked: true` | housekeeping: "<section>: assigned to you without a task: N" (label `untasked`), beside their own rows |
@@ -270,8 +271,10 @@ which agent renders it, and the cockpit's Work through sorts its points by the s
 When two sources carry the same thing, the row takes the more urgent bucket of
 the two, unless a section forces its own. Only ids that name their repository
 (`owner/repo#12`) are merged across sections; any other id (a command's `1`, an
-ADO number) stays apart per section. A section's `max:` still caps how many rows
-it contributes. A section can force its rows into one bucket (`bucket: delegate`),
+ADO number) stays apart per section. A view with buckets sorts every row of a
+section, also past its `max:` (that caps the section's own block in `sources` and
+the JSON), and `max_items` cuts what is printed, so the printed briefing and the
+cockpit put each row in the same bucket and count the same. A section can force its rows into one bucket (`bucket: delegate`),
 which wins over the derived bucket, or keep them out of the view (`bucket: none`).
 Advice that repeats a row (`blocked`, `waiting`, `due`) is folded into that row
 and stands alone only when no such row is shown.
@@ -287,23 +290,76 @@ put off for later. Two inbox items of one task stay two lines, since each is a
 lever of its own; of several, the most urgent takes the folded rows. A command
 row is folded only when it names its task (`task` or `about_task` on the item).
 
+**Four buckets, nothing else.** Every point answers who is on the move and when: you today
+(do), you without a day (plan), the Bridge (delegate), anyone else (waiting). There is no
+bucket "park or drop" any more: a task nobody touched for long stays in its own bucket and
+says how long it rests. An older profile that still lists `drop` in `view.buckets`, or a
+section with `bucket: drop`, validates; that bucket shows nothing and its rows take the bucket
+their own rule gives them. A bucket's `options` validate and are ignored.
+
+**Out of sight, counted.** Below the buckets one line counts what no bucket shows (label
+`aside`, empty when all are zero): **later** (put off to a day after today, also tomorrow, it
+comes back on that day by itself: an inbox item deferred without anyone it waits on, a row
+hidden in the cockpit until a day; the view names these inbox items as `away`, so the cockpit
+leaves them out of its buckets too), **watch list** (parked without a day: a task with status
+`backlog`, an inbox item or a row put off to the watch list's day `9999-12-31`) and **done
+today** (an inbox item closed or dropped today, a task closed today, a row settled in the
+cockpit today). `collect --json` carries the counts as `view.aside`
+(`briefing.aside_counts`).
+
+**The four answers.** Every numbered row takes the same four answers, in every style and in
+the cockpit: **do** ("mach": the Bridge takes the next step), **later** ("später", with an
+optional day: "3 later monday", "3 später 3.12.", "3 später merkliste"; no day is tomorrow),
+**done** ("erledigt"; a stream is done for this time and runs on) and **obsolete**
+("veraltet": closed as not done, with a note). With `answer_keys` one line below the buckets
+says them ("Answer with a number and a word: do · later · done · obsolete", label
+`answer_legend`); a letter picks them in that order ("3b" is later). The words of the
+answers before them stay accepted: ja, yes, los, go, nachfassen, nudge (do); einplanen,
+schedule, nicht jetzt, not now, warten, wait, behalten, keep (later), parken, park (later onto
+the watch list); streichen, drop (obsolete). The words, the parser and what each answer does
+to an inbox item, a task, a stream, a waiting point, an issue and a tab are one module,
+`scripts/lib/answers.py`; the view carries its definitions as `view.answers` (the four with
+their labels in the profile's language, the Later choices tomorrow, Monday, in a week, pick a
+day, watch list, and the More entries), so the cockpit never derives them again. What each
+one runs: [control.md](../skills/briefing/references/control.md).
+
 **The numbers.** Every row the printed briefing shows has a number, one rule for every
-style that numbers (`briefing_view.numbered`): `triage` every row of every bucket, `report`
-the first rows and then those listed per bucket, `calm` Today, Next days, Waiting on others
-and what the Bridge offers, in that order (`brevity` and `plan` number nothing). The built
-view carries it on each row as `nr`, and "3 yes" answers that row. The cockpit asks for every
-row (`collect --max-items 500`) and still gets the printed number: such a pass numbers by the
-profile's own style and `max_items` and leaves out what was settled in the cockpit, so a card
-of Work through says the number the chat shows ([Buckets](bridge-cockpit.md#buckets)). The
-view also names every shown bucket with its title and answers, an empty one too
-(`bucket_defs`), in the profile's order.
+style that numbers (`briefing_view.numbered`): `triage` every row of every bucket, also with
+`answer_keys: false`, `report` the first rows and then those listed per bucket, `calm` every
+row of every bucket as `triage` does, printing a few of each bucket by their own numbers. The numbers run in the order of the buckets as the profile
+lists them, the order the cockpit shows them in; `brevity` and `plan` number every row in that order too and
+print the numbers of the rows they show. A row keeps its number all day: the day's number book
+(`.bridge/cockpit/numbers/<profile>.json`, written by `render` and `collect` unless `--no-save`) gives a row
+the number it had today and a row new today the next number nobody had, so an answer moves no other row's
+number; each bucket then lists its rows by their numbers. An agent tab that asks in a dialog and stands for no task
+or inbox item (the workplace section reads it from the driver) is a row of Do, shown first and numbered after
+every other row. A task the profile lists without a next step is no row and no point of the cockpit either
+(housekeeping counts it). On the first run of a day a row's
+number is its place in the whole list, also when `max_items` leaves it out of this print: a short
+print shows its rows with gaps between the buckets (1 to 3, then 48 to 50), a long one
+(`--max-items 300`) every number once, and both name a row by the same number. The
+built view carries it on each row as `nr`, and "3 do" answers that row; a number the print
+leaves out (a cockpit card names it) is read from `collect --max-items 500 --json`. The cockpit asks for every
+row (`collect --max-items 500`) and still gets the printed number: both read the same rows, and
+such a pass numbers by the profile's own style and leaves out what was settled in the cockpit, so a card
+of Work through says the number the chat shows ([Buckets](bridge-cockpit.md#buckets)). A stream
+the profile does not read (`streams: true` on its tasks section) is no point of the cockpit's
+buckets either, so every point there has a number. The
+view also names every shown bucket with its title, an empty one too (`bucket_defs`), in the
+profile's order, titled in the profile's language by default (Tun, Planen, Mache ich, Wartet
+auf andere).
+
+**Obsolete** is the last answer and the quiet one. It does what the cockpit's Obsolete does
+([Buckets](bridge-cockpit.md#buckets)): an inbox item is dropped with the note "veraltet" and
+`--reason outdated`, a task is closed as not done with the reason noted, a stream is ended the
+same way, an issue or a pull request is hidden in the cockpit and stays open on GitHub.
 
 **The headline count.** "N asks for you today" counts the asks among the Do rows
 (every row that is no inbox item, and of the inbox only an ask). When Do holds
 more, reports and ideas filed for today, they are counted apart ("· 3 reports",
 label `do_reports`), so the number never stands unexplained above a longer list. Housekeeping (failed sources,
 muted rows) shows in every style, `brevity` included; `plan` shows every row
-somewhere (laid out, meanwhile, waiting, drop, later), so it has no "+N more". The next step of a task is a frontmatter field
+somewhere (laid out, meanwhile, waiting, later), so it has no "+N more". The next step of a task is a frontmatter field
 in its STATUS.md: `next: {what: "Draft the request", who: bridge, due: 2026-10-07,
 estimate_min: 20}` (`who`: `bridge`, `me`, or a person).
 
@@ -312,6 +368,7 @@ the person's language: `yours_today`, `do_reports` and `also_asked` (each with a
 one; a profile that sets only the plural gets it for one too), `free_until`, `free_rest`, `busy_until`,
 `next_date`, `since`, `today`, `tomorrow`, `due`, `back_on`, `only_you`,
 `collides`, `waiting_days`, `waiting_for`, `with`, `task`, `next_step`, `nudge`, `new`, `housekeeping`,
+`resting` (with `resting_one`), `answer_legend`, `aside`, `aside_later`, `aside_list`, `aside_done_today`,
 `no_next`, `muted`, `hidden`, `error`, `workplace`, `more`, `end`, `why`,
 `meanwhile`, `later`, `shutdown`, `activity_title`, `commits`, `boards_title`,
 `st_new`, `st_ready`, `st_in_progress`, `st_review`, `st_blocked`, `agenda_title`,

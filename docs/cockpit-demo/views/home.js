@@ -4,7 +4,7 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, workPageOf, homeCatalog, homeChosen,
+  attentionTabs, duration, indexRows, short, stateToken, canTab, previewText, tabLines, tabWords, shownNumber, flowBucketsOn, waitingRows, doWord, workPageOf, homeCatalog, homeChosen,
   homeContinue, homeProjects, homeView, inProject, meterPace, projectTone, tabOfTask, asksYou, countInProject, focusPick,
   nextEvent, untilText, liveStage, stageTone, homeRowQueue, RETURN_STAGES, greetingText, dayLabel, workPageId,
   rowProject, homeAreas, areasCoverProjects, areaJump, homeQuota, tabStateKey, AREA_PAGES, areaScope, tickerPage, rowConv, askMark,
@@ -32,7 +32,7 @@ import { TickerBand, TickerStatusList } from './ticker.js'
 export function pageTitleOf(s, id) {
   const t = T()
   const fixed = { briefing: briefingTitle(s), [SESSIONS_PAGE]: t.sessionsTab, [WORKERS_PAGE]: t.workersTab, [CHAT_PAGE]: t.chatTab,
-    [AGENTS_PAGE]: t.agentsTab, [CHECK_PAGE]: t.reviewTab, [JEV_PAGE]: 'Jev', [SETTINGS_PAGE]: t.settings.title }
+    [AGENTS_PAGE]: t.agentsTab, [CHECK_PAGE]: t.reviewTab, [JEV_PAGE]: 'Jev', [SETTINGS_PAGE]: t.settings.title, '@files': t.filesTab }
   return fixed[id] ?? (s.model?.pages ?? []).find(p => p.id === id)?.title ?? id
 }
 
@@ -85,7 +85,7 @@ export function ReturnCard({ r, s, c }) {
     ${row ? html`<p class="rcard-tags"><${KindTag} row=${row} s=${s} /><${OriginTag} row=${row} /></p>` : null}
     <${ReturnSteps} stage=${r.live} />
     ${r.result?.text ? html`<p class="rcard-answer"><span class="label-caps">${h.returnAnswer}</span> ${short(r.result.text, 280)}</p>`
-      : r.tab?.last || tab?.last ? html`<p class="rcard-last mono">${short(previewText(tab?.last ?? r.tab.last), 160)}</p>` : null}
+      : tabWords(tab ?? r.tab) ? html`<p class="rcard-last mono">${short(tabWords(tab ?? r.tab), 160)}</p>` : null}
     ${r.live === 'lost' ? html`<p class="rcard-answer"><span class="label-caps">${h.returnStage.lost}</span> ${h.returnLostHint}</p>` : null}
     ${closable ? html`<p class="small"><${StateLine} token="success" word=${h.returnSettled} /></p>` : null}
     <div class="hcard-acts">
@@ -143,7 +143,7 @@ export function ReturnPanel({ s, c, keys }) {
       <span class="muted small">${h.returnMode[r.mode] ?? r.mode} · ${h.returnAgo(ago)}</span></header>
     <${ReturnSteps} stage=${r.live} />
     ${r.result?.text ? html`<p class="rcard-answer"><span class="label-caps">${h.returnAnswer}</span> ${r.result.text}</p>`
-      : tab?.last || r.tab?.last ? html`<p class="rcard-last mono">${short(previewText(tab?.last ?? r.tab.last), 220)}</p>` : null}
+      : tabWords(tab ?? r.tab) ? html`<p class="rcard-last mono">${short(tabWords(tab ?? r.tab), 220)}</p>` : null}
     ${r.live === 'lost' ? html`<p class="rcard-answer">${h.returnLostHint}</p>` : null}
     <div class="hcard-acts">
       ${r.result?.key ? html`<${Btn} size="xs" variant="primary" onClick=${() => c.openItem(r.result.key, null)}>${h.returnOpenAnswer}<//>` : null}
@@ -209,16 +209,18 @@ export function PinStar({ rowKey, s, c }) {
 function useTabPreview(tab, c, on) {
   const [text, setText] = useState('')
   useEffect(() => {
-    if (!on || previewText(tab.last)) return
+    if (!on || tabWords(tab)) return
     let live = true
     c.tabScreen(tab.ref).then(res => {
       if (!live || !res?.ok) return
-      const lines = String(res.data?.text ?? '').split('\n').map(previewText).filter(Boolean)
-      setText(lines.slice(-3).join(' · '))
+      // the question of the screen read now, else its last lines without Claude Code's own (tabWords)
+      const text = String(res.data?.text ?? '')
+      const lines = tabLines(text, 1000)
+      setText(tabWords({ ask: { text: lines.join('\n') } }) || lines.slice(-3).join(' · '))
     })
     return () => { live = false }
   }, [tab.ref, tab.since_ms, on])
-  return previewText(tab.last) || text
+  return tabWords(tab) || text
 }
 
 /** An agent tab as a card: the band carries its project and the last lines of its screen, like a thumbnail */
@@ -251,7 +253,7 @@ function HomeTabCard({ tab, s, c, preview }) {
  *  its detail walks on through them */
 function HomeRowCard({ row, s, c, tab, big = false, queue = null }) {
   const t = T()
-  const n = s.model?.numbers?.[row.key] ?? row.number
+  const n = shownNumber(row, s)
   const project = rowProject(row)
   return html`<article class=${`hcard hcard-row${big ? ' hcard-focus' : ''}`}>
     <div class="hcard-row-head">
@@ -703,7 +705,8 @@ function HomeBoard({ s, c }) {
     .find(p => p.toLowerCase() === String(s.ui.area ?? '').trim().toLowerCase()) ?? null
   const cont = homeContinue(tabs, project)
   // the shelf is named waiting on you: the asks of Now, as the tile beside it counts them (an idea asks nothing)
-  const waiting = waitingAll.filter(r => asksYou(r) && inProject(r, project))
+  // with the buckets on: the rows of Do (you, today), the same the tile and the badge count (buckets.js waitingRows)
+  const waiting = flowBucketsOn(s) ? waitingRows(s, project) : waitingAll.filter(r => asksYou(r) && inProject(r, project))
   const tasks = tasksAll.filter(r => inProject(r, project))
   const now = new Date(s.now || Date.now())
   const day = dayLabel(now, lang)
@@ -734,7 +737,7 @@ function HomeBoard({ s, c }) {
   // what happened today is long and read last, so it closes the page
   const diary = withDay ? html`<${DayPages} s=${s} c=${c} shelf />` : null
   const shelves = html`
-    ${on.has('s:returns') ? html`<${HomeShelf} id="home-returns" title=${h.returnsTitle} count=${backs.filter(r => r.live !== 'done').length} empty=${h.returnsEmpty}>
+    ${on.has('s:returns') ? html`<${HomeShelf} id="home-returns" title=${h.returnsTitle} count=${backs.filter(r => r.live !== 'done').length} empty=${flowBucketsOn(s) ? h.returnsEmptyWord(doWord(s, language())) : h.returnsEmpty}>
       ${backs.slice(0, 8).map(r => html`<${ReturnCard} key=${r.key} r=${r} s=${s} c=${c} />`)}
     <//>` : null}
     ${on.has('s:pinned') ? html`<${HomeShelf} id="home-pinned" title=${h.pinnedTitle} count=${pinned.length} empty=${h.pinnedEmpty}>
@@ -773,7 +776,7 @@ function HomeBoard({ s, c }) {
     <header class="home-hero">
       <p class="home-eyebrow">${day}</p>
       <h1 class="home-title">${greetingText(now.getHours(), person, h.greeting)}.</h1>
-      ${s.model?.headline ? html`<p class="home-lead">${leadOf(s.model)}</p>` : null}
+      ${s.model?.headline ? html`<p class="home-lead">${leadOf(s.model, s)}</p>` : null}
       ${flowOn(s) ? html`<${SeenLine} seen=${flowAreas(s).seen} c=${c} />` : null}
       <${HomeAsk} s=${s} c=${c} />
       ${(s.model?.alarms ?? []).length || relayDown ? html`<div class="home-signals">

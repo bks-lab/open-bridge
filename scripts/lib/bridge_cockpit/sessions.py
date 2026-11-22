@@ -482,6 +482,7 @@ class Sessions:
         except OSError:
             files = []
         alive_pids = set()
+        own = own_folders(Path(self.app.root))
         for path in files:
             data = _json(path)
             if not isinstance(data, dict):
@@ -492,6 +493,8 @@ class Sessions:
             if not isinstance(cwd, str) or not self.alive(pid):
                 continue
             alive_pids.add(pid)
+            if not place_of(Path(cwd), own)[0]:
+                continue        # another Bridge's session is none of this one (round 1: a test Bridge listed the real one's)
             started = int(data.get("startedAt") or 0) if isinstance(data.get("startedAt"), (int, float)) else 0
             folder = base / "projects" / project_slug(cwd) / sid
             surface, tab_slug = self.env_of(pid)

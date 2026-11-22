@@ -11,7 +11,8 @@ from . import model as m
 from . import returns as ret
 from .collector import START_HOLD_MS
 from .history import item as history_item
-from .actions_base import (ACTIVE_INBOX_STATES, CMUX_TIMEOUT, INBOX_ID_RE, LAUNCH_TIMEOUT, SHORT_TIMEOUT, SLUG_RE,
+from .runner import acting_as
+from .actions_base import (ACTIVE_INBOX_STATES, CMUX_TIMEOUT, INBOX_ID_RE, LAUNCH_TIMEOUT, LIST_DAY, SHORT_TIMEOUT, SLUG_RE,
                            TAB_REF_RE, Ctx)
 
 
@@ -38,6 +39,13 @@ class LaunchSteps:
         # It runs on the machine that is the inbox runner, at the next pass; never `inbox.py run` from here.
         # Until then the yes can be taken back from the history (inbox reopen clears it).
         ctx.history.append(history_item(row["key"], row["title"], "inbox", "approved", item))
+        if self.buckets_on():
+            # the point stays: a yes given is the Bridge's to run, it stands in I'll do (round 1 of the four answers:
+            # settled, it left every bucket while the briefing listed it there, and By source offered Do it again)
+            ctx.note(f"{self.tx['approved_note']}: {m.short(row['title'], 60)}")
+            ctx.delta()
+            self.app.collector.request("both")
+            return True
         self.settle(ctx, row, self.tx["approved_note"])
         return True
 
@@ -47,11 +55,20 @@ class LaunchSteps:
         for twin in self.app.collector.twins(key)[1:]:
             self.app.store.unhide(twin)
 
+    def buckets_on(self) -> bool:
+        """Work through by the briefing's buckets (cockpit.flow.buckets on, the page's flowBucketsOn): the four
+        answers' own words in the toasts. A person's page keeps Work through as it is (flowBucketsOn leaves it out), so
+        an answer from it is the classic one (round 4: a yes there did not settle the item the classic page showed)"""
+        flow = getattr(self.app.cfg, "flow", None) or {}
+        return (flow.get("enabled") is True and (flow.get("buckets") or {}).get("enabled") is True
+                and acting_as() is None)
+
     def hide_until(self, ctx: Ctx, row: dict, until: str) -> None:
         self.clear_twins(row["key"])
         self.app.store.hide(row["key"], until, str(row["title"]))
-        ctx.history.append(history_item(row["key"], row["title"], "other", f"hidden until {until}"))
-        ctx.note(self.tx["hidden_note"].format(until=until, title=m.short(row["title"], 60)))
+        listed = until == LIST_DAY
+        ctx.history.append(history_item(row["key"], row["title"], "other", "on the watch list" if listed else f"hidden until {until}"))
+        ctx.note(self.tx["hidden_list_note" if listed else "hidden_note"].format(until=until, title=m.short(row["title"], 60)))
 
     def jump_to(self, ctx: Ctx, tab: dict) -> bool:
         ref = tab["ref"]
@@ -102,7 +119,8 @@ class LaunchSteps:
             if getattr(app, "launch_model", None) is not None else None
         if chosen:
             argv += ["--model", chosen["model"], *(["--effort", chosen["effort"]] if chosen["effort"] else [])]
-        word = word or (tx["launch_team"].format(role=team["name"]) if team else tx["btn_do"] if mode == "go"
+        do_word = tx["btn_do_it"] if self.buckets_on() else tx["btn_do"]     # one act, one label: Do it of the four
+        word = word or (tx["launch_team"].format(role=team["name"]) if team else do_word if mode == "go"
                 else tx["launch_context"] if mode == "context" else tx["btn_advise"])
         areas = list(dict.fromkeys(r.get("area") for r in rows if m.launch_item(r) in items and r.get("area")))
         where = tx["where_area"].format(name=areas[0]) if target == "area" and len(areas) == 1 else tx["where"][target]
@@ -173,11 +191,12 @@ class LaunchSteps:
                                   **({"conv": r["conv"]} if r.get("conv") else {})}
                                  for r in launched if r.get("key") and m.launch_item(r)])
             # and the item's own log says so, for every other reader (returns.py)
-            line = ret.start_line(mode, app.cfg.language)
+            line = ret.start_line(mode, app.cfg.language, do_word if mode == "go" and not team and self.buckets_on() else None)
             for r in launched:
                 item = m.launch_item(r)
                 if r.get("task") == item and SLUG_RE.match(item):
-                    ctx.call("task.note", item, self.task_cmd("note", item, "--", line), SHORT_TIMEOUT)
+                    # bookkeeping of the start, no activity on the task: its quiet and waiting days go on counting
+                    ctx.call("task.note", item, self.task_cmd("note", item, "--quiet", "--", line), SHORT_TIMEOUT)
                 elif item and INBOX_ID_RE.match(item):
                     ctx.call("inbox.note", item, self.inbox("note", item, "--", line), SHORT_TIMEOUT)
         only_running = run.ok and any_skipped and not launched
@@ -232,7 +251,8 @@ class LaunchSteps:
             return None
         until = (self.today() + dt.timedelta(days=30)).isoformat()
         self.clear_twins(row["key"])
-        self.app.store.hide(row["key"], until, str(row["title"]))
+        # the filed item stands for the row: no Later, nothing was put off (round 3 of the four answers)
+        self.app.store.hide(row["key"], until, str(row["title"]), filed=new_id)
         # the row is back with "show again", from the toast or the history; the inbox item stays
         ctx.history.append(history_item(row["key"], row["title"], "other", f"filed, hidden until {until}"))
         ctx.settled.append(row["key"])

@@ -591,9 +591,14 @@ export function displayedRows(model, expanded, byKey, heightPx = 0) {
   return out
 }
 
-/** Number to row, from model.numbers */
-export function rowByNumber(model, byKey) {
+/** Number to row, from model.numbers; `brief` (the buckets on) by the printed briefing's numbers instead, the only
+ *  ones the page then shows (buckets.js shownNumber) */
+export function rowByNumber(model, byKey, brief = false) {
   const out = new Map()
+  if (brief) {
+    for (const r of byKey.values()) if (Number.isInteger(r?.brief_nr) && !out.has(r.brief_nr)) out.set(r.brief_nr, r)
+    return out
+  }
   for (const [key, n] of Object.entries(model?.numbers ?? {})) {
     const r = byKey.get(key)
     if (r) out.set(n, r)
@@ -806,6 +811,12 @@ export function isTypingTarget(el) {
 }
 
 /** Display a YYYY-MM-DD date with Intl in the page language; the raw text if unparsable */
+/** A note's text with every ISO day (2026-11-22) said the way the page says days (formatDay): the server words
+ *  its notes with the day as it writes it down */
+export function noteDays(text, lang) {
+  return String(text ?? '').replace(/(?<![\w-])(\d{4}-\d{2}-\d{2})(?![\w-])/g, iso => formatDay(iso, lang))
+}
+
 export function formatDay(iso, lang, withYear = false) {
   if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso ?? ''
   const d = new Date(`${iso.slice(0, 10)}T12:00:00`)
@@ -2222,7 +2233,7 @@ export function waitLage(tab) {
  *  a question mark at the end), options, or a draft in its prompt. Every waiting tab has its last words read, so
  *  words alone ask nothing; a tab that said it is done closes */
 export function asksSomething(ask) {
-  return !!ask && !!(ask.yes_no || ask.options?.length || ask.draft || /\?\s*$/.test(ask.text ?? ''))
+  return !!ask && !!(ask.yes_no || ask.asks || ask.options?.length || ask.draft || /\?\s*$/.test(ask.text ?? ''))
 }
 
 /** The close of a tab wherever a point or a card has one (views/detail.js TabClose), null where it may not close
@@ -2975,6 +2986,8 @@ export function replyOptions(tab, s, t = TABLES.en) {
     if (ready && ask.hash && key) {
       buttons.push({ id: 'accept', verb: 'tab_accept', label: r.accept(short(ready, 60)), args: { tab_ref: tab.ref, text: ask.suggestion, ...replyGuard(tab) } })
     }
+    // a draft nobody can send from here ("#" typed): the way to the tab, where it is cleared or sent
+    if (!buttons.length && canTab(s, 'focus')) buttons.push({ id: 'open', verb: 'tab_jump', label: r.openTab, args: { tab_ref: tab.ref } })
     return { buttons, textBox: false }
   }
   if (!send) return none
@@ -2982,7 +2995,10 @@ export function replyOptions(tab, s, t = TABLES.en) {
     buttons.push({ id: 'yes', ...replySend(tab, r.yesText), label: r.yes })
     buttons.push({ id: 'no', ...replySend(tab, r.noText), label: r.no })
   }
-  if (!tab.filed_by) buttons.push({ id: 'goOn', verb: 'tab_go_on', label: r.goOn, args: { tab_ref: tab.ref, ...replyGuard(tab) } })
+  // no go on where the tab asks which way or for an answer of its own (by number, a choice): only its words answer
+  // that (round 3 of the four answers: the briefing tab and a which-way question got "Go on"); a yes or no keeps it
+  const asks = !!(ask && !ask.yes_no && (ask.asks || /\?\s*$/.test(String(ask.text ?? ''))))
+  if (!tab.filed_by && !asks) buttons.push({ id: 'goOn', verb: 'tab_go_on', label: r.goOn, args: { tab_ref: tab.ref, ...replyGuard(tab) } })
   return { buttons, textBox: true }
 }
 
@@ -3221,8 +3237,10 @@ export function homeViewSet(chosen, view) {
 /** The parts of the list view, each thing once in the order the page reads: the one next step, the tabs
  *  that ask you, the rows that wait on you, the pinned rows, the tasks, then the tabs that work and the
  *  ones that rest. A tab that belongs to a shown row stands on that row (`tabOf`), not again on its own */
+const ASK_STATES = new Set(['needs-you', 'waiting'])
+
 export function homeListParts(tabs, model, { project = null, pins = [] } = {}) {
-  const live = (tabs ?? []).filter(x => !x.is_control && x.state !== 'shell' && inProject(x, project))
+  const live = (tabs ?? []).filter(x => !x.is_control && x.state !== 'shell' && inProject(x, project) && !(ASK_STATES.has(x.state) && tabHeld(x, model)))
   const rows = id => ((model?.sections ?? []).find(x => x.id === id)?.rows ?? []).filter(r => inProject(r, project))
   const pick = focusPick(live, { ...model, sections: [{ id: 'now', rows: rows('now') }, { id: 'work', rows: rows('work') }] })
   // a tab that asks for a row's work leads as that row, the tab on it
@@ -3309,10 +3327,24 @@ export function focusStep(queue, at, key, toFiles = false) {
   return key === 'n' && toFiles ? { files: true } : null
 }
 
+/** Whether an agent tab asks for nothing any more: its item or task is closed (`settled`), put off to a later day
+ *  (the briefing's `away`), or hidden here until a day or settled. It is no point then on any view, the tabs
+ *  column, Start and By source too, as in Work through (round 3 of the four answers: a tab whose item was put off
+ *  led Start as "needs you, Now" and kept the Do chip in the column) */
+export function tabHeld(tab, model) {
+  if (!tab) return false
+  if (tab.settled) return true
+  const keys = [tab.item ? `inbox:${tab.item}` : null, tab.slug ? `task:${tab.slug}` : null].filter(Boolean)
+  if (!keys.length) return false
+  if ((model?.away ?? []).some(a => keys.includes(a?.key))) return true
+  const today = isoDate(model?.collected_ms || Date.now())
+  return (model?.hidden ?? []).some(r => keys.includes(r?.key) && (r.settled_as != null || String(r.hidden_until ?? '').slice(0, 10) > today))
+}
+
 /** The one next step of the start page: a tab that asks you, else the first row waiting on you, else the
  *  first P0 or P1 task of the backlog; nothing when there is none */
 export function focusPick(tabs, model) {
-  const asking = (tabs ?? []).find(t => !t.is_control && t.state === 'needs-you')
+  const asking = (tabs ?? []).find(t => !t.is_control && t.state === 'needs-you' && !tabHeld(t, model))
   if (asking) return { kind: 'tab', tab: asking }
   const rows = id => (model?.sections ?? []).find(x => x.id === id)?.rows ?? []
   const first = rows('now')[0]
@@ -4788,6 +4820,13 @@ export function tickerFeedValid(feed) {
 // ---------------------------------------------------------------- toast timers
 
 /** How long a toast stays: a `bad` one until it is dismissed (null), every other its own linger */
+/** The toasts once the server answers again: its "does not answer" toast goes, it said something no longer true
+ *  (round 2: it stood 6 s after the server was back) */
+export function backOnline(toasts, table) {
+  const word = table?.errors?.network
+  return (toasts ?? []).filter(x => !word || x.text !== word)
+}
+
 export function toastLinger(tone, linger) {
   return tone === 'bad' ? null : linger
 }

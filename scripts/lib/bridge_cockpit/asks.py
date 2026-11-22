@@ -149,6 +149,26 @@ def _dialog(clean: list[str], scrub: Callable[[str], str]) -> tuple[list[dict], 
     return picked, above
 
 
+# words that ask: a question mark that ends a sentence anywhere in the last words (never one inside a word or a number),
+# or a request for an answer without one
+ASKS = re.compile(r"\?(?=\s|$|[\"'”“»)])|\b(?:antwort(?:e|et)?\s+(?:per|mit|bitte)|reply\s+(?:with|by)|answer\s+(?:with|by)|"
+                  r"bitte\s+w[äa]hlen?|w[äa]hle\s|choose\s+(?:one|between)|pick\s+one)\b", re.I)
+
+
+# a question that asks which way or what, not whether: a W-word at its start, or a choice between two ("A or B?")
+OPEN_START = re.compile(r"^(?:which|what|how|when|where|who|whom|why|welche[nmrs]?|was|wie|wann|wo|wer|wen|wem|warum|wieso|"
+                        r"weshalb|wohin|woher|womit)\b", re.IGNORECASE)
+CHOICE = re.compile(r"\b(?:or|oder)\b", re.IGNORECASE)
+
+
+def _open_question(words: str) -> bool:
+    """Whether the last question of a screen asks which or what rather than yes or no (round 1 of the four answers:
+    "Welchen Weg nimmst du, und soll die Antwort erst danach raus?" offered Ja as its strong answer)"""
+    last = re.split(r"(?<=[.!?])\s+", " ".join(words.split()))
+    question = next((q for q in reversed(last) if q.endswith("?")), "")
+    return bool(OPEN_START.match(question)) or bool(CHOICE.search(question))
+
+
 def question_of(text: str, state: str, scrub: Callable[[str], str]) -> dict | None:
     """The question a tab in `state` asks on this screen: {text, options, hash, yes_no, draft, suggestion}, or
     None when nothing readable is left. `scrub` takes out what must never reach the page (the cockpit's key).
@@ -179,12 +199,15 @@ def question_of(text: str, state: str, scrub: Callable[[str], str]) -> dict | No
     if not words and not options:
         return None
     words = _cap(words)
-    yes_no = words.endswith("?") or bool(options and YES.match(options[0]["label"]))
+    yes_no = (words.endswith("?") and not _open_question(words)) or bool(options and YES.match(options[0]["label"]))
+    # it asks, also where the question stands mid-text ("... or a million? That decides ...") or the words ask for an
+    # answer without a question mark ("Reply by number"): such a tab never counts as finished (model.asks_something)
+    asking = yes_no or bool(options) or bool(ASKS.search(words))
     # the options belong to the question: the same words over other options are another question
     material = state + words + "".join(f"\n{o['n']}. {o['label']}" for o in options)
     digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
     return {"text": words, "options": options, "hash": digest, "yes_no": yes_no, "draft": draft,
-            "suggestion": suggestion}
+            "suggestion": suggestion, "asks": asking}
 
 
 def draft_of(text: str) -> bool:

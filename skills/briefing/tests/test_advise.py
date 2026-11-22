@@ -87,6 +87,16 @@ def test_customer_task_going_quiet_is_today_internal_one_is_later(repo):
     assert found["tidy-scripts"]["urgency"] == "later"
 
 
+def test_a_long_block_names_the_task_by_its_title_never_its_slug(repo):
+    # Round 2 of the cockpit simulation: "check-the-invoice-export-for-northwind-a seit 52 Tagen blockiert" stood as a
+    # point's title; the quiet advice names the task by its title, the blocked one now too
+    task(repo, "vendor-wait", blocked_by="vendor answers", last_updated="2026-09-10")
+    status = repo / "work" / "tasks" / "vendor-wait" / "STATUS.md"
+    status.write_text(status.read_text(encoding="utf-8").replace("# vendor-wait", "# Wait for the vendor"), encoding="utf-8")
+    (found,) = advise.advise(repo, now=NOW)
+    assert found["summary"].startswith("Wait for the vendor") and "vendor-wait" not in found["summary"]
+
+
 def test_long_block_is_a_nudge_not_a_quiet_task(repo):
     task(repo, "vendor-wait", blocked_by="vendor answers", last_updated="2026-09-10")
     found = advise.advise(repo, now=NOW)
@@ -165,7 +175,7 @@ def test_a_finding_speaks_the_configured_language(repo):
     for i in range(4):
         task(repo, f"t{i}", last_updated="2026-10-05")
     wip = next(f for f in advise.advise(repo, now=NOW) if f["check"] == "wip")
-    assert wip["summary"] == "4 Aufgaben aktiv, Grenze 3: eine schließen oder parken"
+    assert wip["summary"] == "4 Aufgaben aktiv, Grenze 3: eine schließen oder auf die Merkliste setzen"
 
 
 def test_a_task_that_runs_on_is_quiet_until_its_day(repo):

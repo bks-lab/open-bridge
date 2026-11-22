@@ -5,8 +5,9 @@
 // again on a click (scripts/triage.py, cached per item, so a run costs cents). The dashboard's own
 // pieces stay in views/; this file only draws what the triage adds, from s.triage.
 
-import { html } from './vendor/htm-preact-3.1.1.module.js'
-import { TRIAGE_FILTERS, actionRow, centsText, checkPick, checkPickText, effortDots, startMode, triageCounts, triageKey, triageRunning } from './logic.js'
+import { html, useEffect } from './vendor/htm-preact-3.1.1.module.js'
+import { TRIAGE_FILTERS, actionRow, bucketCounts, bucketDefs, centsText, checkPick, checkPickText, effortDots, flowBucketsOn, startMode, triageCounts, triageKey,
+  triageRunning } from './logic.js'
 import { T, language } from './text.js'
 import { SettleMenu } from './views/day.js'
 import { useRoving } from './views/parts.js'
@@ -21,6 +22,9 @@ export function TriageGist({ tri, keyRow, c, s }) {
   const busy = keyRow && !!s.ui.busy[keyRow.key]
   // the model the check implies for an item the AI may do, while Auto is on (logic.js checkPick)
   const pick = checkPick(tri, s.launch)
+  // with the briefing's buckets on the row's bucket bar says who does it and offers the answers: the gist stays,
+  // the triage's own words (can go, the AI can do it, needs you) do not stand beside the bucket's
+  if (flowBucketsOn(s)) return html`<div class="tri"><span class="tri-gist">${tri.gist}</span></div>`
   return html`<div class="tri">
     <span class="tri-gist">${tri.gist}</span>
     <span class="tri-marks">
@@ -38,7 +42,7 @@ export function TriageGist({ tri, keyRow, c, s }) {
 }
 
 /** The strip over a task or inbox page: filters with counts, close what can go, sort again */
-export function TriageBar({ s, c, items, byKey }) {
+export function TriageBar({ s, c, items, byKey, more = [] }) {
   const t = T()
   const tr = s.triage ?? {}
   const map = tr.items ?? {}
@@ -49,13 +53,31 @@ export function TriageBar({ s, c, items, byKey }) {
   const running = triageRunning(s)
   const last = tr.last
   const keys = useRoving()
-  return html`<div class="panel panel-pad tri-bar tri-sort" role="group" aria-label=${t.triage.label}>
-    <span class="fbar-chips" role="radiogroup" aria-label=${t.triage.label} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
-      ${TRIAGE_FILTERS.map(k => html`<button type="button" role="radio" key=${k} aria-checked=${String(f === k)}
+  const buckets = flowBucketsOn(s)
+  const words = buckets ? bucketDefs(s, language()) : []
+  const bc = buckets ? bucketCounts(items, s, byKey, language()) : null
+  // with the buckets on the strip counts every row of the page, never only the first ones shown: the sections with
+  // more rows load them (round 2: "Planen 3" here, 29 in Work through), and a filter shows them all
+  const pending = more.join('|')
+  useEffect(() => {
+    if (!buckets) return
+    for (const id of more) { const [p, sec] = id.split('/'); c.loadMore?.(p, sec) }
+  }, [buckets, pending])
+  // with the buckets on the strip filters by the bucket words, the same as every row's chip (a filter `b:<id>`)
+  const chips = buckets ? html`${['all', ...words.map(b => b.id)].map(k => {
+    const v = k === 'all' ? 'all' : `b:${k}`
+    const on = (f === v) || (k === 'all' && !String(f).startsWith('b:'))
+    return html`<button type="button" role="radio" key=${v} aria-checked=${String(on)} class=${`fchip${on ? ' is-on' : ''}`}
+      disabled=${k !== 'all' && !bc[k]} onClick=${() => c.setTriageFilter(v)}>${k === 'all' ? t.triage.filter.all : words.find(b => b.id === k).title}${k !== 'all'
+        ? html` <span class="mono">${bc[k]}</span>` : null}</button>`
+  })}` : null
+  return html`<div class="panel panel-pad tri-bar tri-sort" role="group" aria-label=${buckets ? t.flow.buckets.label : t.triage.label}>
+    <span class="fbar-chips" role="radiogroup" aria-label=${buckets ? t.flow.buckets.label : t.triage.label} ref=${keys.ref} onKeyDown=${keys.onKeyDown}>
+      ${chips ?? TRIAGE_FILTERS.map(k => html`<button type="button" role="radio" key=${k} aria-checked=${String(f === k)}
         class=${`fchip${f === k ? ' is-on' : ''}`} disabled=${k !== 'all' && !counts[k]} onClick=${() => c.setTriageFilter(k)}>
         ${k !== 'all' ? html`<span class=${`dot tk-${TONE[k]}`} aria-hidden="true"></span>` : null}${t.triage.filter[k]}${k !== 'all' ? html` <span class="mono">${counts[k]}</span>` : null}</button>`)}
     </span>
-    ${closable.length ? html`<${SettleMenu} rows=${closable} s=${s} c=${c} />` : null}
+    ${closable.length && !buckets ? html`<${SettleMenu} rows=${closable} s=${s} c=${c} />` : null}
     <span class="tri-run">
       <span class="muted small">${running ? t.triage.running : last ? t.triage.last({ ...last, cost: centsText(last.cost_ct, language()) }, language()) : t.triage.never}</span>
       <button type="button" class="btn btn-ghost btn-xs" disabled=${running} aria-busy=${running ? 'true' : undefined}

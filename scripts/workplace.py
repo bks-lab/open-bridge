@@ -105,6 +105,7 @@ import sys
 import time
 import unicodedata
 import uuid
+from collections import Counter
 from pathlib import Path
 
 import yaml
@@ -368,6 +369,18 @@ def log_mentions(log_text: str, slugs: list, today: dt.date, days: int) -> dict:
                 entry["rows"] += 1
                 entry["last"] = max(entry["last"], day)
     return out
+
+
+def _came_back(root: Path, today: dt.date) -> dict:
+    """{slug: the day a Later of the cockpit on it came} (bridge_cockpit/settled.py came_back_days), {} without one"""
+    lib = str(Path(__file__).resolve().parent / "lib")
+    if lib not in sys.path:
+        sys.path.insert(0, lib)
+    try:
+        from bridge_cockpit.settled import came_back_days
+    except ImportError:
+        return {}
+    return came_back_days(root, today)
 
 
 def _score(task: dict, mention: dict | None, today: dt.date) -> tuple:
@@ -672,10 +685,38 @@ def inbox_tab_index(root: Path) -> dict:
         for short, ids in legacy.items():
             if len(ids) == 1:   # an old name that two items share names neither
                 index[f"Inbox {short}"] = index[f"inbox-{short}"] = ids[0]
+        # a summary label two items of the group share (ids without a hash, cut at the same word) names neither:
+        # the tab of one was bound to the other (round 2 of the simulation, 21.11.2026)
+        shared = Counter(labels[iid] for iid in group)
         for iid in group:
             short = inbox_slug(iid)
-            index[f"Inbox {short}"] = index[f"inbox-{short}"] = index[labels[iid]] = iid
+            index[f"Inbox {short}"] = index[f"inbox-{short}"] = iid
+            if shared[labels[iid]] == 1:
+                index[labels[iid]] = iid
+            elif index.get(labels[iid]) in group:
+                index.pop(labels[iid], None)
     return index
+
+
+def active_inbox_labels(root: Path) -> list:
+    """The launch labels of every active inbox item, one per item (two items may share one)"""
+    box_dir = root / "work" / "inbox"
+    if not box_dir.is_dir():
+        return []
+    mod = _inbox_module()
+    try:
+        rows = _inbox_index_states(root, box_dir, mod)
+    except (OSError, yaml.YAMLError):
+        return []
+    return [label for _, state, label in rows if state in mod.ACTIVE_STATES]
+
+
+def shared_labels(root: Path, cfg: dict, tasks: list | None = None) -> set:
+    """The labels that name more than one active thing (a task's cut heading, an inbox item's cut summary): a tab
+    under one of them is bound to nobody by its name, and a launch gives its tab the name only it has instead"""
+    tasks = collect_tasks(root) if tasks is None else tasks
+    names = Counter([tab_label(t, cfg) for t in tasks] + active_inbox_labels(root))
+    return {name for name, n in names.items() if n > 1}
 
 
 def _task_dir(root: Path, name: str) -> Path | None:
@@ -711,6 +752,7 @@ def build_launch(root: Path, cfg: dict, items: list, mode: str, team: str | None
     default_model, default_effort = agent_defaults(agent)
     model, effort = model or default_model, effort or default_effort
     out, used, seen = [], set(), set()
+    shared = shared_labels(root, cfg)
     for name in items:
         name = name.strip()
         if not name or name in seen:
@@ -757,6 +799,10 @@ def build_launch(root: Path, cfg: dict, items: list, mode: str, team: str | None
             placed_by = ("task" if linked and _task_dir(root, linked)
                          else "area" if named_workspace(placed, cfg) else "default")
             prompt = launch_prompt("inbox", mode, full, start_note=start_note)
+        if not (the_team and the_role) and label in shared:
+            # the label names another task or item too: the tab opens under the name only this one has, so it is
+            # bound to this one (a task's slug, an item's id words)
+            label = name if kind == "task" else f"Inbox {short}"
         base, n = label, 1
         while label in used:
             n += 1
@@ -997,8 +1043,11 @@ def propose(tasks: list, cfg: dict, mentions: dict, sessions: dict, open_tabs: d
     """sessions and open_tabs are keyed by slug; open_tabs values are driver tab dicts."""
     limits = {**DEFAULT_LIMITS, **(cfg.get("limits") or {})}
     blocked, stale, groups = [], [], {}
+    back = _came_back(root, today)
     for task in tasks:
-        score, age = _score(task, mentions.get(task["slug"]), today)
+        # a task back from a Later of the cockpit rests from that day on, as the briefing's advice counts it
+        seen = max(d for d in (task.get("updated"), back.get(task["slug"]), dt.date.min) if d)
+        score, age = _score({**task, "updated": seen if seen != dt.date.min else None}, mentions.get(task["slug"]), today)
         entry = {**task, "score": score, "age": age, "rows": (mentions.get(task["slug"]) or {}).get("rows", 0)}
         if task.get("blocked_by"):
             blocked.append(entry)
@@ -1112,9 +1161,12 @@ def done_tasks(root: Path) -> list:
 
 def slug_index(tasks: list, cfg: dict) -> dict:
     index = {}
+    labels = Counter(tab_label(t, cfg) for t in tasks)
     for t in tasks:
         index[t["slug"]] = t["slug"]
-        index.setdefault(tab_label(t, cfg), t["slug"])
+        # a label two tasks share names neither (a tab under it would be bound to the wrong one)
+        if labels[tab_label(t, cfg)] == 1:
+            index.setdefault(tab_label(t, cfg), t["slug"])
     return index
 
 
@@ -1150,7 +1202,7 @@ def render(plan: dict) -> str:
     if plan["blocked"]:
         out.append("Blocked: " + ", ".join(f"{t['slug']} ({str(t['blocked_by'])[:50]})" for t in plan["blocked"]))
     if plan["stale"]:
-        out.append("Resting (park?): " + ", ".join(f"{t['slug']} ({t['age']} d)" for t in plan["stale"]))
+        out.append("Resting: " + ", ".join(f"{t['slug']} ({t['age']} d)" for t in plan["stale"]))
     return "\n".join(out)
 
 
@@ -1161,10 +1213,15 @@ def status_rows(root: Path, cfg: dict, driver) -> list | None:
         return None
     tasks = collect_tasks(root)
     index = slug_index(tasks, cfg)
-    # a tab of a task that moved to work/done/ keeps its slug, so the cockpit can tell it is done
-    for name, slug in slug_index(done_tasks(root), cfg).items():
-        index.setdefault(name, slug)
     items = inbox_tab_index(root)
+    # a tab of a task that moved to work/done/ keeps its slug, so the cockpit can tell it is done; never under a name
+    # an open inbox item's tab has (round 2 of the four answers: such a tab was shown as finished, and Done closed
+    # the open item while its tab still asked)
+    for name, slug in slug_index(done_tasks(root), cfg).items():
+        if name not in items and unicodedata.normalize("NFC", name) not in items:
+            index.setdefault(name, slug)
+    # a label a task and an inbox item share names neither: only the slug or the item's own name binds then
+    shared = shared_labels(root, cfg, tasks)
     roles: dict = {}
     for t in tasks:
         for team in teams(cfg):
@@ -1177,8 +1234,11 @@ def status_rows(root: Path, cfg: dict, driver) -> list | None:
     for t in tabs:
         name = t.get("name", "")
         slug, team, role = roles.get(name, (index.get(name), None, None))
-        rows.append({**t, "slug": slug, "item": items.get(name) or items.get(unicodedata.normalize("NFC", name)),
-                     "team": team, "role": role})
+        item = items.get(name) or items.get(unicodedata.normalize("NFC", name))
+        if unicodedata.normalize("NFC", name) in shared:
+            slug = slug if slug == name else None
+            item = None
+        rows.append({**t, "slug": slug, "item": item, "team": team, "role": role})
     return sorted(rows, key=lambda r: (order.get(r.get("state"), 9), r.get("workspace") or ""))
 
 

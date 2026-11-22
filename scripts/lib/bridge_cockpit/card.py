@@ -368,7 +368,10 @@ def task_card(slug: str, title: Any, ctx: Ctx, *, kind: str | None = None, row: 
     nxt_row = _d(row.get("next"))
     if _s(nxt_row.get("what")):
         status_next = nxt_row.get("from") == "status"
-        nxt = _next(nxt_row["what"], t.get("next_who") if status_next else None,
+        # a step handed over (With …: the Bridge or a person in next.who) is theirs, also where the step the card
+        # names is the task's open inbox item; one of yours says no who, as the inbox item's own
+        handed = _s(t.get("next_who")) if str(t.get("next_who") or "").strip().lower() not in ("", "me", "you", "self") else None
+        nxt = _next(nxt_row["what"], t.get("next_who") if status_next else handed,
                     t.get("next_due") if status_next else None, nxt_row.get("from"), nxt_row.get("since"),
                     t.get("next_check") if status_next else None)
     else:

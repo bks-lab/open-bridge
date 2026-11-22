@@ -640,7 +640,8 @@ def _section_types(s: dict) -> list:
             out.append(f"{key} must be true or false")
     if "covers" in s and not (_is_str_list(s["covers"]) and set(s["covers"]) <= set(STREAMS)):
         out.append(f"covers must be a list of {', '.join(STREAMS)}")
-    if "bucket" in s and s["bucket"] not in (*_view().BUCKETS, "none"):
+    # `drop` (an older profile) is accepted: its rows stand in the bucket their own rule gives them
+    if "bucket" in s and s["bucket"] not in (*_view().BUCKETS, *_view().LEGACY_BUCKETS, "none"):
         out.append(f"bucket must be one of {', '.join(_view().BUCKETS)} or none")
     return out
 
@@ -795,7 +796,8 @@ def sec_inbox(section: dict, ctx: Context) -> list:
             if not deferral or not deferral.get("on"):
                 continue
             items.append({"id": item.id, "title": item.summary, "state": "deferred", "until": str(deferral["until"]),
-                          "waiting_on": deferral["on"], "urgency": item.urgency, "kind": item.kind, "gate": item.gate,
+                          "waiting_on": deferral["on"], **({"check": True} if deferral.get("check") else {}),
+                          "urgency": item.urgency, "kind": item.kind, "gate": item.gate,
                           "task": item.task, "due": item.due, "key": item.key, "changed_at": str(item.created or ""),
                           "has_action": bool(item.action), "area": item.area, "from": item.source})
     elif ctx.lookahead is not None or section.get("deferred") == "all":
@@ -816,7 +818,8 @@ def sec_inbox(section: dict, ctx: Context) -> list:
                               "urgency": item.urgency, "kind": item.kind, "gate": item.gate, "task": item.task,
                               "due": item.due, "key": item.key, "changed_at": str(item.created or ""),
                               "has_action": bool(item.action), "area": item.area, "from": item.source,
-                              **({"waiting_on": item.deferral["on"]} if (item.deferral or {}).get("on") else {})})
+                              **({"waiting_on": item.deferral["on"]} if (item.deferral or {}).get("on") else {}),
+                              **({"check": True} if (item.deferral or {}).get("check") else {})})
     # what has a date comes first within its urgency: a section's `max` cuts after this
     items.sort(key=lambda i: (order.get(i["urgency"], 3), str(i.get("due") or "9999"), i["id"]))
     return items
@@ -826,7 +829,8 @@ def sec_advise(section: dict, ctx: Context) -> list:
     advise = _load_module("briefing_advise", ROOT / "skills" / "briefing" / "scripts" / "advise.py")
     found = advise.advise(ctx.root, now=ctx.now, calendar=ctx.calendar, inbox=_inbox())
     return [{"id": f["key"], "title": f["summary"], "state": "new", "urgency": f["urgency"], "check": f["check"],
-             "task": f.get("task"), "file": f.get("file", True)} for f in found]
+             "task": f.get("task"), "file": f.get("file", True), **({"days": f["days"]} if "days" in f else {})}
+            for f in found]
 
 
 def sec_workplace(section: dict, ctx: Context) -> list:
@@ -843,7 +847,25 @@ def sec_workplace(section: dict, ctx: Context) -> list:
     for ws in plan["workspaces"]:
         for tab in ws["tabs"]:
             items.append({"id": tab["slug"], "title": tab["label"], "state": tab["action"], "project": ws["name"]})
+    items += asking_tabs(wp, ctx.root, cfg)
     return items
+
+
+def asking_tabs(wp, root: Path, cfg: dict) -> list:
+    """The agent tabs that ask you something in a dialog (state needs-you) and stand for no task or inbox item of their
+    own: rows of Do, so the briefing numbers the points the cockpit shows first in Do (round 4 of the four answers: the
+    cockpit's Do held them, the printed one did not). A tab of a task or an item is that row's; a tab that waits at its
+    prompt is told apart only by the cockpit, which reads its screen. Nothing without a driver."""
+    if not cfg.get("driver"):
+        return []
+    try:
+        rows = wp.status_rows(root, cfg, wp.driver_from(cfg.get("driver"))) or []
+    except Exception:       # a briefing never fails for its tabs
+        return []
+    return [{"id": f"tab:{t['ref']}", "title": str(t.get("name") or t["ref"]), "state": "asks", "tab_ref": str(t["ref"]),
+             "project": t.get("workspace")}
+            for t in rows if isinstance(t, dict) and t.get("state") == "needs-you" and t.get("ref")
+            and not t.get("slug") and not t.get("item") and not t.get("is_control")]
 
 
 # Where a STATUS.md lists what comes next, when it has no open checkboxes. CORE knows the English
@@ -1876,6 +1898,7 @@ def collect(root: Path, profile: dict, ctx: Context, previous: dict | None = Non
             item["changed"] = old_known and item["id"] in old and old[item["id"]] != fp
         entry["total"] = len(items)
         entry["all"] = items
+        # `max:` cuts the section's own block (style sources, the JSON); a view with buckets reads `all`
         entry["items"] = items[: _positive(s.get("max"), len(items) or 1)] if s.get("max") and not profile.get("_whole") else items
         out.append(entry)
     result = {"profile": profile.get("id"), "title": profile.get("title") or profile.get("id"),
@@ -1908,7 +1931,7 @@ def save_snapshot(root: Path, result: dict, previous: dict | None = None) -> Pat
             continue
         sections.append({"id": s["id"], "status": s["status"],
                          "items": [{"id": i["id"], "_fp": i.get("_fp")} for i in s.get("all", s["items"])]})
-    snap = {**{k: v for k, v in result.items() if k != "sections"}, "sections": sections}
+    snap = {**{k: v for k, v in result.items() if k not in ("sections", "number_book")}, "sections": sections}
     path.write_text(json.dumps(snap, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     return path
 
@@ -2234,11 +2257,30 @@ def render(result: dict) -> str:
     return "\n".join(out)
 
 
+#: how long the cockpit's record of what runs is believed: it writes it on every pass, a closed cockpit runs nothing
+RUNNING_FRESH_S = 15 * 60
+
+
+def running_record(root: Path, now: dt.datetime) -> list:
+    """The row keys an agent of the cockpit works on since Do it (<root>/.bridge/cockpit/running.json, written by
+    the cockpit on every pass): they stand in I'll do as running, as on the page. Empty when the record is missing,
+    unreadable or older than RUNNING_FRESH_S: a briefing never fails for it."""
+    try:
+        data = json.loads((root / ".bridge" / "cockpit" / "running.json").read_text(encoding="utf-8"))
+        at = float(data.get("at_ms") or 0) / 1000
+        keys = data.get("keys")
+    except (OSError, ValueError, TypeError, AttributeError):
+        return []
+    if not isinstance(keys, list) or abs(now.timestamp() - at) > RUNNING_FRESH_S:
+        return []
+    return sorted({k for k in keys if isinstance(k, str) and k.startswith(("task:", "inbox:", "ref:"))})
+
+
 def settled_record(root: Path, now: dt.datetime) -> dict:
     """What the person decided in the cockpit (work/cockpit/settled/): the keys marked done or not doing and the
     rows put off, with the day they show again. Read for the printed briefing, so a row closed there does not
     come back here. Empty when the record cannot be read: a briefing never fails for it."""
-    empty: dict = {"dismissed": [], "hidden": {}}
+    empty: dict = {"dismissed": [], "dismissed_on": {}, "hidden": {}, "hidden_done": {}, "hidden_filed": []}
     folder = root / "work" / "cockpit" / "settled"
     if not folder.is_dir():
         return empty
@@ -2247,19 +2289,150 @@ def settled_record(root: Path, now: dt.datetime) -> dict:
         sys.path.insert(0, lib)
     try:
         from bridge_cockpit.settled import SettledStore
-        _keys, hidden, dismissed = SettledStore(folder, lambda: 0).state(f"{now:%Y-%m-%d}")
+        store = SettledStore(folder, lambda: 0)
+        _keys, hidden, dismissed = store.state(f"{now:%Y-%m-%d}")
+        done = store.hidden_done(f"{now:%Y-%m-%d}")
+        filed = store.hidden_filed(f"{now:%Y-%m-%d}")
     except (ImportError, OSError, ValueError):
         return empty
-    return {"dismissed": sorted(dismissed), "hidden": hidden}
+    return {"dismissed": sorted(dismissed), "dismissed_on": {k: v.get("at") or "" for k, v in dismissed.items()},
+            "hidden": hidden, "hidden_done": done, "hidden_filed": sorted(filed)}
 
 
-def render_view(result: dict, profile: dict, style: str | None = None, color: bool = False) -> str:
-    """The briefing as the profile's `view:` (or a one-off `style`) wants it shown."""
+SETTLE_KEY = re.compile(r"^(?:task:[a-z0-9][a-z0-9._-]{0,119}|ref:[\w.-]+/[\w.-]+#\d+)\Z")
+
+
+def settle_row(root: Path, args) -> int:
+    """`hide` and `dismiss`: the chat's Later, Done and Obsolete on a row the cockpit records (a task, a stream, an
+    issue or pull request), written to the same record (work/cockpit/settled/), so "3 später" from the chat does
+    what the cockpit's Later does. An inbox item is answered in the inbox (inbox.py defer, close, drop)."""
+    if not SETTLE_KEY.match(args.key):
+        print(f"briefing: {args.key!r} is no task:<slug> or ref:<owner/repo#n>", file=sys.stderr)
+        return 2
+    lib = str(ROOT / "scripts" / "lib")
+    if lib not in sys.path:
+        sys.path.insert(0, lib)
+    from bridge_cockpit.settled import SettledStore
+    store = SettledStore(root / "work" / "cockpit" / "settled", lambda: dt.datetime.now().timestamp() * 1000)
+    if args.cmd == "dismiss":
+        store.dismiss(args.key, args.outcome, args.key.split(":", 1)[1])
+        print(f"{args.key}: {args.outcome}")
+        return 0
+    try:
+        until = dt.date.fromisoformat(args.until)
+    except ValueError:
+        print(f"briefing: --until {args.until!r} is no day YYYY-MM-DD", file=sys.stderr)
+        return 2
+    answers = _view().answers
+    if until <= dt.date.today() or ((until - dt.date.today()).days > answers.LATER_MAX_DAYS and not answers.is_list_day(args.until)):
+        print(f"briefing: --until {args.until} is not after today (or more than {answers.LATER_MAX_DAYS} days ahead, "
+              "but the watch list)", file=sys.stderr)
+        return 2
+    store.hide(args.key, until.isoformat(), args.key.split(":", 1)[1], done=args.done)
+    print(f"{args.key}: until {until.isoformat()}" + (" (done for this time)" if args.done else ""))
+    return 0
+
+
+def aside_counts(root: Path, now: dt.datetime, lookahead: int, settled: dict | None, base_only: bool = False) -> dict:
+    """What is out of sight of the buckets, only counted below them (docs/briefings.md § Views):
+      later       put off to a day after today, tomorrow too, and comes back on it by itself: an inbox item
+                  deferred without anyone it waits on, a row hidden in the cockpit until a day
+      list        the watch list, parked without a day: a task with status backlog, an inbox item or a row
+                  put off to the watch list's day (lib/answers.py LIST_DAY)
+      done_today  done or obsolete today: an inbox item closed or dropped, a task closed, a row settled in
+                  the cockpit
+    A source that cannot be read counts nothing; a briefing never fails for it."""
+    answers = _view().answers
+    today = now.date()
+    out = {"later": 0, "list": 0, "done_today": 0}
+    if (root / "work" / "inbox").is_dir():
+        ib = _inbox()
+        try:
+            items = ib.Inbox(root / "work" / "inbox", actor="briefing", clock=lambda: now).items()
+        except Exception:  # noqa: BLE001 - an unreadable inbox counts nothing
+            items = []
+        for item in items:
+            state = item.state
+            if state == "deferred":
+                deferral = item.deferral or {}
+                if _view().in_sight_deferred(deferral.get("on"), deferral.get("check")):
+                    continue                    # waits on someone or the Bridge: in its bucket, theirs
+                if answers.is_list_day(deferral.get("until")):
+                    out["list"] += 1
+                    continue
+                try:
+                    back = ib._local_date(ib._parse_when(deferral.get("until")))
+                except (TypeError, ValueError):
+                    continue
+                if back > today:
+                    out["later"] += 1
+            elif state in ("done", "dropped"):
+                end = next((e for e in reversed(item.events) if e.verb in ib.TERMINAL), None)
+                try:
+                    if end is not None and ib._local_date(ib._parse_when(str(end.at).replace("Z", "+00:00"))) == today:
+                        out["done_today"] += 1
+                except (TypeError, ValueError):
+                    pass
+    for status in (root / "work" / "tasks").glob("*/STATUS.md"):
+        if status.parent.name.startswith("_"):
+            continue
+        fm = _frontmatter(status.read_text(encoding="utf-8"))
+        if fm.get("status") == "backlog":
+            out["list"] += 1
+        elif fm.get("blocked_by") and str(fm.get("quiet_until") or "")[:10] > today.isoformat():
+            out["later"] += 1                   # put off to a day while it waits: out of sight until then
+    for status in (root / "work" / "done" / f"{today:%Y-%m}").glob("*/STATUS.md"):
+        if str(_frontmatter(status.read_text(encoding="utf-8")).get("closed") or "")[:10] == today.isoformat():
+            out["done_today"] += 1
+    if base_only:
+        return out
+    extra = _view().aside_of_record(settled, today.isoformat())
+    return {k: out[k] + extra.get(k, 0) for k in out}
+
+
+def render_view(result: dict, profile: dict, style: str | None = None, color: bool = False, keep=None) -> str:
+    """The briefing as the profile's `view:` (or a one-off `style`) wants it shown. `keep` gets the built view (the
+    day's number book is saved from it)."""
     view = _view()
     chosen = view.style_of(profile, style)
     if chosen == "sources":
         return render(_public(result))
-    return view.draw(view.build(result, profile, chosen), color=color)
+    built = view.build(result, profile, chosen)
+    if keep is not None:
+        keep(built)
+    return view.draw(built, color=color)
+
+
+# the day's numbers of the rows per profile (briefing_view._number): a row keeps its number all day, so an answer moves
+# no other row's number. Machine state beside running.json, never saved in the snapshot
+NUMBERS = Path(".bridge") / "cockpit" / "numbers"
+PROFILE_FILE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}\Z")
+
+
+def number_book(root: Path, profile_id: str, now: dt.datetime) -> dict:
+    """{row ident: nr} given out today for this profile; empty on another day or when it cannot be read"""
+    if not PROFILE_FILE.match(str(profile_id or "")):
+        return {}
+    try:
+        data = json.loads((root / NUMBERS / f"{profile_id}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    nrs = data.get("nrs") if isinstance(data, dict) and data.get("day") == now.date().isoformat() else None
+    return dict(nrs) if isinstance(nrs, dict) else {}
+
+
+def save_number_book(root: Path, profile_id: str, now: dt.datetime, book) -> None:
+    """Keep today's numbers; a briefing never fails for it"""
+    if not isinstance(book, dict) or not PROFILE_FILE.match(str(profile_id or "")):
+        return
+    path = root / NUMBERS / f"{profile_id}.json"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"day": now.date().isoformat(), "nrs": book}, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------- CLI
@@ -2549,9 +2722,21 @@ def main(argv=None) -> int:
     p_detail = sub.add_parser("detail", help="the detail of one GitHub issue or pull request (owner/repo#n), as JSON")
     p_detail.add_argument("ref")
     p_detail.add_argument("--fresh", action="store_true", help="ask GitHub now, whatever was kept")
+    p_hide = sub.add_parser("hide", help="put a task, stream or issue row off until a day, as the cockpit's Later does "
+                                         "(work/cockpit/settled/); an inbox item is put off with inbox.py defer")
+    p_hide.add_argument("key", help="task:<slug> or ref:<owner/repo#n>")
+    p_hide.add_argument("--until", required=True, help="YYYY-MM-DD, after today (9999-12-31: the watch list)")
+    p_hide.add_argument("--done", action="store_true", help="a stream done for this time: counted as done today")
+    p_dismiss = sub.add_parser("dismiss", help="settle a task or issue row as the cockpit's Done or Obsolete does "
+                                               "(work/cockpit/settled/), never on GitHub")
+    p_dismiss.add_argument("key", help="task:<slug> or ref:<owner/repo#n>")
+    p_dismiss.add_argument("--outcome", required=True, choices=("done", "not_doing"))
     args = ap.parse_args(argv)
     root = args.root.resolve()
     cfg = read_config(root)
+
+    if args.cmd in ("hide", "dismiss"):
+        return settle_row(root, args)
 
     if args.cmd == "validate":
         problems = validate(root)
@@ -2636,8 +2821,11 @@ def main(argv=None) -> int:
         # a dashboard that pages itself wants every row of a section, not the first `max:` of them:
         # a cut row would vanish from its page without a trace (an inbox item set to later, 14.10.)
         # `_print_max`: the printed briefing's own cap, by which the rows still get the number they have there
-        profile = {**profile, "view": {**view_cfg, "max_items": max(1, args.max_items)}, "_whole": True,
-                   **({"_print_max": view_cfg["max_items"]} if "max_items" in view_cfg else {})}
+        # a longer print (render) numbers what it prints, each row once (round 1: it numbered as the cockpit's pass
+        # and printed the place of every other row as its number); only the cockpit's pass (collect) is `_whole`
+        whole = {"_whole": True, **({"_print_max": view_cfg["max_items"]} if "max_items" in view_cfg else {})} \
+            if args.cmd == "collect" else {}
+        profile = {**profile, "view": {**view_cfg, "max_items": max(1, args.max_items)}, **whole}
     if getattr(args, "setup", False):
         profile = with_setup(profile, root, cfg)
     # what one machine switched off (the cockpit's views.json): the catalog still lists it, so it can come back on
@@ -2660,11 +2848,24 @@ def main(argv=None) -> int:
         result["inbox"] = {"filed": filed, "closed": closed}
         result["housekeeping"] = housekeep(root, ctx.now, summary=_summary(result, profile, args.style),
                                            profile_id=profile["id"])
+    result["running"] = running_record(root, ctx.now)         # never saved, as the settled record
+    result["number_book"] = number_book(root, profile["id"], ctx.now)       # never saved in the snapshot either
+
+    def keep_numbers(built: dict) -> None:
+        if not args.no_save:
+            save_number_book(root, profile["id"], ctx.now, built.get("number_book"))
+        built.pop("number_book", None)
     if args.cmd == "render":
         result["settled"] = settled_record(root, ctx.now)     # never saved: save_snapshot keeps its own fields
     elif profile.get("_whole"):
         # the cockpit's pass keeps every row, but numbers them as the printed briefing does, without what was settled
         result["numbering_settled"] = settled_record(root, ctx.now)
+    if _view().style_of(profile, args.style) != "sources":
+        # out of sight, only counted below the buckets: later, the watch list, done today
+        record = result.get("settled") or result.get("numbering_settled") or settled_record(root, ctx.now)
+        result["aside_base"] = aside_counts(root, ctx.now, ctx.lookahead or 0, None, base_only=True)
+        extra = _view().aside_of_record(record, ctx.now.date().isoformat())
+        result["aside"] = {k: v + extra.get(k, 0) for k, v in result["aside_base"].items()}
     if args.cmd == "render" and _view().style_of(profile, args.style) != "sources":
         view_cfg = profile.get("view") if isinstance(profile.get("view"), dict) else {}
         if view_cfg.get("overview") == "file":
@@ -2681,8 +2882,10 @@ def main(argv=None) -> int:
     if args.cmd == "collect":
         data = _public(result)
         data.pop("numbering_settled", None)
+        data.pop("number_book", None)
         if _view().style_of(profile, args.style) != "sources":
             data["view"] = _view().build(result, profile, args.style)
+            keep_numbers(data["view"])
         data["pages"] = _view().pages(result, profile, root=root)
         data["page_catalog"] = catalog
         if args.json:
@@ -2691,7 +2894,7 @@ def main(argv=None) -> int:
             print(render_view(result, profile, args.style))
     else:
         color = args.color == "always" or (args.color == "auto" and sys.stdout.isatty())
-        print(render_view(result, profile, args.style, color=color))
+        print(render_view(result, profile, args.style, color=color, keep=keep_numbers))
     return 0
 
 

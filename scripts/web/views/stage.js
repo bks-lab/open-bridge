@@ -5,7 +5,7 @@
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   duration, indexRows, jobCounts, sessionCounts, short, stateToken, workerTone, homeContinue, inProject, meterPace, tabOfTask,
-  asksYou, countInProject, startWaiting, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError, pulseSpeed,
+  asksYou, countInProject, startWaiting, flowBucketsOn, waitingRows, focusPick, nextEvent, untilText, STAGE, stageDust, stageSpots, speechError, pulseSpeed,
   MAX_STATIONS, situation, situationText, parseVerdict, tickerStatusItems, homeRowQueue, greetingText, dayLabel, tabStateKey,
   itemRow, workPageOf, statusSplit,
 } from '../logic.js'
@@ -96,7 +96,10 @@ export function stationOf(x, s, c, chosen, project) {
 
 /** The day's lead line: its leading count is the "do" rows, the Now section the station "waits for you" counts
  *  (a partial run keeps the older headline, whose count can lag behind the rows) */
-export function leadOf(m) {
+export function leadOf(m, s = null) {
+  // with the buckets on, the count is Do's, the one the work tab's badge and Due say, in the page's words, before
+  // the day's parts (round 4: "11 asks for you today · 4 reports" beside a badge of 15)
+  if (s && flowBucketsOn(s)) return [T().forYouNow(startWaiting(s)), m.headline_rest].filter(Boolean).join(' · ')
   const head = String(m.headline ?? '')
   const n = m.counts?.now
   return n != null && /^\d+\s/.test(head) ? head.replace(/^\d+/, String(n)) : head
@@ -253,7 +256,7 @@ function StageInspector({ x, st, s, c, tabs, onClose }) {
       ${pace ? html`<${InspectRow} tone=${pace.over ? 'warning' : 'info'} title=${h.projected(pct(pace.projected, lang))} sub=${x.it.when ? h.reset(x.it.when) : ''} />` : null}
       ${foot(h.details, () => c.openInfo(x.it, x.page, x.section))}`
   } else if (x.id === 'c:waiting') {
-    const rows = (s.model?.sections ?? []).find(r => r.id === 'now')?.rows?.filter(asksYou) ?? []
+    const rows = flowBucketsOn(s) ? waitingRows(s) : (s.model?.sections ?? []).find(r => r.id === 'now')?.rows?.filter(asksYou) ?? []
     // the asks of Now, as the station counts them; the morning round from the start page: the first row carries its buttons, and once it is settled
     // the next one moves up and carries them; a row whose task already has a tab leads to that tab
     const acts = r => html`<${RowBar} row=${r} s=${s} c=${c} tab=${tabOfTask(tabs, r.task)} />`
@@ -596,7 +599,7 @@ export function BridgeStage({ s, c, catalog, chosen, project, areas = null }) {
       <div class="stage-greet">
         <span class="stage-eyebrow">${eyebrow}</span>
         <${StagePrompt} s=${s} c=${c} greeting=${greeting} />
-        ${s.model?.headline ? html`<p class="stage-lead">${leadOf(s.model)}</p>` : null}
+        ${s.model?.headline ? html`<p class="stage-lead">${leadOf(s.model, s)}</p>` : null}
         ${(s.model?.alarms ?? []).length || relayDown ? html`<div class="home-signals">
           ${(s.model?.alarms ?? []).map(a => html`<button type="button" class="home-signal tk-danger" key=${a.page_id + a.section_title}
             onClick=${() => c.setPage(a.page_id)}><${Dot} token="danger" /><span>${h.alarm(a.count, `${a.section_title} (${a.page_title})`)}</span></button>`)}

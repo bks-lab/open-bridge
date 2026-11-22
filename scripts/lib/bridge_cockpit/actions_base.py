@@ -73,11 +73,20 @@ STATUS_TIMEOUT = 20
 SNAPSHOT_TIMEOUT = 180
 LIST_TIMEOUT = 20
 
+# the state a page saw a point in when it sent an answer (`was`): an inbox item's (inbox.py) or a task's status. The
+# server refuses the answer when the point moved on since (WorkVerbs.guard_was, 409 point_moved), so a second browser
+# that slept never answers over what another one answered (round 2 of the cockpit simulation, 21.11.2026)
+POINT_STATES = ("open", "approved", "waiting", "deferred", "doing", "review", "backlog")
+# the answers of the buckets that take it
+WAS_VERBS = ("do_it", "later", "settle", "shelve", "task_park", "task_keep", "runs_on")
+
 # verb -> {arg: (type, required)}
 SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # note: the person's sentence for this start; it goes on the item first (a live tab gets it typed in instead)
+    # yes: the briefing's yes of Do (control.md), an inbox item approved and, where it has no action of its own to
+    # run, started on as well; without it do_it is Go of I'll do it, a start
     "do_it": {"keys": ("keys", True), "target": ("target", False), "model": ("launch_model", False), "effort": ("launch_effort", False),
-              "note": ("text", False), "by": ("by", False)},
+              "note": ("text", False), "by": ("by", False), "yes": ("bool", False)},
     "advise": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False), "note": ("text", False)},
     "start_agent": {"keys": ("keys", True), "model": ("launch_model", False), "effort": ("launch_effort", False), "note": ("text", False)},
     "collect_context": {"key": ("key", True), "model": ("launch_model", False), "effort": ("launch_effort", False),
@@ -85,12 +94,18 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # text: the person's sentence, kept where the row lives (WorkVerbs.write_note)
     # revisit (Work through with cockpit.flow.seen on): read now, back unread on `until` or on something new before it;
     # nothing hidden, nothing put off, the sentence a note only when there is one (actions_work.py v_later)
-    "later": {"key": ("key", True), "until": ("date", True), "text": ("text", False), "by": ("by", False),
-              "revisit": ("bool", False)},
+    # plan: Schedule of Plan (the same defer), whose note says it is planned, never "later"
+    # until: a day within a year, or the watch list's day (lib/answers.py LIST_DAY): Later to the watch list
+    "later": {"key": ("key", True), "until": ("later_day", True), "text": ("text", False), "by": ("by", False),
+              "revisit": ("bool", False), "plan": ("bool", False), "done": ("bool", False)},
     "hide": {"key": ("key", True), "until": ("date", True)},
     # the Work through page's "Drop because" on a task: parked as an idea with its reason (task.py shelve);
     # until: the day the idea may surface again, else task.py's own default
     "shelve": {"key": ("key", True), "reason": ("reason", True), "until": ("date", False), "by": ("by", False)},
+    # Park of Park or drop on a task, the briefing's park: status backlog, the task stays open (task.py status);
+    # task_unpark is its undo, the status before
+    "task_park": {"key": ("key", True), "reason": ("text", False), "by": ("by", False)},
+    "task_unpark": {"slug": ("slug", True), "as": ("restore_as", False), "last_updated": ("day", False), "note": ("text", False)},
     "unhide": {"key": ("key", True)},
     "drop": {"key": ("key", True), "reason": ("drop_reason", False)},
     "inbox_unmute": {"id": ("inbox_id", True)},
@@ -210,7 +225,9 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "a2a_ask": {"peer": ("peer", True), "text": ("text", True), "conv": ("agent_conv", False), "mode": ("a2a_mode", False)},
     "a2a_poll": {"conv": ("agent_conv", True)},
     "a2a_forget": {"conv": ("agent_conv", True)},
-    "task_reopen": {"slug": ("slug", True), "as": ("restore_as", False), "note": ("text", False)},
+    # last_updated and drop: an undo that leaves no trace, the task's date as it was and the notes of the step gone
+    "task_reopen": {"slug": ("slug", True), "as": ("restore_as", False), "note": ("text", False), "last_updated": ("day", False),
+                    "drop": ("notes", False)},
     "row_action": {"page": ("page_id", True), "section": ("page_id", True), "index": ("index", True),
                    "action": ("row_step", True)},
     "row_undo": {"section": ("page_id", True), "row": ("row_ref", True), "action": ("undo_token", True)},
@@ -218,10 +235,15 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     "worker_advise": {"host": ("worker_ref", True), "id": ("worker_ref", True)},
     "inbox_reopen": {"id": ("inbox_id", True), "note": ("text", False)},
     "runs_on": {"keys": ("keys", True), "until": ("date", True), "on": ("text", False)},
-    "task_running": {"slug": ("slug", True)},
+    # back: the undo of a wait on a task that waited already, its blocker (on), the day it began and its quiet day
+    "task_running": {"slug": ("slug", True), "back": ("bool", False), "on": ("text", False), "since": ("day", False),
+                     "until": ("day", False), "last_updated": ("day", False), "drop": ("notes", False)},
     # stage 4 of the one point view: In progress with someone until a check-in day, its undo and Stuck on the check-in
     "work_on": {"key": ("key", True), "who": ("line", True), "until": ("date", True), "text": ("text", False)},
-    "task_next": {"slug": ("slug", True), "who": ("line", False), "check": ("date", False), "clear_check": ("bool", False)},
+    "task_next": {"slug": ("slug", True), "who": ("line", False), "check": ("date", False), "clear_check": ("bool", False),
+                  "clear": ("bool", False), "last_updated": ("day", False), "drop": ("notes", False)},
+    # With … under More of a bucket card: who takes a task's next step (you, the Bridge), undone by task_next
+    "task_owner": {"key": ("key", True), "who": ("line", True)},
     "checkin_stuck": {"key": ("key", True), "text": ("text", False)},
     # the files view takes over a suggested next step: next: {what} with a dated note (task.py next)
     "task_set_next": {"key": ("key", True), "text": ("line", True)},
@@ -273,6 +295,8 @@ SPEC: dict[str, dict[str, tuple[str, bool]]] = {
     # the mode a board takes until the person switches it (settings), or "profile" to leave it to the profile
     "github_board_default": {"mode": ("board_default", True)},
 }
+for _verb in WAS_VERBS:
+    SPEC[_verb]["was"] = ("point_state", False)
 BOARD_MODES = ("off", "mine", "all")
 BOARD_DEFAULTS = (*BOARD_MODES, "profile")
 ACCOUNT_STATUSES = ("active", "paused", "disabled")
@@ -397,6 +421,15 @@ def check_date(value: Any, field: str, today: dt.date) -> str:
     if not today < day <= today + dt.timedelta(days=366):
         raise bad_arg(field, "must be after today and within 366 days")
     return value
+
+
+#: the watch list's day (lib/answers.py LIST_DAY): a point put off to it never comes back by itself
+LIST_DAY = "9999-12-31"
+
+
+def check_later_day(value: Any, field: str, today: dt.date) -> str:
+    """A day to put a point off to: within a year (check_date), or the watch list's day"""
+    return LIST_DAY if value == LIST_DAY else check_date(value, field, today)
 
 
 def check_day(value: Any, field: str) -> str:

@@ -138,7 +138,7 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
                 review: dict | None = None, origin_map: tuple = (), triage: dict | None = None,
                 describe: dict | None = None, files: list[dict] | None = None,
                 carry_deferred: bool = False, pairs: dict | None = None, acks: dict | None = None,
-                looks: dict | None = None) -> tuple[dict, dict]:
+                looks: dict | None = None, aside_record: dict | None = None) -> tuple[dict, dict]:
     """The page model (contract section 3.3) and an index row_key -> internal row for the verbs. `triage` (the
     triage items by key) and `describe` (the brief proposals by key) feed the card of each row (card.py).
     `carry_deferred` (Work through on) adds `deferred`: the inbox items a page lists that are put off past the
@@ -232,6 +232,10 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             "key": row["key"], "bucket": row["bucket"], "section": section, "number": numbers.get(row["key"]),
             # its number in the printed briefing (briefing_view.numbered), which Work through's card names
             "brief_nr": row.get("brief_nr"),
+            # how long a task rests (the briefing's quiet advice): the card's quiet mark "resting for N days"
+            "resting": row.get("resting"),
+            # how long a point waits on someone: the card's mark "waiting for N days"
+            "waiting_days": row.get("waiting_days"),
             "title": row["title"], "why": list(row.get("why", [])), "sources": list(row.get("sources", [])),
             "inbox_id": row.get("inbox_id"), "gate": row.get("gate"), "task": row.get("task"), "ref": row.get("ref"),
             "url": url, "link": link, "priority": row.get("priority"), "urgency": row.get("urgency"),
@@ -260,6 +264,9 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
             # titles, so the detail lists them and each opens its item; they close with the line (actions_work)
             "also_inbox": [{"id": x, "title": (card_ctx.inbox(x) or {}).get("summary") or x}
                            for x in row.get("also_inbox") or [] if INBOX_ID_RE.match(x)],
+            # the tasks the briefing folded into this line: the page shows them as this line, never beside it from the
+            # task list or the files (flow.js universeOf, round 2 of the four answers)
+            "folded_tasks": list(row.get("folded_tasks") or []),
             # the GitHub list the row also stands in ({page, section}, model.board_places): Work through folds such
             # rows of Not now into one line that leads there
             "on_board": places.get(row["key"]),
@@ -299,13 +306,11 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
     # `trow ?? taskRow(slug, title)`. The slug is checked again before it reaches an argv.
     # A taskboard section (view: taskboard) names every task and stream on its own page: they are no rows of Work,
     # and its verbs resolve task:<slug> from the folder (actions.page_entry)
-    page_items = [it for pg in view.get("pages", []) for sec in pg["sections"] if sec.get("view") != "taskboard"
-                  for it in sec["items"] if isinstance(it.get("task"), str) and it.get("task")]
-    page_tasks = [(it["task"], it.get("title") or it["task"]) for it in page_items]
+    page_tasks = m.page_tasks(view)
     # They go out as task_rows too, so a task opened from a page shows the same actions as one on the card.
     task_rows = []
     # the page's full title beats the short label; an item without a title does not
-    page_titles = {it["task"]: it["title"] for it in reversed(page_items) if it.get("title")}
+    page_titles = {slug: title for slug, title in reversed(page_tasks) if title != slug}
     # and every task the last check judged, so its overview row has the same actions
     review_tasks = [(slug, v["title"]) for slug, v in verdicts.items()]
     # a task the list of every task names (cockpit.files_scope all) carries its status and fields from there too
@@ -389,6 +394,12 @@ def build_model(view: dict, *, root: Path, tabs: list[dict], seen: dict, control
         # the briefing profile's buckets in its order, titles and answers (model.bucket_defs_of): Work through's
         # buckets (cockpit.flow.buckets) name and order them as the briefing does
         "buckets": list(view.get("bucket_defs") or []),
+        # what is out of sight of the buckets, only counted (model.aside_of): later, the watch list, done today
+        "aside": m.aside_now(view, aside_record, dt.date.fromtimestamp(now / 1000).isoformat()),
+        # put off to a day, out of sight until it (briefing_view away): a tab that asks about such an item waits too
+        "away": list(view.get("away") or []),
+        # the briefing's number of each agent tab that asks (model.parse_view): the tab's card says it
+        "tab_nrs": dict(view.get("tab_nrs") or {}),
         "review": {"running": review["running"], "error": review["error"], "last": review["last"],
                    "keys": [f"task:{slug}" for slug in verdicts if f"task:{slug}" in index]},
         "pages": pages, "alarms": alarms,
@@ -809,7 +820,7 @@ class Collector:
                 stale=self.stale, profile=app.cfg.profile, tx=app.tx, review=app.review.state(self.task_open),
                 origin_map=getattr(app.cfg, "origin_map", ()), files=self.all_tasks,
                 carry_deferred=(getattr(app.cfg, "flow", None) or {}).get("enabled") is True, pairs=pairs,
-                acks=app.store.acks(), **app.card_sources())
+                acks=app.store.acks(), aside_record=app.store.aside_record(), **app.card_sources())
             # the start page's day book and the week's closed tasks; a failure there never stops the page
             try:
                 app.daybook.record(model)
@@ -825,6 +836,8 @@ class Collector:
                          "is_control": t["ref"] == app.tabs.control_ref()} for t in tabs]
                 rows = {k: (v.get("out") or v) for k, v in index.items() if isinstance(v, dict)}
                 model["returns"] = ret.build(app.launches.all(), rich, rows, app.root, app.clock(), app.cfg.language)
+                # what runs, for the printed briefing: it puts those points in I'll do as running, as the page does
+                ret.write_running(app.launches.path.parent, ret.running_keys(model["returns"], rich), app.clock())
                 # an end not yet written to the item's log: written once, after the lock
                 to_log = [r for r in model["returns"] if r["stage"] in ("result", "lost") and ret.log_line(r, app.cfg.language)
                           and app.launches.mark(r["key"], r["stage"])]

@@ -16,8 +16,8 @@ from . import activity as act
 from . import model as m
 from .details import INBOX_ID_RE, inbox_facts, split_front
 from .history import REOPEN_AS, item as history_item
-from .actions_base import (CLOSE_TIMEOUT, DECLINED_REASONS, MERGE_MAX, SHORT_TIMEOUT, SLUG_RE, TEAM_RE, ActionError, Ctx, bad_arg,
-                           row_go)
+from .actions_base import (CLOSE_TIMEOUT, DATE_RE, DECLINED_REASONS, LIST_DAY, MERGE_MAX, SHORT_TIMEOUT, SLUG_RE, TEAM_RE, ActionError, Ctx,
+                           bad_arg, row_go)
 from .quick import MODELS
 from .text import TABLES
 
@@ -63,6 +63,32 @@ def merge_marks(slug: str) -> tuple[str, str]:
 class WorkVerbs:
     """A part of Actions (actions.py), which holds the registry and the helpers called here."""
 
+    def guard_was(self, keys: list, was: str) -> None:
+        """An answer reaches only the point as the page saw it (`was`): an inbox item that ended or was put off or
+        taken back since, or a task whose status moved (another browser parked or closed it), refuses the answer
+        before anything is written. A row of any other kind, or one the files cannot tell, is not compared."""
+        moved = ActionError(409, "point_moved", self.tx["point_moved"], None)
+        today = self.today().isoformat()
+        for key in keys:
+            if not isinstance(key, str):
+                continue
+            row = self.entry(key, "keys")["row"]
+            if row.get("inbox_id"):
+                facts = inbox_facts(self.app.root, str(row["inbox_id"]))
+                if facts is None:
+                    continue
+                now = "ended" if facts.get("ended") else "deferred" if (facts.get("deferred") or "") > today else "active"
+                if now != ("deferred" if was == "deferred" else "active"):
+                    raise moved
+            elif row.get("task"):
+                status = self.task_status(self.slug(row))
+                if status is None or (was in ("doing", "review", "backlog") and status != was):
+                    raise moved
+            if not row.get("inbox_id") and (str(self.app.store.hidden().get(key) or "") > today or key in self.app.store.dismissed()):
+                # put off or settled in the cockpit since the page saw it (round 1: a Later in one browser and a
+                # Done 50 ms later in another both ran)
+                raise moved
+
     def refuse_approved(self, rows: list[dict]) -> None:
         """A yes already given runs on the next pass: no start verb goes at the same item a second time."""
         if any(row.get("inbox_state") == "approved" for row in rows):
@@ -87,11 +113,12 @@ class WorkVerbs:
             else:
                 rows.append(e["row"])
         rows = [r for r in rows if m.launch_item(r) is not None] + self.file_all(ctx, rows)
-        started = [r for r in rows if self.write_note(ctx, r, f"Start note: {note}")]
+        # the start's own note is no activity on a task: a nudge that only drafts left the briefing's waiting days at 0
+        started = [r for r in rows if self.write_note(ctx, r, f"Start note: {note}", quiet=True)]
         if started:
             self.launch(ctx, started, mode, target, word=word, start_note=True)
 
-    def write_note(self, ctx: Ctx, row: dict, text: str) -> bool:
+    def write_note(self, ctx: Ctx, row: dict, text: str, quiet: bool = False) -> bool:
         """The person's sentence, or a decision with it, where the row lives: an inbox item's notes, a task's or a
         stream's notes, and for any other row (an issue, a deadline) a row in work/log.md, since it has no place of
         its own here and its source stays as it is."""
@@ -100,7 +127,7 @@ class WorkVerbs:
             run = ctx.call("inbox.note", item, self.inbox("note", item, "--", text), SHORT_TIMEOUT)
         elif row.get("task"):
             slug = self.slug(row)
-            run = ctx.call("task.note", slug, self.task_cmd("note", slug, "--", text), SHORT_TIMEOUT)
+            run = ctx.call("task.note", slug, self.task_cmd("note", slug, *(["--quiet"] if quiet else []), "--", text), SHORT_TIMEOUT)
         else:
             ref = str(row.get("ref") or "")
             # the repo of an issue, else the source the row came from (an application, a protocol)
@@ -111,23 +138,61 @@ class WorkVerbs:
             ctx.note(self.tx["note_failed"].format(err=m.short(run.err, 100)), bad=True)
         return run.ok
 
-    def v_do_it(self, ctx: Ctx, keys: list[str], target: str | None = None, note: str | None = None) -> None:
+    def v_do_it(self, ctx: Ctx, keys: list[str], target: str | None = None, note: str | None = None,
+                yes: bool = False) -> None:
+        """Let the AI do it: a your-yes item with an action of its own is approved, everything else started on.
+        With `yes` (Do's first answer) it is the briefing's yes (control.md: yes = inbox.py approve): every inbox item
+        but an only-you one is approved, so the briefing no longer asks for it, and the Bridge starts on the ones
+        whose yes nothing would run (no action of their own, no tab at work on them)."""
         entries = self.entries(keys)
         rows = [e["row"] for e in entries]
+        if yes and not note and rows and all(r.get("inbox_state") == "approved" for r in rows):
+            # Do it in I'll do on an item whose yes is given: it starts now instead of on the next pass (round 3 of the
+            # four answers: the bucket promised it, the card had no Do it)
+            self.run_now(ctx, entries, target)
+            return
         self.refuse_approved(rows)
         if note:
             # a sentence of the person's is an order for an agent, never the item's own canned action
             self.start_noted(ctx, entries, note, "go", target or self.app.cfg.target)
             return
+        working = {e["row"]["key"] for e in entries if e.get("tab") and m.is_live(e["tab"])}
         rows = [r for r in rows if m.launch_item(r) is not None] + self.file_all(ctx, rows)
-        yes = [r for r in rows if r.get("inbox_id") and r.get("gate") == "your-yes" and r.get("has_action")]
-        rest = [r for r in rows if r not in yes]
-        for row in yes:
-            self.approve(ctx, row)
+        if yes:
+            approve = [r for r in rows if r.get("inbox_id") and r.get("gate") != "only-you"]
+            rest = [r for r in rows if (r not in approve or not r.get("has_action")) and r["key"] not in working]
+        else:
+            approve = [r for r in rows if r.get("inbox_id") and r.get("gate") == "your-yes" and r.get("has_action")]
+            rest = [r for r in rows if r not in approve]
+        yes_given = [r for r in approve if self.approve(ctx, r)]
+        rest = [r for r in rest if r not in approve or r in yes_given]
+        if yes and yes_given and "launch" not in self.app.driver_caps():
+            # the yes is the answer, as the briefing's is (approve, then the runner's pass): without a terminal to start
+            # an agent in, nothing beside it is tried, so a yes that went through never reads as a failure (round 2 of
+            # the four answers: "Freigegeben" stood beside "Die Aktion ging nicht")
+            rest = [r for r in rest if r not in yes_given]
         if rest:
             self.launch(ctx, rest, "go", target or self.app.cfg.target)
-        if not yes and not rest and not ctx.failed:
+        if not approve and not rest and not ctx.failed:
             ctx.note(self.tx["nothing_to_do"])
+
+    def run_now(self, ctx: Ctx, entries: list[dict], target: str | None) -> None:
+        """Approved items started now: one with an action of its own by the runner's pass (inbox.py run, as the
+        briefing runs a yes), any other by an agent, unless a tab already works on it"""
+        rows = [e["row"] for e in entries]
+        working = {e["row"]["key"] for e in entries if e.get("tab") and m.is_live(e["tab"])}
+        if any(r.get("has_action") for r in rows):
+            run = ctx.call("inbox.run", "run", self.inbox("run"), CLOSE_TIMEOUT)
+            if not run.ok:
+                ctx.note(self.tx["later_failed"].format(err=m.short(run.err, 100)), bad=True)
+                return
+        rest = [r for r in rows if not r.get("has_action") and r["key"] not in working and m.launch_item(r) is not None]
+        if rest:
+            self.launch(ctx, rest, "go", target or self.app.cfg.target)
+        if not ctx.failed:
+            ctx.note(self.tx["run_now"].format(title=m.short(rows[0]["title"], 60)))
+        ctx.delta()
+        self.app.collector.request("both")
 
     def v_advise(self, ctx: Ctx, keys: list[str], note: str | None = None) -> None:
         if note:
@@ -163,7 +228,8 @@ class WorkVerbs:
             return
         self.launch(ctx, [row], "context", self.app.cfg.target)
 
-    def v_later(self, ctx: Ctx, key: str, until: str, text: str | None = None, revisit: bool = False) -> None:
+    def v_later(self, ctx: Ctx, key: str, until: str, text: str | None = None, revisit: bool = False,
+                plan: bool = False, done: bool = False) -> None:
         """Put off until a day. An inbox item records its defer itself and keeps the sentence as a note; a task, a
         stream and any other row are only hidden here, so the decision is written where the row lives
         (write_note), with the sentence when there is one. With `revisit` (Work through's Revisit ▾ while the read
@@ -173,7 +239,9 @@ class WorkVerbs:
         if revisit and ctx.person is None and self.app.seen_on():
             self.revisit_on(ctx, row, until, text)
             return
-        words = self.tx["later_note"].format(until=until) + (f": {text}" if text else "")
+        # the watch list (until LIST_DAY) is put off without a day: its words name the list, never the far day
+        listed = until == LIST_DAY
+        words = self.tx["list_note" if listed else "later_note"].format(until=until) + (f": {text}" if text else "")
         # every inbox item is put off, whatever its gate: hidden only, a free one would still run meanwhile
         if row.get("inbox_id"):
             item = self.inbox_id(row)
@@ -184,10 +252,22 @@ class WorkVerbs:
                 ctx.note(self.tx["later_failed"].format(err=m.short(run.err, 100)), bad=True)
                 return
             # like a hide, a defer can be taken back from the note and the history (inbox_reopen)
-            ctx.history.append(history_item(row["key"], row["title"], "inbox", f"later until {until}", item))
-            self.settle(ctx, row, self.tx["later_back"].format(until=until))
+            ctx.history.append(history_item(row["key"], row["title"], "inbox", "on the watch list" if listed else f"later until {until}", item))
+            self.settle(ctx, row, self.tx["list_back" if listed else "planned_back" if plan else "later_back"].format(until=until))
             return
-        self.write_note(ctx, row, words)
+        if done:
+            # a stream done for this time (its Done): out of sight until `until`, counted as done today, the stream
+            # runs on; nothing is written where it lives, so the undo leaves no trace
+            self.clear_twins(row["key"])
+            self.app.store.hide(row["key"], until, str(row["title"]), done=True)
+            ctx.history.append(history_item(row["key"], row["title"], "other", "done for this time"))
+            ctx.note(self.tx["done_stream_note"].format(title=m.short(row["title"], 60)))
+            return
+        # a plain Later on a task is the cockpit's record only while the buckets are on (round 1: its undo left a note
+        # and last_updated in STATUS.md); the classic page keeps its note (round 4: the switch off changes nothing). A
+        # sentence the person wrote is kept where the row lives, any other row keeps its log line
+        if text or not row.get("task") or not self.buckets_on():
+            self.write_note(ctx, row, words)
         self.hide_until(ctx, row, until)
 
     def revisit_on(self, ctx: Ctx, row: dict, until: str, text: str | None) -> None:
@@ -261,6 +341,10 @@ class WorkVerbs:
                 self.settle(ctx, row, self.tx["runs_on_note"].format(until=until))
             elif row.get("task"):
                 slug = self.slug(row)
+                # what it waited on before, so the undo gives that back instead of clearing it (task.py wait --back)
+                was = self.task_fields(slug, ("blocked_by", "blocked_since", "quiet_until"))
+                kept = bool(was.get("blocked_by")) and not on
+                trace = self.trace_of(slug, f"Runs on until {until}" + ("" if kept else f": {on or 'runs on'}"))
                 run = ctx.call("task.wait", slug, self.task_cmd("wait", slug, "--until", until,
                                                               *(["--on", on] if on else []), "--json"), SHORT_TIMEOUT)
                 if not run.ok:
@@ -269,8 +353,8 @@ class WorkVerbs:
                 ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task",
                                     "did": f"runs on until {until}", "ident": slug, "undone_ms": None,
                                     "work_kind": "stream" if row.get("stream") else "task",
-                                    "undo": {"verb": "task_running", "args": {"slug": slug}}})
-                ctx.note(self.tx["runs_on_note"].format(until=until) + f": {title}")
+                                    "undo": {"verb": "task_running", "args": {**self.wait_back(slug, was), **trace}}})
+                ctx.note(self.tx["later_back" if self.buckets_on() else "runs_on_note"].format(until=until) + f": {title}")
                 ctx.delta()
             else:
                 self.write_note(ctx, row, self.tx["runs_on_note"].format(until=until) + (f": {on}" if on else ""))
@@ -301,13 +385,23 @@ class WorkVerbs:
                 ctx.note(self.tx["later_failed"].format(err=m.short(run.err, 100)), bad=True)
                 return
             ctx.history.append(history_item(row["key"], row["title"], "inbox", did, item))
+            if self.buckets_on():
+                # the point stays: with someone it waits on them, where the briefing lists it (round 2 of the four
+                # answers: settled, it left every bucket while the briefing had it under Waiting on others)
+                ctx.note(self.tx[back_w].format(who=who, until=until) + f": {m.short(row['title'], 60)}")
+                ctx.delta()
+                self.app.collector.request("both")
+                return
             self.settle(ctx, row, self.tx[back_w].format(who=who, until=until))
             return
         if row.get("task"):
             slug = self.slug(row)
-            run = ctx.call("task.next", slug, self.task_cmd("next", slug, "--who", who, "--check", until, "--json"), SHORT_TIMEOUT)
+            step, cleared = self.step_for(slug, row)
+            trace = self.trace_of(slug, f"In progress with {who}, check-in {until}", *([words] if text else []))
+            run = ctx.call("task.next", slug, self.task_cmd("next", slug, *step, "--who", who, "--check", until, "--json"),
+                           SHORT_TIMEOUT)
             if not run.ok:
-                ctx.note(self.tx["later_failed"].format(err=m.short(run.err, 100)), bad=True)
+                ctx.note(self.tx["owner_failed"].format(err=m.short(run.err, 100)), bad=True)
                 return
             if text:
                 self.write_note(ctx, row, words)
@@ -316,8 +410,8 @@ class WorkVerbs:
             ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task",
                                 "did": did, "ident": slug, "undone_ms": None,
                                 "work_kind": "stream" if row.get("stream") else "task",
-                                "undo": {"verb": "task_next", "args": {"slug": slug, "who": old_who or "me",
-                                                                       "clear_check": True}}})
+                                "undo": {"verb": "task_next", "args": {**(cleared or {"slug": slug, "who": old_who or "me",
+                                                                                     "clear_check": True}), **trace}}})
             ctx.note(self.tx[back_w].format(who=who, until=until) + f": {m.short(row['title'], 60)}")
             ctx.delta()
             self.app.collector.request("both")
@@ -326,19 +420,89 @@ class WorkVerbs:
         self.hide_until(ctx, row, until)
 
     def v_task_next(self, ctx: Ctx, slug: str, who: str | None = None, check: str | None = None,
-                    clear_check: bool = False) -> None:
+                    clear_check: bool = False, clear: bool = False, last_updated: str | None = None,
+                    drop: list | None = None) -> None:
         """Who takes a task's step and its check-in day (task.py next --who --check / --clear-check), the step kept:
-        the undo of In progress, and the check-in's answers on a task"""
-        if who is None and check is None and not clear_check:
-            raise bad_arg("who", "give who, a check-in day or clear_check")
-        argv = self.task_cmd("next", slug, *(["--who", who] if who else []), *(["--check", check] if check else []),
-                             *(["--clear-check"] if clear_check else []), "--json")
+        the undo of In progress, and the check-in's answers on a task. `clear` takes the step away (task.py next
+        --clear): the undo of a hand-over that named the task itself as its step"""
+        if who is None and check is None and not clear_check and not clear:
+            raise bad_arg("who", "give who, a check-in day, clear_check or clear")
+        trace = self.trace_argv(last_updated, drop)
+        argv = (self.task_cmd("next", slug, "--clear", *trace, "--json") if clear else
+                self.task_cmd("next", slug, *(["--who", who] if who else []), *(["--check", check] if check else []),
+                              *(["--clear-check"] if clear_check else []), *trace, "--json"))
         run = ctx.call("task.next", slug, argv, SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
             return
         if getattr(self.app, "history", None) is not None:
             self.app.history.mark_undone("task_next", slug)
+        ctx.delta()
+        self.app.collector.request("both")
+
+    def v_task_owner(self, ctx: Ctx, key: str, who: str) -> None:
+        """With … under More of a bucket card: who takes a task's next step, you (me) or the Bridge (bridge), the step
+        and any check-in kept (task.py next --who). The point moves to the bucket that says so (Do or Plan for you, I'll
+        do for the Bridge); the undo gives the step back to whoever had it (task_next)."""
+        who = " ".join(str(who or "").split())
+        if not who or "\n" in str(who) or len(who) > 60:
+            raise bad_arg("who", "one line of 1 to 60 characters: who has the step")
+        found = self.entry(key)
+        row = found["row"]
+        if row.get("inbox_id"):
+            self.inbox_owner(ctx, key, row, who)
+            return
+        if not row.get("task"):
+            raise self.not_applicable("only a task or an inbox item has someone who takes it", "key")
+        slug = self.slug(row)
+        old_next = self.task_next_of(slug) or ((found.get("out") or {}).get("card") or {}).get("next") or {}
+        old_who = old_next.get("who")
+        old_check = str(old_next.get("check") or "")[:10] if DATE_RE.match(str(old_next.get("check") or "")[:10]) else ""
+        # a check-in asks someone else how the step stands: a step that comes to you or the Bridge drops it (round 3:
+        # With … du kept "In progress with me, check-in 2026-11-29"); the undo gives it back
+        drop_check = bool(old_check) and who.lower() in ("me", "bridge")
+        step, cleared = self.step_for(slug, row)
+        trace = self.trace_of(slug, f"Next step with {who}, no check-in")
+        run = ctx.call("task.next", slug, self.task_cmd("next", slug, *step, "--who", who,
+                                                        *(["--clear-check"] if drop_check else []), "--json"), SHORT_TIMEOUT)
+        if not run.ok:
+            ctx.note(self.tx["owner_failed"].format(err=m.short(run.err, 100)), bad=True)
+            return
+        said = self.tx.get(f"owner_{who.lower()}", who)
+        ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task", "did": f"next step with {who}",
+                            "ident": slug, "undone_ms": None, "work_kind": "stream" if row.get("stream") else "task",
+                            "undo": {"verb": "task_next", "args": {**(cleared or {"slug": slug, "who": old_who or "me",
+                                                                                **({"check": old_check} if drop_check else {})}),
+                                                                     **trace}}})
+        ctx.note(self.tx["owner_set"].format(who=said, title=m.short(row["title"], 60)))
+        ctx.delta()
+        self.app.collector.request("both")
+
+    def inbox_owner(self, ctx: Ctx, key: str, row: dict, who: str) -> None:
+        """With … on an inbox item (round 3 of the four answers: it offered only a name): the Bridge puts it off with
+        the Bridge for a week (inbox.py defer --on bridge, in sight in I'll do, its undo the reopen of every defer),
+        you take it back from whoever had it (inbox.py reopen), a name is In progress with them (work_on)"""
+        low = who.lower()
+        item = self.inbox_id(row)
+        if low not in ("me", "bridge"):
+            week = (self.today() + dt.timedelta(days=7)).isoformat()
+            self.v_work_on(ctx, key, who, week)
+            return
+        if low == "me":
+            if row.get("inbox_state") != "deferred":
+                raise self.not_applicable("the item is yours already", "who")
+            run = ctx.call("inbox.reopen", item, self.inbox("reopen", item), SHORT_TIMEOUT)
+            if not run.ok:
+                ctx.note(self.tx["owner_failed"].format(err=m.short(run.err, 100)), bad=True)
+                return
+        else:
+            week = (self.today() + dt.timedelta(days=7)).isoformat()
+            run = ctx.call("inbox.defer", item, self.inbox("defer", item, "--until", week, "--on", "bridge"), SHORT_TIMEOUT)
+            if not run.ok:
+                ctx.note(self.tx["owner_failed"].format(err=m.short(run.err, 100)), bad=True)
+                return
+            ctx.history.append(history_item(row["key"], row["title"], "inbox", "with the Bridge", item))
+        ctx.note(self.tx["owner_set"].format(who=self.tx.get(f"owner_{low}", who), title=m.short(row["title"], 60)))
         ctx.delta()
         self.app.collector.request("both")
 
@@ -367,15 +531,119 @@ class WorkVerbs:
         ctx.delta()
         self.app.collector.request("both")
 
-    def v_task_running(self, ctx: Ctx, slug: str) -> None:
-        """A task that ran on is worked on again: blocked_by and quiet_until go (task.py wait --clear)."""
-        run = ctx.call("task.wait", slug, self.task_cmd("wait", slug, "--clear", "--json"), SHORT_TIMEOUT)
+    @staticmethod
+    def wait_back(slug: str, was: dict) -> dict:
+        """The undo of a wait: a task that waited on nothing runs again (--clear), one that waited already gets back
+        its blocker, the day it began and its quiet day as they were (--back)"""
+        if not was.get("blocked_by"):
+            return {"slug": slug}
+        return {"slug": slug, "back": True, "on": was["blocked_by"],
+                **{k: was[f] for k, f in (("since", "blocked_since"), ("until", "quiet_until")) if was.get(f)}}
+
+    def task_next_of(self, slug: str) -> dict:
+        """The task's own next step as its STATUS.md holds it ({what, who, check, ...}), {} where it has none: a row
+        that folds an inbox item shows the item's step, never the task's"""
+        for kind in ("tasks", "streams"):
+            try:
+                text = (self.app.root / "work" / kind / slug / "STATUS.md").read_text(encoding="utf-8")
+                break
+            except (OSError, UnicodeDecodeError):
+                continue
+        else:
+            return {}
+        nxt = split_front(text)[0].get("next")
+        return {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in nxt.items()} if isinstance(nxt, dict) else {}
+
+    def task_step(self, slug: str) -> str | None:
+        """The what of a task's next step as its STATUS.md names it (next: {what} or next: "..."), else None"""
+        for kind in ("tasks", "streams"):
+            try:
+                text = (self.app.root / "work" / kind / slug / "STATUS.md").read_text(encoding="utf-8")
+                break
+            except (OSError, UnicodeDecodeError):
+                continue
+        else:
+            return None
+        nxt = split_front(text)[0].get("next")
+        what = nxt.get("what") if isinstance(nxt, dict) else nxt
+        return " ".join(what.split()) if isinstance(what, str) and what.strip() else None
+
+    def step_for(self, slug: str, row: dict) -> tuple:
+        """(argv words, undo args) of a hand-over: a task without a step of its own takes itself as the step (its
+        title), so task.py next has something to give someone (round 1: 36 of 40 tasks had none and every With …
+        was refused); the undo of such a hand-over clears the step again"""
+        if self.task_step(slug):
+            return (), None
+        title = " ".join(str(row.get("title") or slug).split())[:300]
+        return (title,), {"slug": slug, "clear": True}
+
+    def trace_of(self, slug: str, *notes: str) -> dict:
+        """What an undo needs to leave no trace (task.py undo_trace): the task's last_updated as it is now, before the
+        step, and the notes the step writes. {} where the task has no day (an older STATUS.md)"""
+        day = str(self.task_fields(slug, ("last_updated",)).get("last_updated") or "")[:10]
+        if not DATE_RE.match(day):
+            return {}
+        drop = [" ".join(n.split()) for n in notes if n and n.strip()][:4]
+        return {"last_updated": day, **({"drop": drop} if drop else {})}
+
+    @staticmethod
+    def trace_argv(last_updated: str | None, drop: list | None) -> list:
+        """The task.py flags of an undo that leaves no trace (round 2 of the four answers: an undo moved last_updated to
+        today and left its notes, so a resting task lost its quiet days)"""
+        if not last_updated:
+            return []
+        return ["--last-updated", last_updated, *[a for n in (drop or []) for a in ("--drop-note", n)]]
+
+    def task_title(self, slug: str) -> str:
+        """A task's or stream's own name, its STATUS.md H1, for a note a person reads; its slug where it has none
+        (round 4 of the four answers: an undo said "check-the-api-key-rotation-for-northwind ist wieder dran")"""
+        for kind in ("tasks", "streams"):
+            try:
+                text = (self.app.root / "work" / kind / slug / "STATUS.md").read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            body = split_front(text)[1]
+            head = next((line[2:].strip() for line in str(body).splitlines()
+                         if line.startswith("# ") and "yaml-language-server" not in line), "")
+            return m.short(head, 60) if head else slug
+        return slug
+
+    def task_fields(self, slug: str, keys: tuple) -> dict:
+        """Plain values of these frontmatter fields of an open task or stream ({} where it has none): a blocker as
+        its text, a day as YYYY-MM-DD"""
+        for kind in ("tasks", "streams"):
+            try:
+                text = (self.app.root / "work" / kind / slug / "STATUS.md").read_text(encoding="utf-8")
+                break
+            except (OSError, UnicodeDecodeError):
+                continue
+        else:
+            return {}
+        front = split_front(text)[0]
+        out = {}
+        for k in keys:
+            v = front.get(k)
+            if isinstance(v, (dt.date, dt.datetime)):
+                v = v.isoformat()[:10]
+            if isinstance(v, str) and v.strip():
+                out[k] = " ".join(v.split())[:200]
+        return out
+
+    def v_task_running(self, ctx: Ctx, slug: str, back: bool = False, on: str | None = None, since: str | None = None,
+                       until: str | None = None, last_updated: str | None = None, drop: list | None = None) -> None:
+        """A task that ran on is worked on again: blocked_by and quiet_until go (task.py wait --clear). With `back`
+        (the undo of a wait on a task that waited already) it waits on what it waited on before (task.py wait --back)."""
+        trace = self.trace_argv(last_updated, drop)
+        argv = (self.task_cmd("wait", slug, "--back", *(["--on", on] if on else []), *(["--since", since] if since else []),
+                              *(["--until", until] if until else []), *trace, "--json") if back
+                else self.task_cmd("wait", slug, "--clear", *trace, "--json"))
+        run = ctx.call("task.wait", slug, argv, SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
             return
         if getattr(self.app, "history", None) is not None:
             self.app.history.mark_undone("task_running", slug)
-        ctx.note(self.tx["running_again"].format(slug=slug), go={"kind": "item", "key": f"task:{slug}"})
+        ctx.note(self.tx["running_again"].format(slug=self.task_title(slug)), go={"kind": "item", "key": f"task:{slug}"})
         self.app.collector.request("both")
 
     def v_to_task(self, ctx: Ctx, key: str, status: str | None = None) -> None:
@@ -590,6 +858,55 @@ class WorkVerbs:
         self.settle(ctx, row, self.tx["task_shelved"])
         self.settle_soon(ctx)
 
+    def v_task_park(self, ctx: Ctx, key: str, reason: str | None = None) -> None:
+        """Park of Park or drop on a task, the briefing's park (control.md: park = status: backlog): the task stays in
+        work/tasks with status backlog and a dated note with the reason (task.py status), so no bucket of the
+        briefing holds it any more. Never closed: Shelve and Obsolete close, Park only sets aside. A stream runs on and
+        an inbox item is put off instead. Taken back by its old status (task_unpark)."""
+        entry = self.entry(key)
+        row = entry["row"]
+        if not row.get("task") or row.get("inbox_id") or row.get("stream") or (entry["out"] or {}).get("stream"):
+            raise self.not_applicable("only a task is parked in the backlog; a stream runs on, an inbox item is put off", "key")
+        slug = self.slug(row)
+        before = self.task_status(slug) or "doing"
+        # what the undo gives back besides the status: last_updated as it was, so the task keeps its quiet days
+        was_date = str(self.task_fields(slug, ("last_updated",)).get("last_updated") or "")[:10]
+        reason = " ".join((reason or "").split())[:200]
+        # the watch list's own words while the buckets are on (round 4: "Parked: Auf der Merkliste", half English)
+        note = reason if self.buckets_on() and reason else "Parked" + (f": {reason}" if reason else "")
+        run = ctx.call("task.status", slug, self.task_cmd("status", slug, "backlog", "--note", note, "--json"), SHORT_TIMEOUT)
+        if not run.ok:
+            ctx.note(self.tx["park_failed"].format(title=m.short(row["title"], 40), err=m.short(run.err, 100)), bad=True)
+            return
+        ctx.history.append({"key": row["key"], "title": str(row["title"])[:200], "kind": "task", "did": "parked",
+                            "ident": slug, "undone_ms": None, "work_kind": "task",
+                            "undo": {"verb": "task_unpark", "args": {"slug": slug, "as": before if before in REOPEN_AS else "doing",
+                                                                      **({"last_updated": was_date} if DATE_RE.match(was_date) else {}),
+                                                                      "note": note}}})
+        ctx.note(self.tx["task_listed" if self.buckets_on() else "task_parked"].format(title=m.short(row["title"], 60)), go=row_go(row))
+        ctx.delta()
+        self.app.collector.request("both")
+
+    def v_task_unpark(self, ctx: Ctx, slug: str, last_updated: str | None = None, note: str | None = None, **kw) -> None:
+        """The undo of a park: what the park changed given back (task.py status --back): the status before,
+        last_updated as it was and the park's own note gone, so the task keeps its quiet days and its place in Park or
+        drop. An undo from before round 2 (no date, no note) keeps its old way: the status with a note"""
+        status = kw.get("as") or "doing"
+        if last_updated or note:
+            argv = self.task_cmd("status", slug, status, "--back", *(["--last-updated", last_updated] if last_updated else []),
+                                 *(["--drop-note", note] if note else []), "--json")
+        else:
+            argv = self.task_cmd("status", slug, status, "--note", "Park taken back", "--json")
+        run = ctx.call("task.status", slug, argv, SHORT_TIMEOUT)
+        if not run.ok:
+            ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)
+            return
+        if getattr(self.app, "history", None) is not None:
+            self.app.history.mark_undone("task_unpark", slug)
+        ctx.note(self.tx["running_again"].format(slug=self.task_title(slug)), go={"kind": "item", "key": f"task:{slug}"})
+        ctx.delta()
+        self.app.collector.request("both")
+
     def v_inbox_unmute(self, ctx: Ctx, id: str) -> None:  # noqa: A002 - the API name
         run = ctx.call("inbox.unmute", id, self.inbox("unmute", id), SHORT_TIMEOUT)
         if run.ok:
@@ -770,6 +1087,10 @@ class WorkVerbs:
             argv = self.task_cmd("close", slug, *(["--stream"] if out.get("stream") else []),
                                  *(["--declined"] if why in DECLINED_REASONS else []), "--reason", words)
             before = self.task_status(slug)     # read before the close moves the folder: the undo restores it
+            ended = out.get("stream") or row.get("stream")
+            said = (("Stream ended, declined" if why in DECLINED_REASONS else "Stream ended") if ended
+                    else "Declined" if why in DECLINED_REASONS else "Closed")
+            trace = self.trace_of(slug, f"{said}: {words}")
             closed, err = self.run_close(ctx, slug, argv)
             if not closed:
                 failed += 1
@@ -781,8 +1102,11 @@ class WorkVerbs:
                                                "declined" if why in DECLINED_REASONS else "done", slug, before,
                                                work_kind="stream" if out.get("stream") or row.get("stream") else "task"),
                                 **({"reason": text} if text else {})})
+            if trace and (ctx.history[-1].get("undo") or {}).get("verb") == "task_reopen":
+                ctx.history[-1]["undo"]["args"].update(trace)
             if len(rows) == 1:
-                self.settle(ctx, row, self.tx["task_declined" if why in DECLINED_REASONS else "task_closed"])
+                word = ("task_obsolete" if self.buckets_on() else "task_declined") if why in DECLINED_REASONS else "task_closed"
+                self.settle(ctx, row, self.tx[word])
             else:
                 self.app.collector.settle(row["key"], self.tx["task_closed"])
                 ctx.settled.append(row["key"])
@@ -835,7 +1159,8 @@ class WorkVerbs:
                 ctx.history.append({**history_item(key, row["title"], "inbox", "done" if outcome == "done" else "dropped", item),
                                     **({"reason": text} if text else {})})
                 self.end_also(ctx, row, verb)
-                self.settle(ctx, row, self.tx["res_done" if outcome == "done" else "dropped_muted" if muted else "dropped"])
+                self.settle(ctx, row, self.tx["res_done" if outcome == "done" else "dropped_muted" if muted
+                                              else "obsolete_done" if self.buckets_on() else "dropped"])
                 self.settle_soon(ctx)
             elif kind == "other":
                 # not collector.settle: its source still lists the row, so it would stay invisible for good;
@@ -857,11 +1182,14 @@ class WorkVerbs:
         ctx.note(word.format(title=m.short(title, 60)), go={"kind": "item", "key": keys[0]})
         self.app.collector.request("both")   # the quick pass brings the row back in seconds, the full one follows
 
-    def v_task_reopen(self, ctx: Ctx, slug: str, note: str | None = None, **kw) -> None:
+    def v_task_reopen(self, ctx: Ctx, slug: str, note: str | None = None, last_updated: str | None = None,
+                      drop: list | None = None, **kw) -> None:
         """A closed task back to work/tasks/: doing, backlog when it only should still be done, or review
-        when an undo restores a task closed while in review."""
+        when an undo restores a task closed while in review. With `last_updated` (an undo) it leaves no trace: the
+        day as it was, the close's note (`drop`) and its own gone"""
         status = kw.get("as") or "doing"
-        argv = self.task_cmd("reopen", slug, "--as", status, *(["--note", note] if note else []), "--json")
+        argv = self.task_cmd("reopen", slug, "--as", status, *(["--note", note] if note else []),
+                             *self.trace_argv(last_updated, drop), "--json")
         run = ctx.call("task.reopen", slug, argv, SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["reopen_failed"].format(err=m.short(run.err, 100)), bad=True)

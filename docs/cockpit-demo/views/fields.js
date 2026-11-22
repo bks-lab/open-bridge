@@ -9,7 +9,7 @@
 // The rules every component keeps stand at the head of components.js.
 
 import { html, useState } from '../vendor/htm-preact-3.1.1.module.js'
-import { FIELD_COUNT, answerMark, canTab, errorText, guideChoices, guideOf, indexRows, isTopic, previewText, replySend, short, stateToken, tabStateKey, taskOfTab } from '../logic.js'
+import { FIELD_COUNT, answerMark, canTab, errorText, guideChoices, guideOf, indexRows, isTopic, previewText, replySend, short, stateToken, tabStateKey, tabWords, taskOfTab } from '../logic.js'
 import { T } from '../text.js'
 import { OpenFile } from './dossier.js'
 import { GuideTree } from './guide.js'
@@ -166,7 +166,7 @@ export function AnswerBar({ tab, s, c, onOwn, onTopic }) {
   const [note, setNote] = useState(null)
   const choices = status === 'fresh' ? guideChoices(tab, entry, s) : []
   const busy = !!s.ui?.busy?.[tab.ref]
-  const question = (status === 'fresh' && entry.waits_for) || tab.ask?.text || previewText(tab.last) || t.reply.unreadable
+  const question = (status === 'fresh' && entry.waits_for) || tab.ask?.text || tabWords(tab) || t.reply.unreadable
   const go = async (ch, words) => {
     setNote(null)
     const { verb, args } = ch.n == null ? replySend(tab, words) : ch

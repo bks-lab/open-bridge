@@ -109,30 +109,36 @@ def test_render_reads_the_settled_record(tmp_path):
     (folder / "20261001T000000Z-000-cccc-hide.yaml").write_text(
         yaml.safe_dump({"schema_version": 1, "key": "task:t2", "act": "hide", "until": "2026-10-01"}))
     got = bf.settled_record(root, NOW)
-    assert got == {"dismissed": ["ref:acme/app#7"], "hidden": {"task:t1": "2026-10-09"}}
-    assert bf.settled_record(tmp_path / "none", NOW) == {"dismissed": [], "hidden": {}}
+    assert got == {"dismissed": ["ref:acme/app#7"], "dismissed_on": {"ref:acme/app#7": ""}, "hidden": {"task:t1": "2026-10-09"},
+                   "hidden_done": {}, "hidden_filed": []}
+    assert bf.settled_record(tmp_path / "none", NOW) == {"dismissed": [], "dismissed_on": {}, "hidden": {}, "hidden_done": {},
+                                                          "hidden_filed": []}
 
 
 # ---------------------------------------------------------------- put off, waiting
 
 
-def test_a_row_put_off_past_the_lookahead_does_not_stand_in_do_for_being_only_yours():
+def test_a_row_put_off_to_a_day_is_out_of_sight_until_then_also_when_only_you_can():
+    # round 1 of the four answers: put off is out of sight until its day, also tomorrow and also when it is due then;
+    # it comes back on that day by itself and is counted as later meanwhile
     r = result(sec("inbox", "inbox", [ask("i1", "Keep the raise or object", state="deferred", until="2026-10-06",
                                           gate="only-you", due="2026-10-30"),
+                                      ask("i3", "Post the note", state="deferred", until="2026-10-06",
+                                          gate="only-you", due="2026-10-06"),
                                       ask("i2", "Open today", urgency="today")]))
     got = titles(bv.build(r, profile()))
-    assert got["do"] == ["Open today"] and got["plan"] == ["Keep the raise or object"]
+    assert got == {"do": ["Open today"]}
 
 
-def test_a_row_put_off_and_due_within_the_lookahead_stays_in_do():
-    r = result(sec("inbox", "inbox", [ask("i1", "Post the note", state="deferred", until="2026-10-06",
+def test_a_row_whose_day_came_stands_in_its_bucket_again():
+    r = result(sec("inbox", "inbox", [ask("i1", "Post the note", state="deferred", until="2026-10-05",
                                           gate="only-you", due="2026-10-06")]))
     assert titles(bv.build(r, profile()))["do"] == ["Post the note"]
 
 
 def test_a_row_put_off_on_someone_waits_for_them():
     r = result(sec("inbox", "inbox", [ask("i1", "The agent's answer", state="deferred", until="2026-10-06",
-                                          gate="only-you", due="2026-10-20", waiting_on="Alex")]))
+                                          gate="only-you", due="2026-10-20", waiting_on="Alex", check=True)]))
     view = bv.build(r, profile())
     row = next(b for b in view["buckets"] if b["id"] == "waiting")["items"][0]
     assert any("Alex" in w for w in row["why"])

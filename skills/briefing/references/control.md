@@ -119,13 +119,41 @@ Two things are yours besides:
 
 - **Why the first row is first**, in one sentence under the headline, when the
   derived reason (due, back on, waiting N days) does not already say it.
-- **The answers.** "1a 3b" picks the letter of that row's bucket. Default
-  letters: do `a yes · b later · c drop` (inbox approve, defer, drop),
-  delegate `a go · b not now` (start it, or leave it), waiting `a nudge · b wait`
-  (a nudge is a DRAFT for the person, never sent), drop `a park · b keep`
-  (park = `status: backlog`). A profile may rename the options; their order
-  keeps these meanings. In `style: calm` there are no letters: "3 yes", "3 later",
-  "3 drop" (or the bucket's own words) name the row and the answer.
+- **The answers.** Every numbered row, in every bucket and every style, takes
+  the same four answers, the cockpit's four: **do** / "mach", **later** /
+  "später" (with an optional day: "3 later monday", "3 später in einer Woche",
+  "3 später 3.12.", "3 später merkliste"; no day is tomorrow), **done** /
+  "erledigt", **obsolete** / "veraltet". A letter picks them in that order:
+  "3a" do, "3b" later, "3c" done, "3d" obsolete. Several in one line work:
+  "1 mach, 3 später montag, 5 veraltet". The words of the answers before them
+  stay accepted and mean one of the four: ja, yes, los, go, nachfassen, nudge
+  are do; einplanen, schedule, nicht jetzt, not now, warten, wait, behalten,
+  keep are later (einplanen with a day puts it on that day); parken, park are
+  later onto the watch list; streichen, drop are obsolete. Read a reply with
+  `scripts/lib/answers.py` (`answers.parse(text, today)`): it gives each
+  number its answer and, for later, the day (`9999-12-31` is the watch list).
+  A number this print left out (a cockpit card names every row's number) is
+  read from `briefing.py collect <id> --max-items 500 --json`, where every row
+  carries its `nr`. A row keeps its number all day (the day's number book,
+  `.bridge/cockpit/numbers/<profile>.json`): an answer moves no other row's
+  number, and a row new today gets the next number nobody had. An agent tab
+  that asks in a dialog is a row of Do ("Agent tab asks: ..."), numbered after
+  the others; its do is the tab's own answer, given in the tab.
+  What the answer does to the row is `answers.effect(answer, row, until)`, the
+  table below in code: run its `cli` commands from the repo root. Its `cockpit`
+  part is the act the page's card sends for the same answer; the page keeps its
+  own copy (`scripts/web/buckets.js`), and the shared cases in
+  `scripts/tests/fixtures/answers/effects.json` hold the two to the same act,
+  so the same word does the same thing on the same row in the chat and on the
+  page.
+- **Do is the Bridge's next step**, the one the row's next sentence names: a
+  task gets an agent on its next step and moves to "I'll do" as running; an
+  inbox item gets its yes and runs (`only-you` gets no yes and never runs: a
+  note says "do it", prepare it and say "you press send", as the cockpit does;
+  an item whose yes is given already starts now: `inbox.py run`); a point waiting on someone else gets a nudge written as a
+  DRAFT for the person, never sent, which then stands in Do as a ready draft;
+  a row an agent tab asks about is answered in the tab with the tab's own
+  answer.
 
 A stream that runs every morning belongs in the profile, not in this list: a
 `command` section with `report_ok: true` turns it into rows and an all-clear
@@ -147,7 +175,7 @@ ABOVE everything else in `workflow.md` § Phase 4.
 
   {summary}
   {why it is first: urgency, due, collision, what waits on it}
-  → {proposed action}            [{gate}]   {a} yes · {b} later · {c} drop
+  → {proposed action}            [{gate}]   do · later · done · obsolete
 
 ── Waiting for you ({N}) ──────────────────────────────────────────────────
 
@@ -187,11 +215,15 @@ Answers map onto the inbox, never onto memory or a log sentence:
 
 | The person says | Do |
 |---|---|
-| yes / do it / `a` | `inbox.py approve <id>` then `inbox.py run` |
+| do / mach / `a` (ja, los, nachfassen) on an inbox item | `inbox.py approve <id>` then `inbox.py run` |
+| do / mach on a task | start an agent on its `next.what`; the task stands in "I'll do" as running |
+| do / mach on a waiting point | write the nudge as a DRAFT for the person (mail-draft), never send it |
 | yes once {condition} | `inbox.py approve <id> --when-json '<probe>'` (only `your-yes`; `run` executes it later) |
-| later / tomorrow / `b` | `inbox.py defer <id> --until <date>` |
-| drop it / `c` | `inbox.py drop <id> --note "<why>"` |
-| done already | `inbox.py close <id> --note "<how>"` and, if the probe missed it, fix the probe |
+| later / später [day] / `b` on an inbox item | `inbox.py defer <id> --until <date>` (watch list: `--until 9999-12-31`) |
+| later on a task, a stream or an issue | a day: `briefing.py hide task:<slug> --until <date>` (an issue `ref:<owner/repo#n>`), the cockpit's own record; watch list (merkliste, parken) on a task: `task.py status <slug> backlog --note "Parked: <why>"` |
+| later on a waiting point | a day: out of sight until then and counted as later, back with the same person, a task `task.py wait <slug> --until <date>`, an inbox item `inbox.py defer <id> --until <date> --on "<who>"`; the watch list is the watch list there too (a task to the backlog as above, an inbox item `--until 9999-12-31` without `--on`) |
+| done / erledigt / `c` | an inbox item `inbox.py close <id> --note "<how>"` (if the probe missed it, fix the probe); a task `task.py close <slug>`; a stream is done for this time, `briefing.py hide task:<slug> --until <tomorrow> --done` (counted as done today, it runs on); an issue or PR `briefing.py dismiss ref:<owner/repo#n> --outcome done`, never closed on GitHub |
+| obsolete / veraltet / `d` (streichen), on any numbered row | the cockpit's Obsolete: an inbox item `inbox.py drop <id> --note "veraltet" --reason outdated`; a task `task.py close <slug> --declined --reason "Wird nicht gemacht: veraltet"`; a stream the same with `--stream`; an issue or PR `briefing.py dismiss ref:<owner/repo#n> --outcome not_doing`, never closed on GitHub; a row an agent tab asks about is answered in the tab, unless it asks about an inbox item |
 | status | `workplace.py status` plus the open count per task from the inbox |
 | tell {tab}: {text} | `workplace.py send <tab> <text>`; show what goes where first unless the person named both |
 

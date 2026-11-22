@@ -3,8 +3,8 @@
 
 The sections of a profile say where the data comes from. The `view:` block says how
 the reader sees it. `style: sources` (the default) prints one block per section, the
-briefing as it always was. `triage` sorts every row by what to DO with it (do, plan,
-delegate, waiting, drop), shows a thing once even when two sources carry it, and puts
+briefing as it always was. `triage` sorts every row by who is on the move and when (do,
+plan, delegate, waiting), shows a thing once even when two sources carry it, and puts
 housekeeping last. `brevity` is the bottom line plus the top three with why they
 matter. `plan` lays the day's work into the free gaps of the calendar.
 
@@ -158,8 +158,10 @@ def test_triage_sorts_every_row_by_what_to_do_with_it():
     assert "CV matching" in b["delegate"]        # next step who: bridge
     assert "Austria onboarding" in b["waiting"]                 # blocked_by
     assert "Bridge to bridge" in b["waiting"]  # next step at another person
-    assert any("keys" in t for t in b["drop"])                  # quiet task: park?
-    assert not any("Restore test" in t for t in b["plan"])      # a quiet task is shown once, under drop
+    assert "drop" not in b                                      # no bucket "park or drop" any more
+    assert "Keychain backup" in b["plan"]                       # a quiet task stays in its own bucket, resting
+    rest = next(r for x in view["buckets"] for r in x["items"] if r["title"] == "Keychain backup")
+    assert rest["resting"] is True and not any("untouched" in t for x in b.values() for t in x)
 
 
 def test_a_thing_two_sources_carry_is_shown_once_with_both_sources():
@@ -283,12 +285,12 @@ def test_max_items_caps_the_whole_briefing_and_it_ends():
     assert f"+{view['more']}" in out and "That's all for today." in out
 
 
-def test_answer_keys_number_rows_across_buckets_and_name_the_letters():
+def test_answer_keys_number_rows_across_buckets_and_name_the_four_answers_once():
     view = bv.build(sample(), profile(view={"style": "triage", "answer_keys": True}))
     out = ANSI.sub("", bv.draw(view))
     numbers = [int(n) for n in re.findall(r"^\s+(\d+)\s", out, flags=re.M)]
     assert numbers == list(range(1, len(numbers) + 1)) and numbers
-    assert "a " in out and "b " in out
+    assert out.count("do · later · done · obsolete") == 1
 
 
 def test_long_rows_wrap_at_a_word_and_are_never_cut():
@@ -360,8 +362,11 @@ def test_a_deferred_item_coming_back_within_the_lookahead_is_shown(tmp_path):
     r = bf.collect(root, p, bf.Context(root, now=NOW, cfg={}))
     titles = [i["title"] for i in r["sections"][0]["items"]]
     assert "Post the launch note" in titles and "Far away" not in titles
-    row = next(i for b in bv.build(r, p)["buckets"] for i in b["items"] if i["title"] == "Post the launch note")
-    assert any("06.10" in w for w in row["why"])
+    # a view with buckets keeps it out of sight all the same until its day, counted as later (round 1 of the four
+    # answers); the view names it as away, so the cockpit leaves it out too
+    built = bv.build(r, p)
+    assert all(i["title"] != "Post the launch note" for b in built["buckets"] for i in b["items"])
+    assert [a["until"] for a in built["away"]] == ["2026-10-06"]
     # Without a view asking for it the inbox section stays what it was: open items only.
     plain = bf.collect(root, {"id": "p", "sections": [{"kind": "inbox"}]}, bf.Context(root, now=NOW, cfg={}))
     assert plain["sections"][0]["items"] == []
@@ -398,8 +403,9 @@ def test_waiting_counts_from_blocked_since_and_shortens_the_reason_at_a_word():
 def test_a_task_that_runs_on_says_when_to_look_again_and_asks_only_from_that_day():
     t = task_item("austria", "Austria onboarding", changed_at="2026-09-01", blocked_by="Antwort vom Kunden")
     t["blocked_since"], t["quiet_until"] = "2026-09-18", "2099-01-05"
-    row = bv.build(result(sec("tasks", "tasks", [t])), profile(view={"style": "triage"}))["buckets"][0]["items"][0]
-    assert any(w.startswith("look again") for w in row["why"]) and row.get("nudge") is False
+    # round 2 of the four answers: put off to a day it is out of sight until then, counted as later
+    v = bv.build(result(sec("tasks", "tasks", [t])), profile(view={"style": "triage"}))
+    assert not v["buckets"] and v["away"] == [{"key": "task:austria", "until": "2099-01-05"}]
     t["quiet_until"] = "2020-01-05"                                   # the day has come: it asks again
     row = bv.build(result(sec("tasks", "tasks", [t])), profile(view={"style": "triage"}))["buckets"][0]["items"][0]
     assert row.get("nudge") is True
@@ -452,10 +458,10 @@ def test_brevity_still_says_what_failed_and_what_was_muted():
     assert "API rate limit" in out and "1 muted" in out
 
 
-def test_plan_shows_drop_rows_and_no_false_more():
+def test_plan_shows_every_row_and_no_false_more():
     view = bv.build(sample(), profile(view={"style": "plan", "max_items": 2}))
     out = ANSI.sub("", bv.draw(view))
-    assert "keys untouched" in out
+    assert "Keychain backup" in out and "keys untouched" not in out
     assert view["more"] == 0 and "+" not in out
 
 
@@ -520,12 +526,15 @@ def test_validation_matches_the_schema_on_nulls_order_and_notes(tmp_path):
     assert any("note" in p for p in bv.problems(None, [{"section": "advise", "when": {"check": "x"}, "note": 3}]))
 
 
-def test_a_sections_max_still_caps_its_rows_in_a_view():
+def test_a_view_reads_every_row_of_a_section_and_max_items_cuts_the_print():
+    # round 1 of the four answers: a section's `max:` cut what the printed briefing sorted, the cockpit read every
+    # row, so the two disagreed on buckets, totals and numbers. A view sorts every row; max_items cuts the print
     rows = [{"id": f"o/r#{n}", "title": f"T{n}", "state": "new", "category": "open"} for n in range(10)]
     s = sec("gh", "tracker", rows[:3], all_rows=None)
     s["all"] = rows
-    view = bv.build(result(s), profile(view={"style": "triage"}))
-    assert sum(len(b["items"]) for b in view["buckets"]) == 3 and view["more"] == 0
+    view = bv.build(result(s), profile(view={"style": "triage", "max_items": 4}))
+    assert sum(len(b["items"]) for b in view["buckets"]) == 4 and view["more"] == 6
+    assert sum(b["total"] for b in view["buckets"]) == 10
 
 
 def test_page_rest_and_page_skip_pass_the_json_schema():
@@ -1319,7 +1328,8 @@ def test_a_report_only_you_can_act_on_stays_yours():
     item = inbox_item("i1", "Check the incoming payment, file the receipt", urgency="later", kind="finding",
                       gate="only-you", due="2026-12-03")
     v = bv.build(result(sec("inbox", "inbox", [item])), profile(view={"style": "triage"}, sections=[{"kind": "inbox"}]))
-    assert [b["id"] for b in v["buckets"] if b["items"]] == ["plan"]
+    # round 3 of the four answers: an only-you gate is Do (you, today), a report as an ask
+    assert [b["id"] for b in v["buckets"] if b["items"]] == ["do"]
 
 
 def test_report_puts_a_rows_facts_on_a_line_of_their_own():
@@ -1334,7 +1344,7 @@ def test_report_puts_a_rows_facts_on_a_line_of_their_own():
 
 def test_a_row_names_one_date_not_three():
     item = inbox_item("i1", "Chase the vendor", urgency="later", due="2026-10-06", state="deferred",
-                      until="2026-10-06", waiting_on="Vendor")
+                      until="2026-10-06", waiting_on="Vendor", check=True)
     v = _report(None, [{"kind": "inbox"}], sec("inbox", "inbox", [item]))
     why = next(r["why"] for b in v["buckets"] for r in b["items"])
     text = bv._why({**next(r for b in v["buckets"] for r in b["items"]), "why": why + ["look again 07.10"]},
@@ -1385,7 +1395,8 @@ def test_calm_reads_as_a_few_plain_lines():
     lines = text.splitlines()
     assert lines[0] == "**Monday, 5 October**"
     assert "1 for you today, 1 waiting on others." in text
-    assert "**Today**" in text and "**Next days**" in text and "**Waiting on others**" in text
+    # round 2 of the four answers: the buckets' own titles, as every style says them
+    assert "**Do (you, today)**" in text and "**Plan**" in text and "**Waiting on others**" in text
     assert "1. Sign the contract" in text
     assert "2. Until 30.10: Object to the raise" in text
     for noise in ("·", "*(", "only you", "(a yes", "…)", "### "):
@@ -1396,7 +1407,7 @@ def test_calm_reads_as_a_few_plain_lines():
 def test_calm_numbers_each_waiting_row_with_its_name_and_date():
     # 21.11.2026: every visible row has a number, waiting too, so "2 nudge" names it as the cockpit's card does
     deferred = inbox_item("i3", "Answer from the agency", urgency="later", state="deferred", until="2026-10-12",
-                          waiting_on="Agency")
+                          waiting_on="Agency", check=True)
     text = _calm([sec("inbox", "inbox", [deferred]),
                   sec("tasks", "tasks", [task_item("t1", "Portal relaunch", nxt={"what": "review", "who": "Bob"})])],
                  CALM_SECTIONS)
@@ -1418,7 +1429,7 @@ def test_calm_counts_the_rest_once_and_says_how_to_answer():
                  CALM_SECTIONS, view={"report": {"per_bucket": 3}})
     assert sum(1 for l in text.splitlines() if "Card " in l) == 3
     assert "6 more in the cockpit." in text
-    assert text.rstrip().endswith("Answer with a number, e.g. “1 yes”.")
+    assert text.rstrip().endswith("Answer with a number and a word, e.g. “1 do” or “1 later monday”.")
 
 
 def test_calm_on_a_free_day_says_so():

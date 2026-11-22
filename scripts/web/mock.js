@@ -1296,7 +1296,9 @@ export function buildState(now = Date.now(), opts = {}) {
         summary: { enabled: opts.flow !== false, budget_per_day: 10, model: null },
         instruct: { enabled: opts.flow !== false, budget_per_day: 30, model: null },
         attach: { enabled: opts.flow !== false, max_mb: 10 },
-        seen: { enabled: seenOn, open_reads: 'auto', active_days: 7 } } },
+        seen: { enabled: seenOn, open_reads: 'auto', active_days: 7 },
+        // the briefing's buckets on every view of the work tab (cockpit.flow.buckets): ?buckets=1
+        buckets: { enabled: opts.buckets === true } } },
     seen: { marks: seenRead, focus: [] },
     // what the day's budgets of Work through still hold (server.py state_payload flow_ai)
     flow_ai: { summary_left: 10, instruct_left: 30, instruct_running: false },
@@ -2270,6 +2272,15 @@ export function createMockTransport(opts = {}) {
       publish()
       return ok({ ...result, note: '' })
     }
+    // With … under More of a bucket card (actions_work.py task_owner): a task's step to you or the Bridge
+    if (verb === 'task_owner') {
+      const r = anyRow(args.key)
+      if (!r?.task) return fail(409, 'not_applicable', 'only a task')
+      const was = r.card?.next?.who ?? null
+      stepTo(r, args.who, r.card?.next?.check ?? null)
+      publish()
+      return ok({ ...result, note: `Mock: next step with ${args.who}`, undo: [{ title: r.title, kind: 'task', undo: { verb: 'task_next', args: { slug: r.task, who: was ?? 'me' } } }] })
+    }
     if (verb === 'checkin_stuck') {
       const r = anyRow(args.key)
       if (!r) return fail(409, 'stale_row', 'no such row')
@@ -2294,6 +2305,13 @@ export function createMockTransport(opts = {}) {
       const r = rowOf(`inbox:${args.id}`)
       // an answer ends a check-in (details._checkin)
       if (r?.inbox_state === 'deferred') { Object.assign(r, { inbox_state: 'open', until: null, checkin: null }); publish() }
+      return null
+    }
+    if (verb === 'task_park' || verb === 'task_unpark') {
+      // park: status backlog, the task stays open (task.py status); its undo, the status before
+      const r = rowOf(verb === 'task_park' ? args.key : `task:${args.slug}`)
+      if (r) Object.assign(r, verb === 'task_park' ? { status: 'backlog', bucket: null } : { status: args.as ?? 'doing' })
+      publish()
       return null
     }
     if (verb === 'task_running' || verb === 'task_keep') {

@@ -66,7 +66,7 @@ User wants to...
 │                                       workflow/briefings/_template.yaml,
 │                                       keys in docs/briefings.md, then
 │                                       `briefing.py validate`
-├── Steer: yes/later/drop, "yes once green", open the day's tabs,
+├── Steer: do/later/done/obsolete, "yes once green", open the day's tabs,
 │   status of all tabs, tell a tab   → Read references/control.md
 ├── Detailed commit analysis         → Read references/commit-analysis.md
 ├── Are we behind on anything?       → Read references/upstream-summary.md
