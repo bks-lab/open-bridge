@@ -108,6 +108,7 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
   const seen = new Set()
   const all = []
   const gone = answeredHere(s)
+  const startedHere = new Set([...gone].filter(k => s?.ui?.flowAnswered?.[k]?.then === 'running'))
   // put off to a day and out of sight until it (the briefing's `away`): a tab that asks about such an item waits with
   // it (round 1 of the four answers: Later on a tab card put the item off, the tab's point stayed in Do)
   const away = new Set((s?.model?.away ?? []).map(a => a?.key))
@@ -123,7 +124,10 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
   const awayNow = new Set((s?.model?.away ?? []).filter(a => a?.key && String(a.until ?? '').slice(0, 10) > today0).map(a => a.key))
   const push = x => {
     const id = x.id
-    if (!id || seen.has(id) || gone.has(id)) return
+    if (!id || seen.has(id)) return
+    // Do it went out here and an agent starts: the point runs in I'll do until the model catches up (round 4)
+    if (gone.has(id) && !x.running && startedHere.has(id)) return push({ ...x, running: true })
+    if (gone.has(id) && !(x.running && startedHere.has(id))) return
     if (x.tab && tabRowGone(x.tab)) return
     if (!x.running && x.row?.key && awayNow.has(x.row.key)) return
     // a task the briefing does not list (no next step: its housekeeping counts it; the model's own rows beside the

@@ -260,9 +260,11 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
   const row = x.row ?? null
   const tab = x.tab ?? null
   // an answer that went out takes its point out of the bucket at once (answeredHere)
-  const { answers, run, menu, confirm, setConfirm, note, busy, say, setSay, give } = useBucketAnswer(x, bucket, s, c, () => {
+  const { answers, run, menu, confirm, setConfirm, note, busy, say, setSay, give } = useBucketAnswer(x, bucket, s, c, a => {
     c.flowDecided?.()
-    c.flowAnswered?.(x.id, bucket)
+    // Do it that starts an agent: the point stands in I'll do as running until the model says so itself (round 4:
+    // for a few seconds it stood in no bucket)
+    c.flowAnswered?.(x.id, bucket, a?.meaning === 'do' && a?.run?.verb === 'do_it' && !a?.run?.args?.yes ? 'running' : null)
     onDone?.()
   })
   const rest = row ? restingOf(row) : null

@@ -103,3 +103,17 @@ test('a waiting point an agent tab works on gets no nudge, so no second agent (r
   const got = logic.bucketAnswers({ group: 'row', id: row.key, kind: 'row', row }, 'waiting', s, 'en').map(a => a.meaning)
   assert.deepEqual(got, ['later', 'done', 'obsolete'])
 })
+
+test('a point Do it started here stands in I\'ll do as running until the model catches up (round 4)', () => {
+  const t = { key: 'task:a', task: 'a', status: 'doing', bucket: 'plan', title: 'Task a' }
+  const s = { now: NOW, model: { collected_ms: NOW - 1000, sections: [{ id: 'now', rows: [] }, { id: 'give', rows: [] }, { id: 'work', rows: [t] },
+    { id: 'track', rows: [] }, { id: 'later', rows: [] }], hidden: [], returns: [], buckets: [], task_rows: [t] },
+  tabs: { tabs: [], at_ms: NOW }, driver: { caps: null }, triage: { items: {} }, jevOrder: {},
+  work: { flow: { enabled: true, buckets: { enabled: true } } }, themes: { enabled: false },
+  ui: { page: '@flow', busy: {}, flowAnswered: { 'task:a': { ms: NOW - 500, bucket: 'plan', then: 'running' } } } }
+  const where = logic.bucketPoints(s, 'en').all.filter(x => x.row?.key === 'task:a').map(x => [x.bucket, !!x.running])
+  assert.deepEqual(where, [['delegate', true]])
+  // any other answer takes it out of every bucket meanwhile
+  const done = { ...s, ui: { ...s.ui, flowAnswered: { 'task:a': { ms: NOW - 500, bucket: 'plan' } } } }
+  assert.deepEqual(logic.bucketPoints(done, 'en').all.filter(x => x.row?.key === 'task:a'), [])
+})
