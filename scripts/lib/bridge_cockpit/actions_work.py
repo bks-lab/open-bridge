@@ -593,6 +593,20 @@ class WorkVerbs:
             return []
         return ["--last-updated", last_updated, *[a for n in (drop or []) for a in ("--drop-note", n)]]
 
+    def task_title(self, slug: str) -> str:
+        """A task's or stream's own name, its STATUS.md H1, for a note a person reads; its slug where it has none
+        (round 4 of the four answers: an undo said "check-the-api-key-rotation-for-northwind ist wieder dran")"""
+        for kind in ("tasks", "streams"):
+            try:
+                text = (self.app.root / "work" / kind / slug / "STATUS.md").read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            body = split_front(text)[1]
+            head = next((line[2:].strip() for line in str(body).splitlines()
+                         if line.startswith("# ") and "yaml-language-server" not in line), "")
+            return m.short(head, 60) if head else slug
+        return slug
+
     def task_fields(self, slug: str, keys: tuple) -> dict:
         """Plain values of these frontmatter fields of an open task or stream ({} where it has none): a blocker as
         its text, a day as YYYY-MM-DD"""
@@ -628,7 +642,7 @@ class WorkVerbs:
             return
         if getattr(self.app, "history", None) is not None:
             self.app.history.mark_undone("task_running", slug)
-        ctx.note(self.tx["running_again"].format(slug=slug), go={"kind": "item", "key": f"task:{slug}"})
+        ctx.note(self.tx["running_again"].format(slug=self.task_title(slug)), go={"kind": "item", "key": f"task:{slug}"})
         self.app.collector.request("both")
 
     def v_to_task(self, ctx: Ctx, key: str, status: str | None = None) -> None:
@@ -857,7 +871,8 @@ class WorkVerbs:
         # what the undo gives back besides the status: last_updated as it was, so the task keeps its quiet days
         was_date = str(self.task_fields(slug, ("last_updated",)).get("last_updated") or "")[:10]
         reason = " ".join((reason or "").split())[:200]
-        note = "Parked" + (f": {reason}" if reason else "")
+        # the watch list's own words while the buckets are on (round 4: "Parked: Auf der Merkliste", half English)
+        note = reason if self.buckets_on() and reason else "Parked" + (f": {reason}" if reason else "")
         run = ctx.call("task.status", slug, self.task_cmd("status", slug, "backlog", "--note", note, "--json"), SHORT_TIMEOUT)
         if not run.ok:
             ctx.note(self.tx["park_failed"].format(title=m.short(row["title"], 40), err=m.short(run.err, 100)), bad=True)
@@ -867,7 +882,7 @@ class WorkVerbs:
                             "undo": {"verb": "task_unpark", "args": {"slug": slug, "as": before if before in REOPEN_AS else "doing",
                                                                       **({"last_updated": was_date} if DATE_RE.match(was_date) else {}),
                                                                       "note": note}}})
-        ctx.note(self.tx["task_parked"].format(title=m.short(row["title"], 60)), go=row_go(row))
+        ctx.note(self.tx["task_listed" if self.buckets_on() else "task_parked"].format(title=m.short(row["title"], 60)), go=row_go(row))
         ctx.delta()
         self.app.collector.request("both")
 
@@ -887,7 +902,7 @@ class WorkVerbs:
             return
         if getattr(self.app, "history", None) is not None:
             self.app.history.mark_undone("task_unpark", slug)
-        ctx.note(self.tx["running_again"].format(slug=slug), go={"kind": "item", "key": f"task:{slug}"})
+        ctx.note(self.tx["running_again"].format(slug=self.task_title(slug)), go={"kind": "item", "key": f"task:{slug}"})
         ctx.delta()
         self.app.collector.request("both")
 

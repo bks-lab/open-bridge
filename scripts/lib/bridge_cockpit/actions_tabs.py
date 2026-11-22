@@ -129,7 +129,7 @@ class TabVerbs:
     def v_tab_jump(self, ctx: Ctx, tab_ref: str) -> None:
         tab = self.tab(tab_ref)
         if self.jump_to(ctx, tab):
-            ctx.note(self.tx["jumped"].format(label=m.short(tab.get("label") or tab["ref"], 40)), go={"kind": "tab", "ref": tab["ref"]})
+            ctx.note(self.tx["jumped"].format(label=m.short(tab.get("label") or tab.get("name") or tab["ref"], 40)), go={"kind": "tab", "ref": tab["ref"]})
 
     def send_to(self, ctx: Ctx, tab: dict, text: str) -> bool:
         run = ctx.call("workplace.send", tab["ref"], self.app.workplace("send", tab["ref"], "--", text), SHORT_TIMEOUT)

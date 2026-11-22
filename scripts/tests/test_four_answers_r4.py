@@ -156,3 +156,29 @@ def test_the_day_part_of_the_headline_carries_no_count_of_do():
     from lib.bridge_cockpit import model as m
     # the Due panel's head says its own count before this part: "15 wait for you · 4 reports" counted twice (round 4)
     assert m.parse_view({"view": v}, True, 0)["headline_rest"] == v["headline_day"]
+
+
+# ---------------------------------------------------------------- the words of an answer
+
+def _world(tmp_path):
+    sys.path.insert(0, str(ROOT / "scripts" / "tests"))
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from test_bridge_cockpit import World
+    return World(tmp_path, config="cockpit:\n  enabled: true\n  language: de\n  flow:\n    enabled: true\n")
+
+
+def test_the_watch_list_says_its_own_words_and_its_undo_names_the_task(tmp_path):
+    from test_bridge_cockpit import K, writes
+    w = _world(tmp_path)
+    try:
+        w.runner.calls.clear()
+        res = w.act("task_park", key="task:demo-task", reason="Auf der Merkliste")
+        # round 4: "Ins Backlog geparkt" in the toast, "Parked: Auf der Merkliste" in the task's notes
+        assert writes(w) == [K(w, "status", "demo-task", "backlog", "--note", "Auf der Merkliste", "--json")]
+        assert "Merkliste" in res["note"] and "Backlog" not in res["note"]
+        undo = [it["undo"] for e in w.app.history.state() for it in e["items"] if it["kind"] == "task"][0]
+        back = w.act(undo["verb"], **undo["args"])
+        # the task by its name, never its slug
+        assert "demo-task" not in back["note"]
+    finally:
+        w.close()
