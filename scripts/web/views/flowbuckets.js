@@ -346,7 +346,21 @@ export function BucketBody({ s, c }) {
   const answered = s.ui?.flowAnswered ?? {}
   const movedAway = !!at?.id && !points.some(p => p.id === at.id) && !answered[at.id]
   const x = movedAway ? null : points[i] ?? null
-  const onwards = open ? buckets.find(b => b.id !== open.id && b.points.length) ?? null : null
+  // the next bucket in order that holds a point, then the ones before it (round 4: an empty Plan led on to Do, not to
+  // I'll do after it)
+  const from = open ? buckets.findIndex(b => b.id === open.id) : -1
+  const onwards = open ? [...buckets.slice(from + 1), ...buckets.slice(0, Math.max(0, from))].find(b => b.points.length) ?? null : null
+  // the walk keeps the current point in sight in the bucket's list, a long one too (round 4: at 31 of 67 the list
+  // still showed its first points); only the list scrolls, never the page
+  const pointsRef = useRef(null)
+  useEffect(() => {
+    const ul = pointsRef.current
+    const cur = ul?.querySelector?.('.fb-point.is-current')?.parentElement
+    if (!ul || !cur || typeof ul.scrollTop !== 'number') return
+    const top = cur.offsetTop - ul.offsetTop
+    if (top < ul.scrollTop) ul.scrollTop = top
+    else if (top + cur.offsetHeight > ul.scrollTop + ul.clientHeight) ul.scrollTop = top + cur.offsetHeight - ul.clientHeight
+  }, [x?.id, open?.id])
   // an answer moves on to the next point, also where the point stays in its bucket (Wait on a task that waits, a
   // tab's own answer): the next one is held by its id, at the place the answered one leaves free
   const onwardsAfter = () => c.flowBucketGo(points[i + 1]?.id ?? null, i)
@@ -366,7 +380,7 @@ export function BucketBody({ s, c }) {
             <span class="fb-bucket-name">${b.title}<span class="fb-bucket-sub muted small">${f.sub[b.id]}</span></span>
             <span class="fb-bucket-n mono">${f.count(b.points.length)}</span>
           </button>
-          ${b.id === open?.id && b.points.length ? html`<ul class="fb-points">${b.points.map((p, k) => html`<li key=${p.id}>
+          ${b.id === open?.id && b.points.length ? html`<ul class="fb-points" ref=${pointsRef}>${b.points.map((p, k) => html`<li key=${p.id}>
             <button type="button" class=${`fb-point${p.id === x?.id ? ' is-current' : ''}`} aria-current=${p.id === x?.id ? 'true' : undefined}
               title=${pointTitleOf(p)} onClick=${() => { c.flowBucketGo(p.id, k); cardIntoView() }}>${short(pointTitleOf(p), 70)}</button>
           </li>`)}</ul>` : null}

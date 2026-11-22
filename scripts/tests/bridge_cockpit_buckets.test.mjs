@@ -438,3 +438,12 @@ test('More names the fields once (round 4: FELDER FELDER)', async () => {
   const heads = el.$$('.fb-more .label-caps').map(h => h.text().trim().toLowerCase())
   assert.equal(heads.filter(h => h === en.fieldsHead.toLowerCase()).length, 1, heads.join(' | '))
 })
+
+test('an empty bucket leads on to the next bucket in order that holds a point (round 4)', async () => {
+  const s = state({ now: [ask('20261009-0900-q1')], work: [task('bridges', { bucket: 'delegate' })], ui: { flowBucket: 'plan' } })
+  const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
+  await rounds()
+  const go = el.$$('.fb-empty button').map(b => b.text())
+  assert.ok(go.some(t => /Mache ich \(Bridge\)/.test(t)), go.join(' | '))
+  assert.ok(!go.some(t => /Tun \(du, heute\)/.test(t)), go.join(' | '))
+})
