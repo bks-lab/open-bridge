@@ -410,7 +410,9 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
     // an item whose yes is given takes Do it too in I'll do: it starts now instead of on the next pass (round 3)
     // without a terminal (the driver lists no launch) only a yes goes: what would start an agent is not offered, so a
     // click never fails after the card promised an agent (round 4)
-    if (bucket === 'waiting') {
+    if (bucket === 'waiting' && (row.tab?.live || x.running)) {
+      // a row an agent tab already works on gets no second start, a nudge neither (round 4)
+    } else if (bucket === 'waiting') {
       const who = waitsOn(x)
       const blocker = blockerOf(row)
       const ask = who ? t.flow.simple.chase(who, pointName(row)) : blocker ? t.flow.simple.chaseBlocked(short(blocker, 120), pointName(row))

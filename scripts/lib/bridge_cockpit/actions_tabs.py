@@ -153,8 +153,12 @@ class TabVerbs:
         if tab["state"] == "needs-you":
             raise self.not_applicable("a dialog takes its options, not text", "tab_ref")
         tab, _ = self.guard_fresh(ctx, tab_ref, expect, seen, name, True)
-        if not m.is_live(tab) and guarded:
-            raise ActionError(409, "tab_moved", self.tx["tab_moved"], None)
+        if not m.is_live(tab):
+            # the tab died since the page saw it: a named question moved on, an unnamed one has no agent to type to
+            # (round 4: the unguarded path sent to a tab that stopped between the two reads)
+            if guarded:
+                raise ActionError(409, "tab_moved", self.tx["tab_moved"], None)
+            raise self.not_applicable("the tab holds no agent", "tab_ref")
         if tab["state"] == "needs-you":
             raise self.not_applicable("a dialog takes its options, not text", "tab_ref")
         self.send_to(ctx, tab, text)

@@ -263,9 +263,10 @@ class WorkVerbs:
             ctx.history.append(history_item(row["key"], row["title"], "other", "done for this time"))
             ctx.note(self.tx["done_stream_note"].format(title=m.short(row["title"], 60)))
             return
-        # a plain Later on a task is the cockpit's record only (round 1: its undo left a note and last_updated in
-        # STATUS.md); a sentence the person wrote is kept where the row lives, any other row keeps its log line
-        if text or not row.get("task"):
+        # a plain Later on a task is the cockpit's record only while the buckets are on (round 1: its undo left a note
+        # and last_updated in STATUS.md); the classic page keeps its note (round 4: the switch off changes nothing). A
+        # sentence the person wrote is kept where the row lives, any other row keeps its log line
+        if text or not row.get("task") or not self.buckets_on():
             self.write_note(ctx, row, words)
         self.hide_until(ctx, row, until)
 

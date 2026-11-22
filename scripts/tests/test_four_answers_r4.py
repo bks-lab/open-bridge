@@ -182,3 +182,36 @@ def test_the_watch_list_says_its_own_words_and_its_undo_names_the_task(tmp_path)
         assert "demo-task" not in back["note"]
     finally:
         w.close()
+
+
+def test_a_plain_later_on_a_task_writes_no_note_while_the_buckets_are_on(tmp_path):
+    from test_bridge_cockpit import writes
+    w = _world(tmp_path)
+    try:
+        w.runner.calls.clear()
+        w.act("later", key="task:other-task", until="2026-10-10")
+        assert writes(w) == []
+    finally:
+        w.close()
+
+
+def test_a_tab_that_died_between_the_reads_gets_no_text(tmp_path):
+    # round 4: the unguarded tab_send re-read the tab and typed into it although it no longer held an agent
+    w = _world(tmp_path)
+    try:
+        tab = {"ref": "surface:3", "name": "Agent", "state": "waiting", "live": True, "workspace": "Home"}
+        w.app.tabs.find = lambda ref: dict(tab) if ref == "surface:3" else None
+        dead = dict(tab, live=False, state="shell")
+        w.app.tabs.fresh = lambda ref: dead
+        vb = w.app.actions
+        guard = vb.guard_fresh
+        vb.guard_fresh = lambda ctx, ref, expect, seen, name, strict: (dead, None)
+        try:
+            import pytest
+            with pytest.raises(Exception, match="holds no agent"):
+                w.act("tab_send", tab_ref="surface:3", text="hello")
+        finally:
+            vb.guard_fresh = guard
+        assert not w.runner.of("workplace.send")
+    finally:
+        w.close()

@@ -96,3 +96,10 @@ test('an inbox item is named by its art on the card as on every list', async () 
   const el = mount(html`<${views.day.KindTag} row=${idea} s=${{ model: {} }} />`)
   assert.match(el.text(), /Idea/)
 })
+
+test('a waiting point an agent tab works on gets no nudge, so no second agent (round 4)', () => {
+  const row = { key: 'task:a', task: 'a', status: 'doing', bucket: 'waiting', who: 'Ada', card: { next: { who: 'Ada' } }, tab: { live: true } }
+  const s = { now: NOW, model: {}, ui: {} }
+  const got = logic.bucketAnswers({ group: 'row', id: row.key, kind: 'row', row }, 'waiting', s, 'en').map(a => a.meaning)
+  assert.deepEqual(got, ['later', 'done', 'obsolete'])
+})
