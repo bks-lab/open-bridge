@@ -144,3 +144,15 @@ def test_a_cockpit_pass_takes_the_printed_numbers_of_the_book():
     nr = {x["title"]: x["nr"] for _b, x in items_of(v)}
     assert nr["Ask 0"] == 7 and sorted(nr.values()) == [7, 8, 9]
     assert v["number_book"]["inbox:20261120-0901-ask-1"] == 8
+
+
+# ---------------------------------------------------------------- one count of Do
+
+def test_the_day_part_of_the_headline_carries_no_count_of_do():
+    rows = [item("20261120-0900-sign-a1b2", "Sign"), item("20261120-0910-read-c3d4", "Read", kind="finding")]
+    v = bv.build(result(sec("inbox", "inbox", rows)), profile())
+    assert v["headline"].startswith("1 ") and "report" in v["headline"]
+    assert "report" not in v["headline_day"] and not v["headline_day"][:1].isdigit()
+    from lib.bridge_cockpit import model as m
+    # the Due panel's head says its own count before this part: "15 wait for you · 4 reports" counted twice (round 4)
+    assert m.parse_view({"view": v}, True, 0)["headline_rest"] == v["headline_day"]

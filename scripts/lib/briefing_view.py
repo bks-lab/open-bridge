@@ -1793,6 +1793,7 @@ def build(result: dict, profile: dict, style: str | None = None) -> dict:
 
     if view.get("headline", True) is not False:
         out["headline"] = _headline(visible, events, now, labels, day_end)
+        out["headline_day"] = " · ".join(_headline_parts(visible, events, now, labels, day_end)[1])
     out["dayline"] = None
     if view.get("dayline", True) is not False and style != "brevity":
         out["dayline"] = _dayline(events, now, day_start, day_end)
@@ -1981,12 +1982,20 @@ def asks_you(row: dict) -> bool:
 
 
 def _headline(rows: list, events: list, now: dt.datetime, labels: dict, day_end: str) -> str:
+    counts, day = _headline_parts(rows, events, now, labels, day_end)
+    return " · ".join(counts + day)
+
+
+def _headline_parts(rows: list, events: list, now: dt.datetime, labels: dict, day_end: str) -> tuple:
+    """(the counts of Do, the day's parts): the cockpit says its own count of Do in front of the day's parts
+    (headline_day), so one count never reads two ways on one page (round 4: "11 asks · 4 reports" beside 15)"""
     do = [r for r in rows if r["bucket"] == "do"]
     asks = sum(1 for r in do if asks_you(r))
-    parts = [_count(labels, "yours_today", asks)]
+    counts = [_count(labels, "yours_today", asks)]
     if len(do) > asks:
         # Do holds reports and ideas too: counted apart, so the number above a longer Do list explains itself (29.10.)
-        parts.append(_count(labels, "do_reports", len(do) - asks))
+        counts.append(_count(labels, "do_reports", len(do) - asks))
+    parts: list = []
     current = next((e for e in events if e[0] <= now < e[1]), None)
     upcoming = next((e for e in events if e[0] > now and e[0].date() == now.date()), None)
     if current:
@@ -2003,7 +2012,7 @@ def _headline(rows: list, events: list, now: dt.datetime, labels: dict, day_end:
     if dated:
         _, title, raw = dated[0]
         parts.append(labels["next_date"].format(when=_fmt_when(raw, now, labels), title=_topic(title, 48)))
-    return " · ".join(parts)
+    return counts, parts
 
 
 DAYLINE_CELLS = 40

@@ -702,7 +702,9 @@ def parse_view(raw: Any, is_full: bool, now: float, tx: dict = EN) -> dict:
         "title": as_text(data.get("title")),
         "headline": headline,
         # the headline after its own count: a dashboard says the count it shows on the Briefing tab instead
-        "headline_rest": headline.split(" · ", 1)[1] if " · " in headline else "",
+        # the day's parts without the counts of Do (briefing_view headline_day), an older briefing's text after its first part
+        "headline_rest": as_text(v.get("headline_day")) if isinstance(v.get("headline_day"), str)
+        else headline.split(" · ", 1)[1] if " · " in headline else "",
         "since": as_text_or_null(v.get("since")),
         "extras": {"clear": [as_text(x) for x in _list(v.get("clear"))],
                    "hygiene": [as_text(x) for x in _list(v.get("hygiene"))],

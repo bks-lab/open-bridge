@@ -69,3 +69,19 @@ test('without a terminal Do it is offered only where a yes needs none, and Next 
   assert.equal(logic.bucketAnswers(point(t), 'plan', { ...s, driver: { caps: ['tabs', 'launch'] } }, 'en')[0].meaning, 'do')
   assert.equal(logic.bucketAnswers(point(t), 'plan', { ...s, driver: { caps: null } }, 'en')[0].meaning, 'do')
 })
+
+// ---------------------------------------------------------------- one count of Do
+
+test('with the buckets on the lead line says the count of Do, the badge\'s, in the page\'s words', async () => {
+  const { views } = await loadCockpit()
+  const { leadOf } = views.stage
+  const row = { key: 'inbox:20261121-0900-check-x', inbox_id: '20261121-0900-check-x', inbox_state: 'open', bucket: 'do', gate: 'your-yes', title: 'Check', art: 'ask' }
+  const s = { now: NOW, model: { headline: '11 asks for you today · 4 reports · free for the rest of the day', headline_rest: 'free for the rest of the day',
+    sections: [{ id: 'now', rows: [row] }, { id: 'give', rows: [] }, { id: 'work', rows: [] }, { id: 'track', rows: [] }, { id: 'later', rows: [] }],
+    hidden: [], returns: [], buckets: [] },
+    tabs: { tabs: [], at_ms: NOW }, driver: { caps: null }, triage: { items: {} }, jevOrder: {},
+    work: { flow: { enabled: true, buckets: { enabled: true } } }, themes: { enabled: false }, ui: { page: 'home', busy: {} } }
+  const lead = leadOf(s.model, s)
+  assert.doesNotMatch(lead, /11|reports/)
+  assert.match(lead, /^1 waits for you · free for the rest of the day$/)
+})
