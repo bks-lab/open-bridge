@@ -447,3 +447,12 @@ test('an empty bucket leads on to the next bucket in order that holds a point (r
   assert.ok(go.some(t => /Mache ich \(Bridge\)/.test(t)), go.join(' | '))
   assert.ok(!go.some(t => /Tun \(du, heute\)/.test(t)), go.join(' | '))
 })
+
+test('a point an agent runs on carries no resting mark (round 4)', () => {
+  const t = task('migrate', { bucket: 'plan', resting: 55 })
+  const s = state({ work: [t] })
+  const el = mount(html`<${views.flowbuckets.BucketCard} x=${{ group: 'running', id: t.key, kind: 'row', row: t, running: true }} bucket="delegate" s=${s} c=${recorder()} />`)
+  assert.doesNotMatch(el.text(), /resting for 55 days/)
+  const quiet = mount(html`<${views.flowbuckets.BucketCard} x=${{ group: 'row', id: t.key, kind: 'row', row: t }} bucket="plan" s=${s} c=${recorder()} />`)
+  assert.match(quiet.text(), /resting for 55 days/)
+})

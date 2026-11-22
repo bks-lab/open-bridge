@@ -267,7 +267,8 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
     c.flowAnswered?.(x.id, bucket, a?.meaning === 'do' && a?.run?.verb === 'do_it' && !a?.run?.args?.yes ? 'running' : null)
     onDone?.()
   })
-  const rest = row ? restingOf(row) : null
+  // a point an agent runs on rests no longer (round 4: "läuft" beside "ruht seit 55 Tagen")
+  const rest = row && !x.running ? restingOf(row) : null
   // a waiting point names who it waits on, or what blocks it in its own words, and how long it waits (round 3 of the
   // four answers: the card named nobody, the printed briefing said "waiting 56 days, waiting for Mika")
   const held = bucket === 'waiting' ? bucketHolder({ ...x, bucket }, row) : null
