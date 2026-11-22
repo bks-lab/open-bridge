@@ -82,7 +82,9 @@ test('bucketPoints: every point once, in the bucket the briefing put it, the pro
   const s = state({
     now: [ask('20261009-0900-q1', { brief_nr: 2 }), ask('20261009-0901-q2', { brief_nr: 1 })],
     work: [task('mine', { status: 'review' }), task('bridges', { status: 'review', bucket: 'delegate' }),
-      task('blocked', { status: 'review', bucket: 'tasks', blocked_by: 'Ada' }), task('quiet', { status: 'review', bucket: 'resting' })],
+      task('blocked', { status: 'review', bucket: 'waiting', blocked_by: 'Ada' }), task('quiet', { status: 'review', bucket: 'plan', resting: 40 }),
+      // the model's own rows of tasks the briefing does not list: no point, the briefing numbers every point (round 4)
+      task('unlisted', { status: 'review', bucket: 'tasks' }), task('unlisted-quiet', { status: 'review', bucket: 'resting' })],
     tabs: [asking],
   })
   const { buckets, all } = logic.bucketPoints(s, 'en')
@@ -93,6 +95,8 @@ test('bucketPoints: every point once, in the bucket the briefing put it, the pro
   assert.equal(where['task:blocked'], 'waiting')
   assert.equal(where['task:quiet'], 'plan', 'a resting task stays yours, with a quiet mark')
   assert.equal(where['task:mine'], 'plan')
+  assert.equal(where['task:unlisted'], undefined)
+  assert.equal(where['task:unlisted-quiet'], undefined)
   assert.equal(new Set(all.map(x => x.id)).size, all.length, 'each point once')
   // a tab that asks first, then the rows the printed briefing numbers, in its order
   const doIds = buckets[0].points.map(p => p.id)
@@ -182,7 +186,7 @@ test('the page by buckets: the buckets left with their counts, one card with Nex
 })
 
 test('the page by buckets: an empty bucket offers the next one that holds a point; the mouse is enough', async () => {
-  const s = state({ work: [task('quiet', { status: 'review', bucket: 'resting' })], ui: { flowBucket: 'do' } })
+  const s = state({ work: [task('quiet', { status: 'review', bucket: 'plan', resting: 40 })], ui: { flowBucket: 'do' } })
   const el = mount(html`<${FlowPage} s=${s} c=${recorder()} />`)
   await rounds()
   // the bucket picked holds nothing: it stays open with its empty state, a button leads to the next one that holds one

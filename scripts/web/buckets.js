@@ -123,6 +123,10 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
     if (!id || seen.has(id) || gone.has(id)) return
     if (x.tab && tabRowGone(x.tab)) return
     if (!x.running && x.row?.key && awayNow.has(x.row.key)) return
+    // a task the briefing does not list (no next step: its housekeeping counts it; the model's own rows beside the
+    // briefing) is no point either: the briefing numbers every point the page shows (round 4: such tasks stood in
+    // Plan without a number, as the unlisted streams did in round 2). One an agent runs on stays the Bridge's
+    if (!x.running && x.kind === 'row' && isTask(x.row) && !BUCKET_IDS.includes(x.row.bucket)) return
     const bucket = pointBucket(x)
     if (!bucket) return
     seen.add(id)
