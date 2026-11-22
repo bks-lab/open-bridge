@@ -260,7 +260,7 @@ which agent renders it, and the cockpit's Work through sorts its points by the s
 | task with `blocked_by` | waiting, with days since `blocked_since` (else `last_updated`); a nudge once `nudge_after_days` passed |
 | task without a next step | housekeeping: "N tasks without a next step" |
 | advice `quiet` | no bucket of its own: the task stays where its next step puts it and says "resting for N days" (label `resting`, `resting` on the row); a quiet task without a row (no tasks section, no next step) stands in plan under its own title, the advice beside it |
-| advice `collision` | do · `wip`: housekeeping · `blocked`, `waiting`, `due`: carried by their row |
+| advice `collision` | do, once per inbox item: its reasons name every event it collides with, on the item's own row where it has one · `wip`: housekeeping · `blocked`, `waiting`, `due`: carried by their row |
 | tracker row in review or `category: qa` | do · `blocked`: waiting · done/removed: left out · else plan |
 | tracker rows with `untasked: true` | housekeeping: "<section>: assigned to you without a task: N" (label `untasked`), beside their own rows |
 | a section that failed | housekeeping, with its reason |

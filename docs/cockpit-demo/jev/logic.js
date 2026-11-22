@@ -367,10 +367,10 @@ export function layoutMatrix(items, { first = null, avoid = [], charW = 7.2 } = 
   return { spots, labels }
 }
 
-/** The words of the matrix: the squares and the legend say the profile's bucket words where a square maps to
- *  a bucket (buckets.js bucketWords: now Do, plan Plan, hand Delegate, drop Drop), else the page's own */
+/** The words of the matrix: with the buckets on the squares say the profile's bucket words (buckets.js bucketWords:
+ *  now Do, plan Plan, hand I'll do, drop Later) and the legend who moves (you, the Bridge), else the page's own */
 export function matrixWords(words, t) {
   const q = words?.quadrant ?? {}
   const quads = Object.fromEntries(Object.entries(t.quads).map(([id, w]) => [id, q[id] || w]))
-  return { quads, me: q.now || t.me, delegate: q.hand || t.delegate }
+  return { quads, me: words?.who?.me || t.me, delegate: words?.who?.delegate || t.delegate }
 }

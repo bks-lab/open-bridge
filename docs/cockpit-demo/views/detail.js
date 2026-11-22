@@ -6,7 +6,7 @@ import { html, useEffect, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
   canMessage, detailNeedsLoad, duration, formatDay, indexRows, short,
   stateToken, canTab, settledRefs, statusSplit, tabCloseOffer, tabNextStep, areaScope, homeAreas, startWaiting,
-  skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow, personOf, flowBucketsOn, tabPoint, tabWords
+  skipFixable, skipText, queueLiveKeys, queueView, dayQueue, tabStateKey, originOf, workKindOf, itemRow, personOf, flowBucketsOn, tabPoint, tabWords, tabAsksYou, tabWays
 } from '../logic.js'
 import { T, language } from '../text.js'
 import { ItemCard, TASK_FACTS_SKIP, describeKey, describeOf } from './card.js'
@@ -280,15 +280,20 @@ export function TabControls({ tab, s, c, compact = false, slim = false }) {
   const settled = !!tab.settled || settledRefs(s.model?.returns, s.tabs?.tabs, s.now || Date.now()).has(tab.ref)
   // with the briefing's buckets on a tab that asks is answered as its card in Work through is: its own answers (the
   // dialog's options, the ready answer, yes and no only where the server takes them), never a button it refuses
-  const point = flowBucketsOn(s) ? tabPoint(tab, s) : null
+  const buckets = flowBucketsOn(s)
+  const point = buckets ? tabPoint(tab, s) : null
   const answers = point ? html`<${BucketBar} x=${point} s=${s} c=${c} />` : null
-  if (slim && point) {
+  if (slim && buckets) {
+    // with the buckets on a tab offers its own answers only where it asks (tabAsksYou); beside them, or alone, the way to
+    // it and its close, never Yes, No or Keep going as a fifth word (after #704 a finished tab offered „Mach weiter“).
+    // A tab that asks nothing has the way to it as its first answer already, so it does not stand twice
     const step = {
-      close: () => html`<${TabClose} tab=${tab} s=${s} c=${c} />`,
+      close: () => html`<${TabClose} tab=${tab} s=${s} c=${c} strong=${!point} />`,
       jump: () => html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>`,
       view: () => html`<${Btn} size="xs" variant="ghost" onClick=${() => c.openTabView(tab.ref)}>${t.btnTabView}<//>`,
     }
-    return html`${answers}${tabNextStep(tab, v => canTab(s, v), settled).filter(k => step[k]).map(k => step[k]())}`
+    const ways = tabWays(tab, v => canTab(s, v), settled).filter(k => !(k === 'jump' && point && !tabAsksYou(tab)))
+    return html`${answers}${ways.map(k => step[k]())}`
   }
   if (slim) {
     const step = {
@@ -303,10 +308,10 @@ export function TabControls({ tab, s, c, compact = false, slim = false }) {
   }
   return html`<div class="tab-ctl">
     <div class="btn-row">
-      ${answers ?? (tab.state === 'needs-you' && canTab(s, 'key') ? html`
+      ${answers ?? (!buckets && tab.state === 'needs-you' && canTab(s, 'key') ? html`
         <${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('tab_yes', { tab_ref: tab.ref })}>${t.btnYes}<//>
         <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_no', { tab_ref: tab.ref })}>${t.btnNo}<//>` : null)}
-      ${!point && tab.state === 'waiting' && !tab.filed_by && !settled && !tab.is_control && !tab.ask?.draft ? html`<${Btn} size="xs" variant="secondary" busy=${busy}
+      ${!buckets && tab.state === 'waiting' && !tab.filed_by && !settled && !tab.is_control && !tab.ask?.draft ? html`<${Btn} size="xs" variant="secondary" busy=${busy}
         onClick=${() => c.act('tab_go_on', { tab_ref: tab.ref })}>${t.btnGoOn}<//>` : null}
       <${TabClose} tab=${tab} s=${s} c=${c} strong />
       ${canTab(s, 'focus') ? html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>` : null}

@@ -20,12 +20,12 @@ import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from '../
 import { clamp, countTo, flash, flowAlpha, noise1, nowSec, o3, ramp, reducedMotion, ripples, spring, track, trackAt, tracking, typed, win } from './motion.js'
 import { CORE, H, QUADS, W, X0, X1, Y0, Y1, checkWins, costLine, cursorShown, cutWords, launch, layoutMatrix, liveItems, matrixWords, orderPlan,
   pendingTitles, place, planOpen, playFor, quadWordRects, readingFor, rowJump, tokenText, trimCut } from './logic.js'
-import { flowBucketsOn, indexRows, itemRow, rowPoint, triageKey } from '../logic.js'
+import { bucketWords, flowBucketsOn, indexRows, itemRow, rowPoint, triageKey } from '../logic.js'
 import { KindTag, OriginTag } from '../views/day.js'
 import { BucketBar } from '../views/flowbuckets.js'
 import { T as dashText, language } from '../text.js'
 
-export { pendingTitles, place }
+export { matrixWords, pendingTitles, place }
 export const JEV_PAGE = '@jev'
 
 const DUR = 6.4         // the first play, seconds
@@ -346,9 +346,9 @@ export function JevPage({ s, c, ask = null, extra = null, pageItems = null, stor
   const byKey = indexRows(s.model)
   const plan = st.data?.plan
   const { items, first } = liveItems(plan, s.model, extra)
-  // Jev's own words: its squares are urgency and impact and its colours who could do it, not the buckets, so it never
-  // names a point's bucket against the chip of its card (round 2 of the four answers)
-  const words = matrixWords(null, t)
+  // with the buckets on the squares say the bucket words of the profile and the legend you or the Bridge (Michael,
+  // 22.11.2026: Jev's own words were a second vocabulary beside the four buckets); off, Jev's own
+  const words = matrixWords(bucketWords(s, language()), t)
   // the resting picture: dots pushed apart, labels placed clear of dots, crown and quadrant words (logic.js)
   const layKey = `${first?.key ?? ''}|${Object.values(words.quads).join('/')}|${items.map(it => `${it.key}:${it.urgency}:${it.impact}:${it.priority}:${it.rank}:${it.title}`).join('|')}`
   const lay = useMemo(() => layoutMatrix(items, { first, avoid: quadWordRects(words.quads) }), [layKey])

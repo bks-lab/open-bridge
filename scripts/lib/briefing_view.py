@@ -90,6 +90,7 @@ LABELS = {
     "back_on": "back on {date}",
     "only_you": "only you",
     "collides": "collides with the calendar",
+    "collides_with": "collides with “{event}” {start} to {end}",
     "waiting_days": "waiting {n} days",
     "look_again": "look again {when}",
     "with": "with {who}",
@@ -321,6 +322,7 @@ LABELS_DE = {
     "back_on": "zurück am {date}",
     "only_you": "nur du",
     "collides": "kollidiert mit dem Kalender",
+    "collides_with": "kollidiert mit „{event}“ {start} bis {end}",
     "waiting_days": "wartet seit {n} Tagen",
     "look_again": "nachsehen {when}",
     "with": "bei {who}",
@@ -1258,6 +1260,10 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
         return {**r, **extra}
 
     carried = []      # advice that only stands when no other row carries it
+    collisions = []   # calendar collisions: reasons on the inbox item they are about (below)
+    # every inbox item by its id, also of a section out of the buckets (bucket: none): a collision names its item
+    inbox_items = {str(i.get("id")): i for s in result.get("sections") or [] if s.get("kind") == "inbox"
+                   and s.get("status") == "ok" for i in items_of(s) if isinstance(i, dict)}
     forced_ids = {sid for sid, c in sections_cfg.items() if c.get("bucket") in BUCKETS}
     for s in result.get("sections") or []:
         sid, kind = s.get("id"), s.get("kind")
@@ -1419,7 +1425,7 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                 elif check == "quiet":
                     carried.append((sid, item, forced))
                 elif check == "collision":
-                    add(f"advise:{iid}", row(sid, item, forced or "do", item.get("title"), [labels["collides"]], 0))
+                    collisions.append((sid, item, forced))
                 elif check in ("blocked", "waiting", "due"):
                     carried.append((sid, item, forced))
                 else:
@@ -1493,6 +1499,32 @@ def _rows(result: dict, profile: dict, view: dict, labels: dict, now: dt.datetim
                                              [iid, str(label) if label else ""], 2 if bucket == "do" else 4,
                                              ref=iid, about_task=item.get("about_task"), about_kind=item.get("about_kind"),
                                              category=str(label) if label and not re.search(r"[\s\d]", str(label)) else None))
+
+    # A collision is a reason on the point it is about, never a row of its own per event: one row per collision made
+    # the same inbox item stand three times in Do, each numbered as its task (22.11.2026). Its item's own row takes
+    # the reasons and stands in Do; without one (its section past the buckets, bucket: none) the item stands once.
+    for sid, item, forced in collisions:
+        parts = str(item.get("id") or "").split(":")
+        subject = str(item.get("inbox") or (parts[2] if len(parts) > 2 else ""))
+        events = [e for e in item.get("events") or () if isinstance(e, dict) and e.get("title")]
+        why = [labels["collides_with"].format(event=_short(e["title"], 60), start=e.get("start") or "", end=e.get("end") or "")
+               for e in events] or [labels["collides"]]
+        if not INBOX_ID_LIKE.match(subject):
+            add(f"advise:{item.get('id')}", row(sid, item, forced or "do", item.get("title"), why, 0))
+            continue
+        have = next((k for k in out["order"] if out["rows"][k].get("inbox_id") == subject), None)
+        if have is not None:
+            add(have, row(sid, item, forced or "do", out["rows"][have]["title"], why, 0, inbox_id=subject))
+            continue
+        own = inbox_items.get(subject) or {}
+        title = _plain_stamps(own.get("title") or item.get("item") or item.get("title"), now, labels)
+        add(f"inbox:{subject}", row(sid, {**item, **own}, forced or "do", title, why, 0, due=own.get("due"),
+                                    inbox_id=subject, gate=own.get("gate"), urgency=own.get("urgency"),
+                                    has_action=bool(own.get("has_action")), inbox_state=own.get("state"),
+                                    inbox_key=own.get("key"), area=own.get("area") or None,
+                                    origin_raw=own.get("from") or None, inbox_kind=own.get("kind") or None,
+                                    art=art_of_kind(own.get("kind")) if own else None,
+                                    created=own.get("changed_at") or None))
 
     # blocked / waiting / due advice repeats what a task or inbox row already says;
     # it stands on its own only when no such row is in the view.

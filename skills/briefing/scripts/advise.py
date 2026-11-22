@@ -6,7 +6,7 @@ A briefing that lists everything leaves the choosing to the reader. These checks
 name what a person would want to know first, from the inbox, the task folders
 and (when the caller passes it) today's calendar:
 
-  collision  an inbox item with a due TIME overlaps a calendar event
+  collision  an inbox item with a due TIME overlaps calendar events: one finding per item, naming every event
   quiet      an active task nobody touched for `stale_days`; urgency today for a
              customer context (a relationship goes stale silently), later otherwise
   blocked    a blocked task idle for `blocked_days`: nudge whoever blocks it
@@ -76,12 +76,12 @@ def _load_inbox_locked():
 # the words of a finding in the instance's conversation language (bridge-config.yaml language.conversation);
 # a language not here reads English
 TEXTS = {
-    "en": {"collides": "“{item}” at {start} collides with “{event}” {e_start} to {e_end}",
+    "en": {"collides": "“{item}” at {start} collides with {events}", "event": "“{event}” {e_start} to {e_end}",
            "blocked": "{slug} blocked for {idle} days ({why})",
            "quiet": "{slug} untouched for {idle} days", "quiet_customer": " (customer)",
            "wip": "{n} tasks active, cap {cap}: close one or put one on the watch list",
            "waiting": "waits on you since {day}: {item}", "due": "due {day}: {item}"},
-    "de": {"collides": "„{item}“ am {start} überschneidet sich mit „{event}“ {e_start} bis {e_end}",
+    "de": {"collides": "„{item}“ am {start} überschneidet sich mit {events}", "event": "„{event}“ {e_start} bis {e_end}",
            "blocked": "{slug} seit {idle} Tagen blockiert ({why})",
            "quiet": "{slug} seit {idle} Tagen unberührt", "quiet_customer": " (Kunde)",
            "wip": "{n} Aufgaben aktiv, Grenze {cap}: eine schließen oder auf die Merkliste setzen",
@@ -181,6 +181,7 @@ def advise(root: Path, *, now: dt.datetime | None = None, calendar: list | None 
         start = _when(item.due)
         if not start or not calendar:
             continue
+        hits = []
         for event in calendar:
             if event.get("info") is True:   # an info calendar's event is someone else's
                 continue
@@ -189,11 +190,15 @@ def advise(root: Path, *, now: dt.datetime | None = None, calendar: list | None 
                 continue
             e_end = e_end or e_start + dt.timedelta(minutes=30)
             if start < e_end and e_start < start + window:
-                found.append(_finding(
-                    "collision", f"{item.id}:{inbox._slug(str(event.get('title')), 30)}",
-                    w["collides"].format(item=item.summary, start=f"{start:%a %d.%m %H:%M}", event=event.get("title"),
-                                         e_start=f"{e_start:%H:%M}", e_end=f"{e_end:%H:%M}"),
-                    "now" if start.date() == today else "today", item.task))
+                hits.append({"title": str(event.get("title")), "start": f"{e_start:%H:%M}", "end": f"{e_end:%H:%M}"})
+        if hits:
+            # one finding per item, naming every event it collides with: one per event made the briefing show the
+            # same point once per event (22.11.2026: three rows, each numbered 3)
+            said = ", ".join(w["event"].format(event=e["title"], e_start=e["start"], e_end=e["end"]) for e in hits)
+            found.append({**_finding("collision", item.id,
+                                     w["collides"].format(item=item.summary, start=f"{start:%a %d.%m %H:%M}", events=said),
+                                     "now" if start.date() == today else "today", item.task),
+                          "inbox": item.id, "item": item.summary, "events": hits})
 
     tasks = _tasks(root)
     back = _came_back(root, today)

@@ -169,9 +169,10 @@ test('By source folds an advice about a task into that task, and counts it no mo
 
 // ---------------------------------------------------------------- go on
 
-test('go on is offered only where the tab asks nothing', () => {
-  // round 3: the briefing tab asking for an answer by number and a which-way question both got "Go on"
-  const s = state()
+test('go on is offered only where the tab asks nothing, and never while the buckets are on', () => {
+  // round 3: the briefing tab asking for an answer by number and a which-way question both got "Go on"; after #704
+  // Keep going is no word of bucket mode at all (a finished tab offered it), so this holds with the switch off
+  const s = { ...state(), work: { flow: { enabled: true, buckets: { enabled: false } } } }
   const base = { ref: 'surface:14', name: 'Briefing', state: 'waiting', live: true, since_ms: NOW - 5 * MIN }
   const by = tab => logic.replyOptions(tab, s, text.TABLES.en).buttons.map(b => b.verb)
   assert.ok(!by({ ...base, ask: { text: 'Antwort per Nummer, zum Beispiel "3 später montag" oder "1 mach".', hash: 'h1', asks: true } }).includes('tab_go_on'))

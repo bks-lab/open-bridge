@@ -307,8 +307,9 @@ test('a row of a list: the bucket chip and the same four answers side by side, n
 
 test('Jev\'s squares and the task board say the four buckets, no drop word', () => {
   const w = logic.bucketWords(state(), 'de')
-  // round 2: Jev's squares keep Jev's words (urgency and impact), never a bucket's name beside the card's own chip
-  assert.deepEqual(w.quadrant, {})
+  // after #704 (Michael, 22.11.2026): Jev's squares say the bucket words; the light and not urgent one says Later,
+  // the answer that takes such a point out of sight, since no bucket holds it
+  assert.deepEqual(w.quadrant, { now: 'Tun', plan: 'Planen', hand: 'Mache ich', drop: 'Später' })
   assert.deepEqual(w.columns, { bridge: 'Mache ich', waiting: 'Wartet auf andere' })
 })
 
