@@ -2249,6 +2249,25 @@ export function tabCloseOffer(tab, s) {
   return { done: keys.length > 0, unseen: back && !settled, keys }
 }
 
+/** Whether an agent tab asks the person something its own answers take: a dialog (needs-you), a ready answer in its
+ *  input line, a yes or no, or a question in words. A tab that finished, or waits at its prompt with nothing asked,
+ *  takes no answer of its own: it offers the way to it and its close */
+export function tabAsksYou(tab) {
+  if (!tab || tab.is_control) return false
+  if (tab.state === 'needs-you') return true
+  if (tab.state !== 'waiting' || !tab.ask) return false
+  const ask = tab.ask
+  if (ask.draft) return typeof ask.suggestion === 'string' && !!ask.suggestion.trim()
+  return !!(ask.yes_no || ask.asks || /\?\s*$/.test(String(ask.text ?? '')))
+}
+
+/** The ways a tab card offers beside the answers while the buckets are on: to the tab (or its view), and its close
+ *  where it may close (tabCloses). Never Yes, No or Keep going: those are a tab's own answers (tabAsksYou) */
+export function tabWays(tab, can, settled = false) {
+  const way = can('focus') ? ['jump'] : can('screen') ? ['view'] : []
+  return tabCloses(tab, can, settled) ? [...way, 'close'] : way
+}
+
 /** The one next step a slim tab card offers, as action keys: answer a question, go on, close a tab
  *  that filed its result or whose start is settled, else go to the tab; `can(right)` says what this cockpit
  *  may do with a tab (canTab). Round 6d: a tab that may close (tabCloses) offers the close beside going on or
@@ -2961,6 +2980,10 @@ export function replySend(tab, text) {
 export function replyOptions(tab, s, t = TABLES.en) {
   const none = { buttons: [], textBox: false }
   if (!tab) return none
+  // with the briefing's buckets on a tab's own answers stand only where it asks (tabAsksYou): Do it is the answer of every
+  // other point, and "Keep going" is no fifth word beside the four (after #704 a finished tab offered it)
+  const buckets = s?.work?.flow?.enabled === true && s?.work?.flow?.buckets?.enabled === true && !personOf(s)
+  if (buckets && !tabAsksYou(tab)) return none
   const r = t.reply
   const key = canTab(s, 'key')
   const send = canTab(s, 'send')
@@ -2998,7 +3021,7 @@ export function replyOptions(tab, s, t = TABLES.en) {
   // no go on where the tab asks which way or for an answer of its own (by number, a choice): only its words answer
   // that (round 3 of the four answers: the briefing tab and a which-way question got "Go on"); a yes or no keeps it
   const asks = !!(ask && !ask.yes_no && (ask.asks || /\?\s*$/.test(String(ask.text ?? ''))))
-  if (!tab.filed_by && !asks) buttons.push({ id: 'goOn', verb: 'tab_go_on', label: r.goOn, args: { tab_ref: tab.ref, ...replyGuard(tab) } })
+  if (!tab.filed_by && !asks && !buckets) buttons.push({ id: 'goOn', verb: 'tab_go_on', label: r.goOn, args: { tab_ref: tab.ref, ...replyGuard(tab) } })
   return { buttons, textBox: true }
 }
 

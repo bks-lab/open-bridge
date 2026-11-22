@@ -346,17 +346,18 @@ test('layoutMatrix: ten tasks judged alike stand apart, labels clear, crown free
 test('matrixWords: the squares and the legend say the profile\'s bucket words where they map', () => {
   const t = { quads: { now: 'Jetzt selbst', plan: 'Einplanen', hand: 'Abgeben', drop: 'Loslassen' }, me: 'du', delegate: 'abgeben' }
   assert.deepEqual(logic.matrixWords({ columns: {}, quadrant: {} }, t), { quads: t.quads, me: 'du', delegate: 'abgeben' })
-  const words = { quadrant: { now: 'Tun (du, heute)', plan: 'Planen', hand: 'Mache ich', drop: 'Parken oder streichen' } }
-  assert.deepEqual(logic.matrixWords(words, t), { quads: words.quadrant, me: 'Tun (du, heute)', delegate: 'Mache ich' })
+  // the legend says who moves (bucketWords `who`), never a bucket's name
+  const words = { quadrant: { now: 'Tun (du, heute)', plan: 'Planen', hand: 'Mache ich', drop: 'Später' }, who: { me: 'du', delegate: 'Bridge' } }
+  assert.deepEqual(logic.matrixWords(words, t), { quads: words.quadrant, me: 'du', delegate: 'Bridge' })
+  assert.deepEqual(logic.matrixWords({ quadrant: words.quadrant }, t), { quads: words.quadrant, me: 'du', delegate: 'abgeben' })
   assert.deepEqual(logic.matrixWords(null, t).quads, t.quads)
 })
 
 test('the Jev page uses the calm helpers: its own words, no reading flash, word cuts', () => {
   const page = fs.readFileSync(path.join(WEB, 'jev', 'page.js'), 'utf8')
-  // round 2 of the four answers: Jev's own words, never the bucket names (a point stood in the square Do with the chip
-  // Plan); its square words drawn over the dots
-  assert.doesNotMatch(page, /bucketWords\(/)
-  assert.match(page, /matrixWords\(null/)
+  // after #704 (Michael, 22.11.2026): with the buckets on the bucket words of the profile, off Jev's own (round 2 had
+  // Jev's own words always); its square words drawn over the dots
+  assert.match(page, /matrixWords\(bucketWords\(s, language\(\)\), t\)/)
   assert.ok(page.indexOf('data-qlabel') > page.indexOf('data-dot'), 'the square words over the dots')
   // the plan's rows run in at once on a first visit, no second of an empty plan between the waiting list and Jev's
   const start = /const k = intro \? spring\(Ti, ([\d.]+) \+ i \* [\d.]+, \{ w: 8, zeta: 0\.95 \}\)/.exec(page)

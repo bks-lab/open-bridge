@@ -406,7 +406,7 @@ function TabMini({ tab, s, c }) {
     </span>
     <span class="tabmini-acts">
       ${flowBucketsOn(s) && tabPoint(tab, s) ? html`<${BucketBar} x=${tabPoint(tab, s)} s=${s} c=${c} />`
-        : tab.state === 'needs-you' && canTab(s, 'key') ? html`
+        : !flowBucketsOn(s) && tab.state === 'needs-you' && canTab(s, 'key') ? html`
         <${Btn} size="xs" variant="primary" busy=${busy} onClick=${() => c.act('tab_yes', { tab_ref: tab.ref })}>${t.btnYes}<//>
         <${Btn} size="xs" variant="secondary" busy=${busy} onClick=${() => c.act('tab_no', { tab_ref: tab.ref })}>${t.btnNo}<//>` : null}
       ${canTab(s, 'focus') ? html`<${Btn} size="xs" variant="ghost" busy=${busy} onClick=${() => c.act('tab_jump', { tab_ref: tab.ref })}>${t.btnToTab}<//>` : null}

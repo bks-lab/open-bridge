@@ -1291,10 +1291,20 @@ Description, Steps and Activity. There is no right column.
 
 The Aufgaben page's columns of the Bridge and of others say the buckets' names
 (I'll do, Waiting on others); Me and To review keep the board's own. Jev's
-squares keep Jev's own words (urgency and impact, who could do it), never a
-bucket's name, so a point never names two buckets at once; its square words stand
-over the dots. With the switch off Work through is as it was. A person's page keeps
-it as it is.
+squares say the bucket words of the profile: urgent and weighty Do, weighty
+without hurry Plan, urgent and light I'll do; light and not urgent has no bucket,
+so that square says Later (de: Später), the answer that takes such a point out of
+sight. Its legend says who moves, you or the Bridge. Its square words stand over
+the dots. With the switch off Work through and Jev are as they were. A person's
+page keeps it as it is.
+
+**A tab's own answers** replace Do it only where the tab asks (`tabAsksYou`): a
+dialog's options, a ready answer in its input line, yes and no, or a question in
+words (an answer of your own). A tab that asks nothing offers **Go to tab** in
+the place of Do it, and on the inbox item it is about Later, Done and Obsolete;
+never "Keep going" while the buckets are on. A finished tab (it waits at its
+prompt and went quiet) is no point at all: its card in the column wears no
+bucket chip and offers only Go to tab and its close.
 
 The other views of the work tab follow the same switch, so they differ from Work
 through only in order and grouping, never in words or answers. Every row of

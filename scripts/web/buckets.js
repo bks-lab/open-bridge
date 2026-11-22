@@ -11,7 +11,7 @@
 // task_park, settle, the tab's own answers); With … under More hands a task's step over (task_owner, work_on). No DOM,
 // no network. logic.js passes every name on.
 import { TABLES } from './text.js'
-import { DAY, canTab, tabHeld, actionRow, flowAction, inProject, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
+import { DAY, canTab, tabAsksYou, tabHeld, wantsYou, actionRow, flowAction, inProject, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
   replySend, short, triageShows } from './logic.js'
 
 // the briefing's buckets, in its order (briefing_view BUCKETS)
@@ -305,6 +305,8 @@ export function nextSentence(x, bucket, s, lang = 'en') {
   if (tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) {
     // where nothing can be sent from here (a "#" in its input line, a dialog without keys) the first answer is the way
     // to the tab, and Next says so (round 2: it promised to send an answer)
+    // a tab that asks nothing says so; one with words in its input line that nobody can send from here says that
+    if (!tabAsksYou(tab) && !tab.ask?.draft) return f.nextTabQuiet
     const first = bucketAnswers(x, bucket, s, lang)[0]
     return first?.run?.verb === 'tab_jump' ? f.nextOpenTab : f.nextTab
   }
@@ -399,15 +401,16 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
   if (isTabPoint) {
     // the tab's own answers win: what it asks is answered in the tab, never by a new start. Where it takes words
     // (textBox), an answer in words stands among them: first where the question is no yes or no
-    const opts = replyOptions(tab, s, t)
-    const mine = opts.buttons.filter(b => b.verb !== 'tab_jump')
-    const jump = opts.buttons.find(b => b.verb === 'tab_jump') ?? null
+    // only a tab that asks (tabAsksYou) has answers of its own; one that asks nothing offers the way to it in their place,
+    // never "Keep going" or an answer in words (after #704 a finished tab offered both, beside a Do chip)
+    const opts = tabAsksYou(tab) ? replyOptions(tab, s, t) : { buttons: [], textBox: false }
+    const mine = opts.buttons.filter(b => b.verb !== 'tab_jump' && b.verb !== 'tab_go_on')
+    const jump = opts.buttons.find(b => b.verb === 'tab_jump')
+      ?? (canTab(s, 'focus') ? { verb: 'tab_jump', args: { tab_ref: tab.ref }, label: t.btnToTab } : null)
     const say = opts.textBox ? { kind: 'say', tab } : null
     if (say && !tab.ask?.yes_no) add('do', say, f.sayAnswer)
-    for (const b of mine) {
-      if (say && tab.ask?.yes_no && b.verb === 'tab_go_on') add('do', say, f.sayAnswer)
-      add('do', { kind: 'reply', verb: b.verb, args: b.args }, b.label)
-    }
+    for (const b of mine) add('do', { kind: 'reply', verb: b.verb, args: b.args }, b.label)
+    if (say && tab.ask?.yes_no) add('do', say, f.sayAnswer)
     if (!out.length && jump) add('do', { kind: 'reply', verb: jump.verb, args: jump.args }, jump.label)
   } else if (key && (row.inbox_state !== 'approved' || (!row.tab?.live && !x.running)) &&
     (canTab(s, 'launch') || (!needsAgent(row) && bucket !== 'waiting'))) {
@@ -527,12 +530,17 @@ export function pointKindWord(x, lang = 'en') {
 
 /** The words of the buckets by the ids other parts of the page use, {} where the buckets are off: the task board's
  *  columns of the Bridge's moves and of what waits on others (its own words for yours and for review: it splits by who
- *  moves, not by day). Jev's squares keep Jev's own words: they are urgency and impact, not the buckets, and a point
- *  in the square called Do with the chip Plan said two buckets at once (round 2 of the four answers) */
+ *  moves, not by day), Jev's squares (`quadrant`) and the colours of its legend (`who`: you or the Bridge) */
 export function bucketWords(s, lang = 'en') {
-  if (!flowBucketsOn(s)) return { columns: {}, quadrant: {} }
+  if (!flowBucketsOn(s)) return { columns: {}, quadrant: {}, who: {} }
+  const f = (TABLES[lang] ?? TABLES.en).flow.buckets
   const by = Object.fromEntries(bucketDefs(s, lang).map(b => [b.id, b.title]))
-  return { columns: { bridge: by.delegate, waiting: by.waiting }, quadrant: {} }
+  // Jev's squares in the bucket words (Michael, 22.11.2026): urgent and weighty is Do, weighty without hurry Plan,
+  // urgent and light the Bridge's (I'll do). Light and not urgent has no bucket: it is what Later takes out of sight,
+  // so that square says the word of that answer rather than nothing, and no word of Jev's own stands beside the four
+  return { columns: { bridge: by.delegate, waiting: by.waiting },
+    quadrant: { now: by.do, plan: by.plan, hand: by.delegate, drop: f.answers.laterPlain },
+    who: { me: f.owner.me, delegate: f.owner.bridge } }
 }
 
 // ---------------------------------------------------------------- the other views of the work tab
@@ -547,12 +555,12 @@ export function rowPoint(row, s) {
   const all = s?.tabs?.tabs ?? []
   // an inbox item's own tab (its item) before the tab its task has (round 2: a stream's tab stood for an item whose
   // own tab asked yes or no, and Do it reached nothing)
-  const own = row?.inbox_id ? all.find(x => x.item === row.inbox_id && !x.is_control && ASKING.has(x.state)) ?? null : null
+  const own = row?.inbox_id ? all.find(x => x.item === row.inbox_id && wantsYou(x)) ?? null : null
   const tab = own ?? (ref ? all.find(x => x.ref === ref) ?? null : null)
   // only the row the tab works on: an inbox item about its task is no answer to its dialog (round 2: "Reply to
   // Jordan" offered the deploy dialog's Yes and approved the deploy)
   const about = row?.inbox_id ? tab?.item === row.inbox_id : !!row?.task && (tab?.slug == null || tab.slug === row.task)
-  if (tab && !tab.is_control && ASKING.has(tab.state) && about && !tabHeld(tab, s?.model)) return { group: 'asks', id: row.key, kind: 'tab', tab, row }
+  if (tab && wantsYou(tab) && about && !tabHeld(tab, s?.model)) return { group: 'asks', id: row.key, kind: 'tab', tab, row }
   return { group: 'row', id: row?.key ?? null, kind: 'row', row }
 }
 
@@ -561,7 +569,9 @@ export function rowPoint(row, s) {
  *  the four answers had only the tab's own answer in the column and in Chat); one that works or is the control
  *  session is no decision (null) */
 export function tabPoint(tab, s = null) {
-  if (!tab || tab.is_control || !ASKING.has(tab.state) || tabHeld(tab, s?.model)) return null
+  // a tab that finished (waits at its prompt and went quiet) is no point, as in Work through (flow.js, wantsYou): its
+  // card in the column wears no Do chip (after #704 a finished tab did)
+  if (!wantsYou(tab) || tabHeld(tab, s?.model)) return null
   // its item's row wherever the model holds it (a section, the rows put off, the ones past the briefing's window): a
   // column card has Later, Done and Obsolete as the card in Work through has (round 2: one with a ready answer had none)
   const m = s?.model ?? {}
