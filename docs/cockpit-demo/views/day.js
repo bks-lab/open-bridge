@@ -39,7 +39,7 @@ export function KindTag({ row, s, c, link = false, bare = false }) {
       : short(title, 48)}</span>` : null
   const detail = k.kind === 'issue' ? html` <span class="mono">${k.ref}</span>` : null
   return html`<span class=${`kind kind-${k.kind}`} title=${t.kindTitle[k.kind]}>
-    <span class="kind-mark" aria-hidden="true">${KIND_MARK[k.kind]}</span><span>${t.kind[k.kind]}${detail}</span></span>${about}`
+    <span class="kind-mark" aria-hidden="true">${KIND_MARK[k.kind]}</span><span>${(k.kind === 'inbox' && t.kindArt?.[row?.art]) || t.kind[k.kind]}${detail}</span></span>${about}`
 }
 
 // the dot of an origin chip, from the existing tokens (no colour of its own): a cue beside the word, never instead

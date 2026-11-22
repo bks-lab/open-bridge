@@ -1519,8 +1519,8 @@ const ctl = {
   flowBucket: id => setUi({ flowBucket: id ?? null, flowBucketAt: null, flowView: 'buckets', flowSolo: null }),
   flowBucketGo: (id, i) => setUi({ flowBucketAt: { id, i }, flowView: 'buckets', flowSolo: null }),
   // a point answered on the card leaves its bucket at once (buckets.js answeredHere); entries older than a minute go
-  flowAnswered: (key, bucket) => setUi(ui => ({ flowAnswered: { ...Object.fromEntries(Object.entries(ui.flowAnswered ?? {})
-    .filter(([, a]) => Date.now() - (a?.ms ?? 0) < 60000)), [key]: { ms: Date.now(), bucket } } })),
+  flowAnswered: (key, bucket, then = null) => setUi(ui => ({ flowAnswered: { ...Object.fromEntries(Object.entries(ui.flowAnswered ?? {})
+    .filter(([, a]) => Date.now() - (a?.ms ?? 0) < 60000)), [key]: { ms: Date.now(), bucket, ...(then ? { then } : {}) } } })),
   // the read marks (cockpit.flow.seen): points read, quietly (an open, Read, Mark all read), at once in the page and
   // then on the server in calls of at most 50 keys; a refusal leaves them unread, as the next state says
   flowSeen: async keys => {

@@ -776,7 +776,7 @@ function HomeBoard({ s, c }) {
     <header class="home-hero">
       <p class="home-eyebrow">${day}</p>
       <h1 class="home-title">${greetingText(now.getHours(), person, h.greeting)}.</h1>
-      ${s.model?.headline ? html`<p class="home-lead">${leadOf(s.model)}</p>` : null}
+      ${s.model?.headline ? html`<p class="home-lead">${leadOf(s.model, s)}</p>` : null}
       ${flowOn(s) ? html`<${SeenLine} seen=${flowAreas(s).seen} c=${c} />` : null}
       <${HomeAsk} s=${s} c=${c} />
       ${(s.model?.alarms ?? []).length || relayDown ? html`<div class="home-signals">

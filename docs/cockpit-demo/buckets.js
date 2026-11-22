@@ -11,7 +11,7 @@
 // task_park, settle, the tab's own answers); With … under More hands a task's step over (task_owner, work_on). No DOM,
 // no network. logic.js passes every name on.
 import { TABLES } from './text.js'
-import { DAY, tabHeld, actionRow, flowAction, inProject, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
+import { DAY, canTab, tabHeld, actionRow, flowAction, inProject, flowParts, flowOn, flowQueue, isoDate, nextMonday, personOf, pointName, pointStep, previewText, replyOptions,
   replySend, short, triageShows } from './logic.js'
 
 // the briefing's buckets, in its order (briefing_view BUCKETS)
@@ -25,6 +25,9 @@ export const LATER_CHOICES = ['tomorrow', 'monday', 'week', 'pick', 'list']
 
 // the day a point on the watch list is put off to: nobody reaches it, so it never comes back by itself (lib/answers.py)
 export const LIST_DAY = '9999-12-31'
+
+// the farthest day a Later puts a point off to, in days from today (lib/answers.py LATER_MAX_DAYS, the server's 366)
+export const LATER_MAX_DAYS = 366
 
 // the groups of the queue that are agent tabs (a tab that asks, the return card, a finished or lost start): they ask
 // the person, so they stand in Do
@@ -105,6 +108,7 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
   const seen = new Set()
   const all = []
   const gone = answeredHere(s)
+  const startedHere = new Set([...gone].filter(k => s?.ui?.flowAnswered?.[k]?.then === 'running'))
   // put off to a day and out of sight until it (the briefing's `away`): a tab that asks about such an item waits with
   // it (round 1 of the four answers: Later on a tab card put the item off, the tab's point stayed in Do)
   const away = new Set((s?.model?.away ?? []).map(a => a?.key))
@@ -120,9 +124,16 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
   const awayNow = new Set((s?.model?.away ?? []).filter(a => a?.key && String(a.until ?? '').slice(0, 10) > today0).map(a => a.key))
   const push = x => {
     const id = x.id
-    if (!id || seen.has(id) || gone.has(id)) return
+    if (!id || seen.has(id)) return
+    // Do it went out here and an agent starts: the point runs in I'll do until the model catches up (round 4)
+    if (gone.has(id) && !x.running && startedHere.has(id)) return push({ ...x, running: true })
+    if (gone.has(id) && !(x.running && startedHere.has(id))) return
     if (x.tab && tabRowGone(x.tab)) return
     if (!x.running && x.row?.key && awayNow.has(x.row.key)) return
+    // a task the briefing does not list (no next step: its housekeeping counts it; the model's own rows beside the
+    // briefing) is no point either: the briefing numbers every point the page shows (round 4: such tasks stood in
+    // Plan without a number, as the unlisted streams did in round 2). One an agent runs on stays the Bridge's
+    if (!x.running && x.kind === 'row' && isTask(x.row) && !BUCKET_IDS.includes(x.row.bucket)) return
     const bucket = pointBucket(x)
     if (!bucket) return
     seen.add(id)
@@ -157,7 +168,7 @@ export function bucketPoints(s, lang = 'en', parts = flowParts(s)) {
     for (const e of g.rows ?? []) if (e?.row?.key && !off(e) && !unlisted(g, e)) push({ group: 'left', left: g.reason, id: e.row.key, kind: 'row', row: e.row, entry: e })
   }
   const order = new Map(all.map((x, i) => [x.id, i]))
-  const nr = x => (Number.isInteger(x.row?.brief_nr) ? x.row.brief_nr : Infinity)
+  const nr = x => pointNr(x, s) ?? Infinity
   // a tab that asks holds an agent until it is answered: it comes first, whatever kind of card shows it
   const tabFirst = x => (x.kind === 'tab' || (x.tab && ASKING.has(x.tab.state)) ? 0 : 1)
   const buckets = bucketDefs(s, lang).map(b => ({ ...b,
@@ -306,7 +317,11 @@ export function nextSentence(x, bucket, s, lang = 'en') {
   if (x?.row?.inbox_id && x.row.inbox_state === 'approved') return f.nextApproved
   const a = bucketAnswers(x, bucket, s, lang)
   if (!a.length) return f.nextNone
-  if (!a.some(z => z.meaning === 'do')) return x?.row?.tab?.live || x?.running ? f.nextWorking : f.nextNone
+  if (!a.some(z => z.meaning === 'do')) {
+    if (x?.row?.tab?.live || x?.running) return f.nextWorking
+    // no terminal to start an agent in: Do it is not offered, and Next says why instead of promising an agent (round 4)
+    return needsAgent(x?.row) && !canTab(s, 'launch') ? f.nextNoTerminal : f.nextNone
+  }
   if (bucket === 'waiting') return f.nextWaiting(who ?? f.someone)
   // what Do it does to this point, said concretely (round 1 of the four answers: 101 of 121 cards said only "the
   // Bridge takes the next step"): an inbox item gets its yes, a task an agent on its step, or on the task as a whole
@@ -330,6 +345,10 @@ export function laterDays(nowMs) {
 export const nextBriefingDay = nowMs => isoDate(nowMs + DAY)
 
 const isTask = row => !!row?.task && !row.inbox_id && row.key === `task:${row.task}`
+
+/** Whether Do it on a row starts an agent (actions_work.py v_do_it): any row but an inbox item whose yes runs on its
+ *  own, i.e. a task, an issue, an only-you item, an approved item without an action of its own */
+const needsAgent = row => !!row?.key && (!row.inbox_id || row.gate === 'only-you' || (row.inbox_state === 'approved' && !row.has_action))
 const isStream = row => !row?.inbox_id && !!(row?.stream || row?.work_kind === 'stream')
 
 /** Who a waiting point waits on, for a nudge: the check-in's, else the task's step's or the row's while nothing
@@ -390,9 +409,14 @@ export function bucketAnswers(x, bucket, s, lang = 'en') {
       add('do', { kind: 'reply', verb: b.verb, args: b.args }, b.label)
     }
     if (!out.length && jump) add('do', { kind: 'reply', verb: jump.verb, args: jump.args }, jump.label)
-  } else if (key && (row.inbox_state !== 'approved' || (!row.tab?.live && !x.running))) {
+  } else if (key && (row.inbox_state !== 'approved' || (!row.tab?.live && !x.running)) &&
+    (canTab(s, 'launch') || (!needsAgent(row) && bucket !== 'waiting'))) {
     // an item whose yes is given takes Do it too in I'll do: it starts now instead of on the next pass (round 3)
-    if (bucket === 'waiting') {
+    // without a terminal (the driver lists no launch) only a yes goes: what would start an agent is not offered, so a
+    // click never fails after the card promised an agent (round 4)
+    if (bucket === 'waiting' && (row.tab?.live || x.running)) {
+      // a row an agent tab already works on gets no second start, a nudge neither (round 4)
+    } else if (bucket === 'waiting') {
       const who = waitsOn(x)
       const blocker = blockerOf(row)
       const ask = who ? t.flow.simple.chase(who, pointName(row)) : blocker ? t.flow.simple.chaseBlocked(short(blocker, 120), pointName(row))
@@ -493,7 +517,8 @@ export function pointKindWord(x, lang = 'en') {
   const k = (TABLES[lang] ?? TABLES.en).flow.buckets.kind
   if (x?.tab && (x.kind === 'tab' || x.kind === 'start' || x.kind === 'back')) return k.tab
   const row = x?.row
-  if (row?.inbox_id) return k.inbox
+  // an inbox item by its art, as every list's kind tag says it (round 4: the card said Inbox, the lists Report)
+  if (row?.inbox_id) return (TABLES[lang] ?? TABLES.en).kindArt?.[row.art ?? 'ask'] ?? k.inbox
   if (isStream(row)) return k.stream
   if (row?.task) return k.task
   if (row?.ref) return k.issue
@@ -615,6 +640,15 @@ export function bucketCounts(items, s, byKey, lang = 'en') {
 export function doWord(s, lang = 'en') {
   const t = TABLES[lang] ?? TABLES.en
   return flowBucketsOn(s) ? t.flow.buckets.answers.do : t.action.do
+}
+
+/** The number a point has in the printed briefing: its row's (brief_nr), else, for an agent tab that asks without a
+ *  row of its own, the number the briefing gave that tab (model.tab_nrs by its ref, briefing_view tab_asks); null
+ *  where the briefing numbers none */
+export function pointNr(x, s) {
+  if (Number.isInteger(x?.row?.brief_nr)) return x.row.brief_nr
+  const n = x?.tab?.ref && !x?.row ? s?.model?.tab_nrs?.[x.tab.ref] : null
+  return Number.isInteger(n) ? n : null
 }
 
 /** The number a row shows on a list (Due, By source, the start page): while the buckets are on only its number in the

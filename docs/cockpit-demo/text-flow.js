@@ -36,6 +36,7 @@ export const FLOW = {
       nextApproved: 'Your yes stands. The Bridge runs it on its next pass.',
       nextWorking: 'An agent tab works on it. Its answer comes back here.',
       nextNone: 'This point takes no answer here. Open it under More.',
+      nextNoTerminal: 'No terminal is connected, so no agent can start here. Take the next step yourself, or answer Later, Done or Obsolete.',
       nextLabel: 'Next', asks: 'The tab asks',
       checkin: who => `It is with ${who}. Do it writes a draft that asks how it stands, never sent.`,
       // the four answers every point takes (lib/answers.py), the same on every card and in the briefing
@@ -65,7 +66,7 @@ export const FLOW = {
       // the fixed, quiet last answer of every point (buckets.js bucketAnswers): closed as not done with a note, asked
       // first in place
       obsolete: 'Obsolete', obsoleteText: 'obsolete', obsoleteAsk: 'Really obsolete?',
-      obsoleteAskStream: 'Really obsolete? The stream ends.', obsoleteNote: 'A note why (optional)', obsoleteYes: 'Yes, obsolete', obsoleteNo: 'Cancel',
+      obsoleteAskStream: 'Really obsolete? The stream ends.', obsoleteNote: 'Why? (optional)', obsoleteYes: 'Yes, obsolete', obsoleteNo: 'Cancel',
       obsoleteTip: 'Closes it as not done, with a note: a task settled as not done, an inbox item dropped, an issue hidden here and left open on GitHub',
       kind: { tab: 'Agent tab', inbox: 'Inbox', stream: 'Stream', task: 'Task', issue: 'Issue or PR', other: 'Point' },
       onlyYou: 'only you', due: d => `due ${d}`, with: who => `waits on ${who}`,
@@ -438,6 +439,7 @@ export const FLOW = {
       nextApproved: 'Dein Ja steht. Die Bridge führt es beim nächsten Durchlauf aus.',
       nextWorking: 'Ein Agenten-Tab arbeitet daran. Seine Antwort kommt hierher.',
       nextNone: 'Dieser Punkt lässt sich hier nicht beantworten. Öffne ihn unter Mehr.',
+      nextNoTerminal: 'Kein Terminal ist verbunden, hier startet also kein Agent. Mach den nächsten Schritt selbst, oder antworte mit Später, Erledigt oder Veraltet.',
       nextLabel: 'Als Nächstes', asks: 'Der Tab fragt',
       checkin: who => `Es liegt bei ${who}. Mach das schreibt einen Entwurf, der nach dem Stand fragt, nie gesendet.`,
       answers: { do: 'Mach das', later: 'Später ▾', laterPlain: 'Später', done: 'Erledigt', doneStream: 'für diesmal erledigt' },
@@ -462,7 +464,7 @@ export const FLOW = {
       parkText: 'Auf der Merkliste', someone: 'der anderen Seite',
       sayAnswer: 'Antworten…', sayLabel: 'Deine Antwort an den Tab', saySend: 'Senden', sayCancel: 'Abbrechen',
       obsolete: 'Veraltet', obsoleteText: 'veraltet', obsoleteAsk: 'Wirklich veraltet?',
-      obsoleteAskStream: 'Wirklich veraltet? Der Stream endet.', obsoleteNote: 'Notiz, warum (freiwillig)', obsoleteYes: 'Ja, veraltet', obsoleteNo: 'Abbrechen',
+      obsoleteAskStream: 'Wirklich veraltet? Der Stream endet.', obsoleteNote: 'Warum? (freiwillig)', obsoleteYes: 'Ja, veraltet', obsoleteNo: 'Abbrechen',
       obsoleteTip: 'Schließt ihn als nicht erledigt, mit Notiz: eine Aufgabe als nicht gemacht, ein Eintrag im Posteingang gestrichen, ein Issue hier ausgeblendet und auf GitHub offen gelassen',
       kind: { tab: 'Agent-Tab', inbox: 'Posteingang', stream: 'Stream', task: 'Aufgabe', issue: 'Issue oder PR', other: 'Punkt' },
       onlyYou: 'nur du', due: d => `fällig ${d}`, with: who => `wartet auf ${who}`,

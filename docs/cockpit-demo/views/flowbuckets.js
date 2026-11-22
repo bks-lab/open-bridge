@@ -18,8 +18,8 @@
 
 import { html, useEffect, useRef, useState } from '../vendor/htm-preact-3.1.1.module.js'
 import {
-  answerMark, askQuestion, asideCounts, bucketAnswers, bucketHolder, bucketDefs, bucketPoints, detailNeedsLoad, errorText, flowParts, focusIndex, formatDay, instructScope,
-  isoDate, laterDays, nextSentence, openBucket, ownerChoices, parseDate, pointArea, pointKindWord, pointName, replySend, restingOf, runningOf, short, viewBucket,
+  DAY, LATER_MAX_DAYS, answerMark, askQuestion, asideCounts, bucketAnswers, bucketHolder, bucketDefs, bucketPoints, detailNeedsLoad, errorText, flowParts, focusIndex, formatDay, instructScope,
+  isoDate, laterDays, nextSentence, openBucket, ownerChoices, parseDate, pointArea, pointKindWord, pointName, pointNr, replySend, restingOf, runningOf, short, viewBucket,
   withNote, withWas,
 } from '../logic.js'
 import { T, language } from '../text.js'
@@ -54,7 +54,10 @@ function LaterMenu({ a, s, busy, onChoose, uid = 'fb-later-day' }) {
   const [picking, setPicking] = useState(false)
   const [own, setOwn] = useState('')
   const picked = parseDate(own, now)
-  const day = picked && picked > today ? picked : null
+  // within a year, as the server takes it (actions_base.py check_date, lib/answers.py LATER_MAX_DAYS; round 4: a day
+  // 14 months out came back as an error the page never named)
+  const last = isoDate(now + LATER_MAX_DAYS * DAY)
+  const day = picked && picked > today && picked <= last ? picked : null
   const has = k => a.run.choices.includes(k)
   return html`<div class="fb-later-menu" role="group" aria-label=${f.later.label}>
     ${['tomorrow', 'monday', 'week'].filter(has).map(k => html`<button type="button" key=${k} class="fb-later-item" data-choice=${k} disabled=${busy}
@@ -63,7 +66,7 @@ function LaterMenu({ a, s, busy, onChoose, uid = 'fb-later-day' }) {
       onClick=${() => setPicking(!picking)}><span>${f.later.pick}</span><span class="fb-later-sub muted small">${f.later.pickSub}</span></button>` : null}
     ${picking ? html`<div class="fb-later-pick field-row">
       <label class="sr-only" for=${uid}>${f.later.pick}</label>
-      <input id=${uid} class="input" type="date" min=${days.tomorrow} value=${own} onInput=${e => setOwn(e.currentTarget.value)} />
+      <input id=${uid} class="input" type="date" min=${days.tomorrow} max=${last} value=${own} onInput=${e => setOwn(e.currentTarget.value)} />
       <${Btn} size="sm" variant="primary" busy=${busy} disabled=${!day} onClick=${() => day && onChoose('pick', day)}>${f.later.set}<//>
     </div>` : null}
     ${has('list') ? html`<hr class="fb-later-sep" /><button type="button" class="fb-later-item" data-choice="list" disabled=${busy}
@@ -197,7 +200,7 @@ export function BucketChip({ x, bucket, s, nr: withNr = true }) {
   const f = T().flow.buckets
   const def = bucketDefs(s, lang).find(b => b.id === bucket)
   if (!def) return null
-  const nr = withNr ? x?.row?.brief_nr : null
+  const nr = withNr ? pointNr(x, s) : null
   return html`<span class="fb-chips"><span class=${`chip fb-chip fb-chip-${bucket}`} title=${f.sub[bucket]}>${def.title}</span>${Number.isInteger(nr)
     ? html`<span class="chip fb-chip-nr mono" title=${f.inBriefing(nr, f.say)}>${f.nr(nr)}</span>` : null}</span>`
 }
@@ -257,12 +260,15 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
   const row = x.row ?? null
   const tab = x.tab ?? null
   // an answer that went out takes its point out of the bucket at once (answeredHere)
-  const { answers, run, menu, confirm, setConfirm, note, busy, say, setSay, give } = useBucketAnswer(x, bucket, s, c, () => {
+  const { answers, run, menu, confirm, setConfirm, note, busy, say, setSay, give } = useBucketAnswer(x, bucket, s, c, a => {
     c.flowDecided?.()
-    c.flowAnswered?.(x.id, bucket)
+    // Do it that starts an agent: the point stands in I'll do as running until the model says so itself (round 4:
+    // for a few seconds it stood in no bucket)
+    c.flowAnswered?.(x.id, bucket, a?.meaning === 'do' && a?.run?.verb === 'do_it' && !a?.run?.args?.yes ? 'running' : null)
     onDone?.()
   })
-  const rest = row ? restingOf(row) : null
+  // a point an agent runs on rests no longer (round 4: "läuft" beside "ruht seit 55 Tagen")
+  const rest = row && !x.running ? restingOf(row) : null
   // a waiting point names who it waits on, or what blocks it in its own words, and how long it waits (round 3 of the
   // four answers: the card named nobody, the printed briefing said "waiting 56 days, waiting for Mika")
   const held = bucket === 'waiting' ? bucketHolder({ ...x, bucket }, row) : null
@@ -292,7 +298,7 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
     ${say ? html`<${SayLine} busy=${busy} onSend=${words => run(say, words)} onCancel=${() => setSay(null)} />` : null}
     ${note ? html`<p class="fb-note small" role="status">${note}</p>` : null}
     ${isTab(x) && tab.ask?.draft ? html`<p class="fb-note fb-draft muted small">${tab.ask.suggestion ? t.reply.draft : t.reply.typed}</p>` : null}
-    ${Number.isInteger(row?.brief_nr) ? html`<p class="fb-nr muted small">${boldNr(f.inBriefing(row.brief_nr, f.say), f.nr(row.brief_nr))}</p>` : null}
+    ${Number.isInteger(pointNr(x, s)) ? html`<p class="fb-nr muted small">${boldNr(f.inBriefing(pointNr(x, s), f.say), f.nr(pointNr(x, s)))}</p>` : null}
     <details class="fb-more">
       <summary>${f.more}</summary>
       <div class="fb-more-body">
@@ -303,7 +309,7 @@ export function BucketCard({ x, bucket, s, c, onDone = null }) {
           <${InstructLine} key=${x.id} scope=${scope} x=${x} s=${s} c=${c} /></section>` : null}
         <section class="fb-fields fb-more-part"><h3 class="label-caps">${f.fieldsHead}</h3>
           ${tab?.ask?.text ? html`<pre class="fb-screen mono">${tab.ask.text}</pre>` : null}
-          ${x.kind !== 'reports' && row ? html`<${Fields} x=${x} s=${s} c=${c} />` : null}
+          ${x.kind !== 'reports' && row ? html`<${Fields} x=${x} s=${s} c=${c} bare />` : null}
           ${row ? html`<${PointTabs} x=${x} s=${s} c=${c} />` : null}
         </section>
       </div>
@@ -346,7 +352,21 @@ export function BucketBody({ s, c }) {
   const answered = s.ui?.flowAnswered ?? {}
   const movedAway = !!at?.id && !points.some(p => p.id === at.id) && !answered[at.id]
   const x = movedAway ? null : points[i] ?? null
-  const onwards = open ? buckets.find(b => b.id !== open.id && b.points.length) ?? null : null
+  // the next bucket in order that holds a point, then the ones before it (round 4: an empty Plan led on to Do, not to
+  // I'll do after it)
+  const from = open ? buckets.findIndex(b => b.id === open.id) : -1
+  const onwards = open ? [...buckets.slice(from + 1), ...buckets.slice(0, Math.max(0, from))].find(b => b.points.length) ?? null : null
+  // the walk keeps the current point in sight in the bucket's list, a long one too (round 4: at 31 of 67 the list
+  // still showed its first points); only the list scrolls, never the page
+  const pointsRef = useRef(null)
+  useEffect(() => {
+    const ul = pointsRef.current
+    const cur = ul?.querySelector?.('.fb-point.is-current')?.parentElement
+    if (!ul || !cur || typeof ul.scrollTop !== 'number') return
+    const top = cur.offsetTop - ul.offsetTop
+    if (top < ul.scrollTop) ul.scrollTop = top
+    else if (top + cur.offsetHeight > ul.scrollTop + ul.clientHeight) ul.scrollTop = top + cur.offsetHeight - ul.clientHeight
+  }, [x?.id, open?.id])
   // an answer moves on to the next point, also where the point stays in its bucket (Wait on a task that waits, a
   // tab's own answer): the next one is held by its id, at the place the answered one leaves free
   const onwardsAfter = () => c.flowBucketGo(points[i + 1]?.id ?? null, i)
@@ -366,7 +386,7 @@ export function BucketBody({ s, c }) {
             <span class="fb-bucket-name">${b.title}<span class="fb-bucket-sub muted small">${f.sub[b.id]}</span></span>
             <span class="fb-bucket-n mono">${f.count(b.points.length)}</span>
           </button>
-          ${b.id === open?.id && b.points.length ? html`<ul class="fb-points">${b.points.map((p, k) => html`<li key=${p.id}>
+          ${b.id === open?.id && b.points.length ? html`<ul class="fb-points" ref=${pointsRef}>${b.points.map((p, k) => html`<li key=${p.id}>
             <button type="button" class=${`fb-point${p.id === x?.id ? ' is-current' : ''}`} aria-current=${p.id === x?.id ? 'true' : undefined}
               title=${pointTitleOf(p)} onClick=${() => { c.flowBucketGo(p.id, k); cardIntoView() }}>${short(pointTitleOf(p), 70)}</button>
           </li>`)}</ul>` : null}
