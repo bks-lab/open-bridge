@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_bridge_cockpit import YES_ID, K, I, world, writes, private_key_dir  # noqa: E402,F401
+from test_bridge_cockpit import YES_ID, K, I, World, world, writes, private_key_dir  # noqa: E402,F401
 from lib.bridge_cockpit import model as m  # noqa: E402
 from lib.bridge_cockpit.actions import ActionError  # noqa: E402
 
@@ -152,12 +152,17 @@ def test_a_task_put_off_to_a_day_is_no_point_until_then():
     assert m.merge_view(v, {**quick, "skipped": ["tasks"]})["away"] == v["away"]
 
 
-def test_later_on_a_task_writes_nothing_where_the_task_lives_so_its_undo_leaves_no_trace(world):
+def test_later_on_a_task_writes_nothing_where_the_task_lives_so_its_undo_leaves_no_trace(tmp_path):
     # round 1 of the four answers: after Later > tomorrow and Undo, STATUS.md kept "## Notes - Später bis ..." and a
-    # new last_updated. A plain Later is only the cockpit's record; with a sentence the sentence is a note
-    world.runner.calls.clear()
-    world.act("later", key="task:demo-task", until="2026-12-01")
-    assert writes(world) == [] and world.app.store.hidden() == {"task:demo-task": "2026-12-01"}
+    # new last_updated. A plain Later is only the cockpit's record while the buckets are on (round 4: the classic page
+    # keeps its note, the switch off changes nothing); with a sentence the sentence is a note
+    world = World(tmp_path, config="cockpit:\n  enabled: true\n  language: en\n  flow:\n    enabled: true\n")
+    try:
+        world.runner.calls.clear()
+        world.act("later", key="task:demo-task", until="2026-12-01")
+        assert writes(world) == [] and world.app.store.hidden() == {"task:demo-task": "2026-12-01"}
+    finally:
+        world.close()
 
 
 def test_a_stream_done_for_this_time_is_out_of_sight_until_tomorrow_and_done_today(world):

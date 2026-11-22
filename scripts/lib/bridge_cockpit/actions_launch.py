@@ -11,6 +11,7 @@ from . import model as m
 from . import returns as ret
 from .collector import START_HOLD_MS
 from .history import item as history_item
+from .runner import acting_as
 from .actions_base import (ACTIVE_INBOX_STATES, CMUX_TIMEOUT, INBOX_ID_RE, LAUNCH_TIMEOUT, LIST_DAY, SHORT_TIMEOUT, SLUG_RE,
                            TAB_REF_RE, Ctx)
 
@@ -56,9 +57,11 @@ class LaunchSteps:
 
     def buckets_on(self) -> bool:
         """Work through by the briefing's buckets (cockpit.flow.buckets on, the page's flowBucketsOn): the four
-        answers' own words in the toasts"""
+        answers' own words in the toasts. A person's page keeps Work through as it is (flowBucketsOn leaves it out), so
+        an answer from it is the classic one (round 4: a yes there did not settle the item the classic page showed)"""
         flow = getattr(self.app.cfg, "flow", None) or {}
-        return flow.get("enabled") is True and (flow.get("buckets") or {}).get("enabled") is True
+        return (flow.get("enabled") is True and (flow.get("buckets") or {}).get("enabled") is True
+                and acting_as() is None)
 
     def hide_until(self, ctx: Ctx, row: dict, until: str) -> None:
         self.clear_twins(row["key"])

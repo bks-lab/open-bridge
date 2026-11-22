@@ -215,3 +215,17 @@ def test_a_tab_that_died_between_the_reads_gets_no_text(tmp_path):
         assert not w.runner.of("workplace.send")
     finally:
         w.close()
+
+
+def test_an_answer_from_a_persons_page_is_the_classic_one(tmp_path):
+    # round 4: the server took the buckets' way for a person's page, which keeps Work through as it is
+    from lib.bridge_cockpit.runner import acting
+    w = _world(tmp_path)
+    try:
+        import dataclasses
+        w.app.cfg = dataclasses.replace(w.app.cfg, flow={**(w.app.cfg.flow or {}), "enabled": True, "buckets": {"enabled": True}})
+        assert w.app.actions.buckets_on() is True
+        with acting("kim"):
+            assert w.app.actions.buckets_on() is False
+    finally:
+        w.close()
