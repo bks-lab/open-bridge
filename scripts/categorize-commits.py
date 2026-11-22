@@ -496,6 +496,9 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/bridge_cockpit_obsolete.test.mjs",
     "scripts/tests/bridge_cockpit_round2.test.mjs",
     "scripts/tests/bridge_cockpit_unify.test.mjs",
+    # the follow-up of the four answers: a point once, Jev in the bucket words
+    "scripts/tests/test_briefing_collision_once.py",
+    "scripts/tests/bridge_cockpit_704_followup.test.mjs",
     "scripts/tests/test_briefing_dates.py",
     "scripts/tests/fixtures/briefing/ado/query.json",
     "scripts/tests/fixtures/briefing/calendar/icalbuddy.txt",
