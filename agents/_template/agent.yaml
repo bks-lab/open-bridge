@@ -20,6 +20,11 @@ icon_url: "<https://your-site/favicon.ico>"
 # Public hostname (a tunnel maps it to this local port). Advertised in the card.
 public_url: "https://<agent-host>"
 host: "127.0.0.1"
+# trust: peer refuses to start on any non-loopback host, because the identity header
+# a token is bound to is only trustworthy behind `tailscale serve` on loopback. Set
+# this (or AGENT_ALLOW_NON_LOOPBACK=1) only if the exposure is intended. The loader
+# then warns at every start. Only true / 1 / yes / on count, everything else is off.
+# allow_non_loopback: false
 port: 8011
 model: "sonnet"   # a faster model (e.g. haiku) lowers latency for pure public Q&A
 # Per-turn wall-clock budget. A broad question that Reads the whole grounding and

@@ -111,7 +111,9 @@ Each instance is fully declarative — three parts under `agents/<name>/`:
   (`max_concurrency`, `max_input_chars`, `max_turns`, `max_contexts`). Any field can
   be overridden by an environment variable at launch (`PUBLIC_AGENT_URL`,
   `AGENT_HOST`, `AGENT_PORT`, `CLAUDE_MODEL`, `GROUNDING_DIR`, `CLAUDE_BINARY`,
-  `ENVIRONMENT`, `CORS_ALLOWED_ORIGINS`) so the same files run in dev and on the host.
+  `ENVIRONMENT`, `CORS_ALLOWED_ORIGINS`, `AGENT_ALLOW_NON_LOOPBACK`) so the same files
+  run in dev and on the host. A `trust: peer` agent refuses a non-loopback `host`
+  unless `allow_non_loopback` is on (see the peer-agent reference, § 5).
 - **`system-prompt.md`** — the persona. It is appended to the model's base prompt
   (`--append-system-prompt`), so the model keeps its capabilities and gains the
   persona's voice, facts, and disclosure boundary. This file defines *who the agent

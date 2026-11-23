@@ -139,6 +139,23 @@ class AgentConfig:
     allow_non_loopback: bool = False
 
 
+_ON_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def _is_on(value: object) -> bool:
+    """Read a switch strictly: only an on-value turns it on, everything else is off.
+
+    ``bool("false")`` is True in Python, so a quoted ``"false"`` in agent.yaml would
+    open a guard that was meant to stay shut. Booleans pass through; strings count
+    only when they spell an on-value; any other type (None, numbers) is off.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in _ON_VALUES
+    return False
+
+
 def _resolve_path(value: str | None) -> str | None:
     """Expand ``~`` and make relative paths relative to the repo root."""
     if not value:
@@ -207,9 +224,8 @@ def load_agent_config(instance: str, *, environment: str | None = None) -> Agent
     port = int(os.getenv("AGENT_PORT", spec.get("port", 8011)))
     public_url = os.getenv("PUBLIC_AGENT_URL", spec.get("public_url") or f"http://{host}:{port}")
 
-    allow_non_loopback = bool(
-        spec.get("allow_non_loopback", False)
-        or os.getenv("AGENT_ALLOW_NON_LOOPBACK", "").lower() in ("1", "true", "yes")
+    allow_non_loopback = _is_on(spec.get("allow_non_loopback")) or _is_on(
+        os.getenv("AGENT_ALLOW_NON_LOOPBACK")
     )
 
     trust = resolve_trust(instance, spec.get("trust"))
@@ -230,8 +246,9 @@ def load_agent_config(instance: str, *, environment: str | None = None) -> Agent
                 "allow_non_loopback: true if intentionally exposed."
             )
         logger.warning(
-            "agent_trust: instance '%s' has trust: peer on non-loopback host %r (allow_non_loopback: true) — "
-            "identity headers (e.g. Tailscale-User-Login) can be spoofed outside tailscale serve.",
+            "agent_trust: instance '%s' has trust: peer on non-loopback host %r "
+            "(allow_non_loopback is on): identity headers (e.g. Tailscale-User-Login) "
+            "can be spoofed outside tailscale serve.",
             instance, host,
         )
 

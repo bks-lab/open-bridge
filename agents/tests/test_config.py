@@ -229,6 +229,87 @@ def test_peer_trust_on_non_loopback_host_warns_with_allow_non_loopback(tmp_path,
         )
     assert cfg.trust == "peer"
     assert cfg.allow_non_loopback is True
+    assert any("can be spoofed" in r.message for r in caplog.records)
+
+
+PEER_YAML = (
+    'name: "P"\ntrust: "peer"\n{extra}'
+    'auth:\n  mode: bearer\n  peers:\n    - id: axel\n      token_env: PEER_TOKEN\n'
+)
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.168.1.5", "example.internal"])
+def test_peer_trust_refuses_every_non_loopback_host_form(tmp_path, monkeypatch, host):
+    monkeypatch.setenv("PEER_TOKEN", "a" * 32)
+    monkeypatch.delenv("AGENT_ALLOW_NON_LOOPBACK", raising=False)
+    monkeypatch.delenv("AGENT_HOST", raising=False)
+    with pytest.raises(ValueError, match="trust: peer refuses to bind"):
+        _load(monkeypatch, tmp_path, "wide", PEER_YAML.format(extra=f'host: "{host}"\n'))
+
+
+def test_peer_trust_refuses_when_agent_host_env_widens_a_loopback_yaml(tmp_path, monkeypatch):
+    """AGENT_HOST wins over agent.yaml, so a launch wrapper can widen a loopback
+    peer agent without touching the file. The guard must see the resolved host."""
+    monkeypatch.setenv("PEER_TOKEN", "a" * 32)
+    monkeypatch.delenv("AGENT_ALLOW_NON_LOOPBACK", raising=False)
+    monkeypatch.setenv("AGENT_HOST", "0.0.0.0")
+    with pytest.raises(ValueError, match="trust: peer refuses to bind"):
+        _load(monkeypatch, tmp_path, "envhost", PEER_YAML.format(extra='host: "127.0.0.1"\n'))
+
+
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes"])
+def test_allow_non_loopback_env_switch_lets_a_peer_agent_start(tmp_path, monkeypatch, caplog, value):
+    monkeypatch.setenv("PEER_TOKEN", "a" * 32)
+    monkeypatch.setenv("AGENT_ALLOW_NON_LOOPBACK", value)
+    monkeypatch.delenv("AGENT_HOST", raising=False)
+    with caplog.at_level(logging.WARNING, logger="_runtime.config"):
+        cfg = _load(monkeypatch, tmp_path, "envallow", PEER_YAML.format(extra='host: "0.0.0.0"\n'))
+    assert cfg.allow_non_loopback is True
+    assert any("can be spoofed" in r.message for r in caplog.records)
+
+
+@pytest.mark.parametrize("value", ["0", "false", "no", "", "off"])
+def test_allow_non_loopback_env_switch_off_values_do_not_allow(tmp_path, monkeypatch, value):
+    monkeypatch.setenv("PEER_TOKEN", "a" * 32)
+    monkeypatch.setenv("AGENT_ALLOW_NON_LOOPBACK", value)
+    monkeypatch.delenv("AGENT_HOST", raising=False)
+    with pytest.raises(ValueError, match="trust: peer refuses to bind"):
+        _load(monkeypatch, tmp_path, "envoff", PEER_YAML.format(extra='host: "0.0.0.0"\n'))
+
+
+@pytest.mark.parametrize("literal", ['"false"', '"no"', '"0"', '"off"', "false", "null", "0"])
+def test_allow_non_loopback_in_yaml_only_true_means_true(tmp_path, monkeypatch, literal):
+    """A quoted "false" is a non-empty string and therefore truthy in Python. The
+    switch must read it as off, otherwise a harmless-looking value opens the bind."""
+    monkeypatch.setenv("PEER_TOKEN", "a" * 32)
+    monkeypatch.delenv("AGENT_ALLOW_NON_LOOPBACK", raising=False)
+    monkeypatch.delenv("AGENT_HOST", raising=False)
+    extra = f'host: "0.0.0.0"\nallow_non_loopback: {literal}\n'
+    with pytest.raises(ValueError, match="trust: peer refuses to bind"):
+        _load(monkeypatch, tmp_path, "yamloff", PEER_YAML.format(extra=extra))
+
+
+@pytest.mark.parametrize("literal", ["true", '"true"', '"yes"', '"1"'])
+def test_allow_non_loopback_in_yaml_on_values_allow(tmp_path, monkeypatch, literal):
+    monkeypatch.setenv("PEER_TOKEN", "a" * 32)
+    monkeypatch.delenv("AGENT_ALLOW_NON_LOOPBACK", raising=False)
+    monkeypatch.delenv("AGENT_HOST", raising=False)
+    extra = f'host: "0.0.0.0"\nallow_non_loopback: {literal}\n'
+    cfg = _load(monkeypatch, tmp_path, "yamlon", PEER_YAML.format(extra=extra))
+    assert cfg.allow_non_loopback is True
+
+
+def test_allow_non_loopback_does_not_change_public_or_private_behaviour(tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("AGENT_ALLOW_NON_LOOPBACK", "1")
+    monkeypatch.delenv("AGENT_HOST", raising=False)
+    with caplog.at_level(logging.WARNING, logger="_runtime.config"):
+        pub = _load(monkeypatch, tmp_path, "pubopen", 'name: "Pub"\nhost: "0.0.0.0"\n')
+    assert pub.trust == "public"
+    assert not any("non-loopback" in r.message for r in caplog.records)
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="_runtime.config"):
+        priv = _load(monkeypatch, tmp_path, "privopen", 'name: "Pr"\ntrust: "private"\nhost: "0.0.0.0"\n')
+    assert priv.trust == "private"
     assert any("non-loopback" in r.message for r in caplog.records)
 
 
