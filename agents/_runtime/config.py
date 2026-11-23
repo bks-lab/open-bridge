@@ -136,6 +136,7 @@ class AgentConfig:
     busy_retry_after_s: float = 5.0
     # How long a turn may wait for a free claude -p slot before it is shed (0 = shed at once).
     slot_wait_timeout_s: float = 0.0
+    allow_non_loopback: bool = False
 
 
 def _resolve_path(value: str | None) -> str | None:
@@ -206,6 +207,11 @@ def load_agent_config(instance: str, *, environment: str | None = None) -> Agent
     port = int(os.getenv("AGENT_PORT", spec.get("port", 8011)))
     public_url = os.getenv("PUBLIC_AGENT_URL", spec.get("public_url") or f"http://{host}:{port}")
 
+    allow_non_loopback = bool(
+        spec.get("allow_non_loopback", False)
+        or os.getenv("AGENT_ALLOW_NON_LOOPBACK", "").lower() in ("1", "true", "yes")
+    )
+
     trust = resolve_trust(instance, spec.get("trust"))
     if trust == "private" and host not in _LOOPBACK_HOSTS:
         logger.warning(
@@ -213,6 +219,19 @@ def load_agent_config(instance: str, *, environment: str | None = None) -> Agent
             "host %r — this exposes its relaxed settings (user+project settings, a "
             "wider tool set, cwd=repo root, session resume) to the network. Bind to a "
             "loopback host and put a tunnel/proxy in front, or set trust: public.",
+            instance, host,
+        )
+    elif trust == "peer" and host not in _LOOPBACK_HOSTS:
+        if not allow_non_loopback:
+            raise ValueError(
+                f"agent '{instance}': trust: peer refuses to bind to non-loopback host {host!r}; "
+                "identity headers (e.g. Tailscale-User-Login) are only trustworthy behind "
+                "'tailscale serve' on a loopback host. Bind to a loopback host or set "
+                "allow_non_loopback: true if intentionally exposed."
+            )
+        logger.warning(
+            "agent_trust: instance '%s' has trust: peer on non-loopback host %r (allow_non_loopback: true) — "
+            "identity headers (e.g. Tailscale-User-Login) can be spoofed outside tailscale serve.",
             instance, host,
         )
 
@@ -325,6 +344,7 @@ def load_agent_config(instance: str, *, environment: str | None = None) -> Agent
         task_keep_days=float((spec.get("task_store") or {}).get("keep_days", 30)),
         busy_retry_after_s=float(spec.get("busy_retry_after_s", 5.0)),
         slot_wait_timeout_s=float(spec.get("slot_wait_timeout_s", 0.0)),
+        allow_non_loopback=allow_non_loopback,
     )
 
 

@@ -194,6 +194,10 @@ tailscale serve --bg --https=8445 127.0.0.1:8015
 
 Never `tailscale funnel` and never a public tunnel: the endpoint is for known
 callers. `tailscale serve` adds `Tailscale-User-Login`, which the token is bound to.
+`tailscale_login` is a no-op unless the only route to the port is `tailscale serve`
+(verify that the port does not answer on any other interface). If a peer agent
+must bind to a non-loopback interface, set `allow_non_loopback: true` in `agent.yaml`,
+otherwise the runtime refuses to start.
 
 ## 6. Let a caller in
 
