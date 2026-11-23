@@ -196,8 +196,16 @@ Never `tailscale funnel` and never a public tunnel: the endpoint is for known
 callers. `tailscale serve` adds `Tailscale-User-Login`, which the token is bound to.
 `tailscale_login` is a no-op unless the only route to the port is `tailscale serve`
 (verify that the port does not answer on any other interface). If a peer agent
-must bind to a non-loopback interface, set `allow_non_loopback: true` in `agent.yaml`,
-otherwise the runtime refuses to start.
+must bind to a non-loopback interface, set `allow_non_loopback: true` in `agent.yaml`
+or `AGENT_ALLOW_NON_LOOPBACK=1` in the launch environment, otherwise the runtime
+refuses to start. The check sees the resolved host, so `AGENT_HOST=0.0.0.0` in the
+launch wrapper trips it too. Only `true`, `1`, `yes` and `on` switch it on. Any other
+value, including a quoted `"false"`, keeps the refusal.
+
+**Upgrading:** an existing peer agent that binds `0.0.0.0` or a LAN address stops
+starting with `trust: peer refuses to bind to non-loopback host`. Preferred fix: bind
+`127.0.0.1` and publish through `tailscale serve`. If the exposure is intended, set the
+switch above and accept the startup warning.
 
 ## 6. Let a caller in
 
