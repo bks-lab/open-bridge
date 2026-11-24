@@ -161,7 +161,9 @@ def test_refresh_keeps_the_block_set_and_is_idempotent(plain_dir):
 def test_refresh_with_blocks_swaps_the_set(plain_dir):
     out = plain_dir / "deck.html"
     html = deck(out, "--blocks", "kpi-row")
-    run("--refresh", out, "--blocks", "callout,glossary")
+    # The slides keep their kpi-row markup while its CSS leaves, so the deck in between really is
+    # broken and verify-page's block-css rule says so. This test is about the regions, not the gate.
+    run("--refresh", out, "--blocks", "callout,glossary", "--no-verify")
     new = out.read_text("utf-8")
     assert "/* blocks: callout, glossary */" in region(new, CSS)
     assert ".metrics{" not in region(new, CSS)

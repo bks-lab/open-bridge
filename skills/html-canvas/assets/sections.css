@@ -118,11 +118,19 @@ td.key{font-family:var(--font-mono);color:var(--accent-text)}
 .bar-d{font-weight:600;color:color-mix(in srgb,var(--ok) 60%,var(--ink))}
 
 /* @block: timeline */
-.timeline{display:grid;gap:0}
-.tl-row{display:grid;grid-template-columns:120px 1fr;gap:24px;padding:12px 0;border-bottom:1px solid var(--line-subtle)}
+/* A line with a dot per entry; .key (or .now) marks the dates that matter, .future the planned ones.
+   Narrow screens stack date over text so the text keeps the width. */
+.timeline{display:grid;gap:0;position:relative;padding-left:26px}
+.timeline::before{content:"";position:absolute;left:7px;top:10px;bottom:10px;width:2px;border-radius:1px;background:var(--line-strong)}
+.tl-row{display:grid;grid-template-columns:7.5em 1fr;gap:4px 18px;align-items:baseline;padding:10px 0;position:relative;border-bottom:1px solid var(--line-subtle)}
 .tl-row:last-child{border-bottom:none}
-.tl-row.now .tl-date{color:var(--accent-text);font-weight:600}
+.tl-row::before{content:"";position:absolute;left:-25px;top:15px;width:12px;height:12px;border-radius:50%;box-sizing:border-box;background:var(--raised);border:2px solid var(--line-strong)}
+.tl-date{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.tl-row.key::before,.tl-row.now::before{background:var(--accent-text);border-color:var(--accent-text);width:14px;height:14px;left:-26px;top:14px}
+.tl-row.key .tl-date,.tl-row.now .tl-date{color:var(--accent-text)}
+.tl-row.future::before{border-style:dashed}
 .tl-row.future .tl-date{color:var(--muted);font-style:italic}
+@media (max-width:560px){.tl-row{grid-template-columns:1fr}}
 
 /* @block: spec-card */
 .speccard{display:grid;grid-template-columns:150px 1fr;border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden}
