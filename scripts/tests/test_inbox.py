@@ -1114,3 +1114,27 @@ def test_the_item_schema_declares_actions_and_expires_at():
     assert actions["type"] == "array" and actions["uniqueItems"] is True
     assert tuple(actions["items"]["enum"]) == inbox.PERSON_ACTIONS
     assert schema["properties"]["expires_at"]["type"] == "string"
+
+
+def test_probe_lint_names_a_gh_ref_the_probe_could_never_read():
+    from inbox import probe_lint
+    nested = {"gh_pr": {"repo": "o/r", "number": 7}, "state": "merged"}
+    assert probe_lint(nested) == [
+        "closes_when: gh_pr must be the string owner/repo#N (got {'repo': 'o/r', 'number': 7}); as written the probe "
+        "evaluates to unknown and never closes the item"
+    ]
+    assert probe_lint({"gh_issue": "o/r"}, "waits_for")[0].startswith("waits_for: gh_issue must be")
+    assert probe_lint({"all": [{"gh_pr": "o/r#7"}, {"gh_issue": 7}]}) and len(probe_lint({"all": [{"gh_pr": "o/r#7"}, {"gh_issue": 7}]})) == 1
+    assert probe_lint({"gh_pr": "o/r#7", "state": "merged"}) == []
+    assert probe_lint({"after": "2026-01-01"}) == [] and probe_lint(None) == [] and probe_lint({}) == []
+
+
+def test_add_warns_about_a_probe_it_could_never_evaluate(box, capsys, tmp_path):
+    import subprocess, sys
+    root = box.root if hasattr(box, "root") else tmp_path
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "inbox.py"), "--root", str(root), "add",
+                        "--from", "t", "--kind", "finding", "--summary", "x",
+                        "--closes-when-json", '{"gh_pr": {"repo": "o/r", "number": 7}, "state": "merged"}'],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert "gh_pr must be the string owner/repo#N" in r.stderr
