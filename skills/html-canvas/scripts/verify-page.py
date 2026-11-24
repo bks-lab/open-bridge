@@ -623,6 +623,63 @@ def check_charset(page: Page, rep: Report) -> None:
     rep.add("charset", ERROR, 'no <meta charset="utf-8">; umlauts depend on the viewer\'s guess', 1)
 
 
+# A page took a kit block's markup but not its CSS (24.11.2026: a timeline with only column
+# "tweaks", no display:grid, rendered as stacked lines and the gate stayed green).
+KIT_CSS = Path(__file__).resolve().parent.parent / "assets" / "sections.css"
+KIT_BLOCK_RE = re.compile(r"^/\* @block: ([a-z0-9-]+)[^*]*\*/$", re.M)
+CSS_RULE_RE = re.compile(r"([^{}]+)\{([^{}]*)\}")
+
+
+def _display_classes(css: str) -> set[str]:
+    """Classes a stylesheet gives a `display`, by the class each selector ends on or names."""
+    out = set()
+    for sel, decls in CSS_RULE_RE.findall(css):
+        if re.search(r"(^|;)\s*display\s*:", decls):
+            for part in sel.split(","):
+                out.update(re.findall(r"\.([A-Za-z0-9_-]+)(?![A-Za-z0-9_-])(?=[^\s>+~]*\s*$)", part.strip()))
+    return out
+
+
+def kit_layout_classes() -> dict[str, str]:
+    """{class: block} for every class a kit block lays out with `display`."""
+    try:
+        text = KIT_CSS.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    marks = list(KIT_BLOCK_RE.finditer(text))
+    owners: dict[str, set[str]] = {}
+    laid_out: dict[str, str] = {}
+    for i, m in enumerate(marks):
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
+        body = blank(text[m.end():end], re.compile(r"/\*.*?\*/", re.S))
+        for cls in re.findall(r"\.([A-Za-z][A-Za-z0-9_-]*)", body):
+            owners.setdefault(cls, set()).add(m.group(1))
+        if m.group(1) not in ("base", "print"):
+            for cls in _display_classes(body):
+                laid_out.setdefault(cls, m.group(1))
+    # only classes one block owns: a shared name (.badge, .chip) may be inline on purpose elsewhere
+    return {c: b for c, b in laid_out.items() if owners.get(c) == {b}}
+
+
+def check_block_css(page: Page, rep: Report) -> None:
+    kit = kit_layout_classes()
+    if not kit:
+        return
+    have = _display_classes(blank("\n".join(css for css, _ in page.styles), re.compile(r"/\*.*?\*/", re.S)))
+    missing: dict[str, tuple[str, int]] = {}
+    for el in page.elements:
+        for cls in (el["attrs"].get("class") or "").split():
+            if cls in kit and cls not in have and cls not in missing:
+                missing[cls] = (kit[cls], el["line"])
+    by_block: dict[str, list] = {}
+    for cls, (block, line) in missing.items():
+        by_block.setdefault(block, []).append((cls, line))
+    for block, items in by_block.items():
+        rep.add("block-css", ERROR, "uses .%s from the kit block %s, but the page has no layout for it (no display); "
+                "include the block with new-page.py --blocks %s (or --refresh) instead of writing only tweaks"
+                % (", .".join(c for c, _ in items), block, block), items[0][1])
+
+
 def check_forbidden(page: Page, rep: Report, chars: str) -> None:
     if not chars:
         return
@@ -661,6 +718,7 @@ def static_checks(path: Path, rep: Report, allow: set[str], forbid: str, allow_s
     check_anchors(page, rep)
     check_charset(page, rep)
     check_forbidden(page, rep, forbid)
+    check_block_css(page, rep)
 
 
 # --- browser rules -----------------------------------------------------------------------

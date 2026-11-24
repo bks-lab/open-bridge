@@ -238,10 +238,14 @@ Roadmap/changelog. Grid rows + bottom-border separators, `.now/.future` state.
 ```html
 <div class="timeline">
   <div class="tl-row now"><div class="tl-date"><span data-de>Jetzt</span><span data-en>Now</span></div><div>…</div></div>
+  <div class="tl-row key"><div class="tl-date">800</div><div>…</div></div>
   <div class="tl-row future"><div class="tl-date">Q3</div><div>…</div></div>
 </div>
 ```
-*CSS: block `timeline` in `assets/sections.css`, included by `new-page.py --blocks timeline`.*
+*CSS: block `timeline` in `assets/sections.css`, included by `new-page.py --blocks timeline`.
+Line, a dot per row, `.key` (or `.now`) for the dates that matter, `.future` dashed, stacked under 560 px.
+Never copy only the markup and write "tweaks": without the block CSS the rows have no layout.
+`verify-page.py` fails that as `block-css`.*
 
 ---
 
