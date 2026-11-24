@@ -452,6 +452,28 @@ def closing_lint(kind: str, closes_when, closer, action) -> list[str]:
             "and close it by key when the condition is gone"]
 
 
+def probe_lint(spec, field: str = "closes_when") -> list[str]:
+    """What `add` warns a filer of about a probe it would never evaluate: `probe` turns a broken spec into UNKNOWN,
+    and unknown never closes anything, so a mis-shaped `gh_pr` or `gh_issue` leaves the item open for good while
+    the PR is long merged. Only words: the item is filed all the same"""
+    if not isinstance(spec, dict) or not spec:
+        return []
+    out = []
+    for combine in ("all", "any"):
+        parts = spec.get(combine)
+        if isinstance(parts, list):
+            for part in parts:
+                out.extend(probe_lint(part, field))
+    for key in ("gh_pr", "gh_issue"):
+        if key in spec:
+            try:
+                _ref(spec[key])
+            except ValueError:
+                out.append(f"{field}: {key} must be the string owner/repo#N (got {spec[key]!r}); as written the probe "
+                           "evaluates to unknown and never closes the item")
+    return out
+
+
 def title_lint(summary: str, language: str | None) -> list[str]:
     """What makes a title hard to read in a list, each as one line that says what to change: over TITLE_LINT_MAX
     characters, a path, a file name, an id-like token (an inbox id, a hash, a slug of four parts), or English words
@@ -1325,6 +1347,8 @@ def main(argv=None) -> int:
             for line in title_lint(args.summary, _language(args.root)):
                 _warn(line)
             for line in closing_lint(args.kind, _json_arg(args.closes_when_json), args.closer, _json_arg(args.action_json)):
+                _warn(line)
+            for line in probe_lint(_json_arg(args.closes_when_json)) + probe_lint(_json_arg(args.waits_for_json), "waits_for"):
                 _warn(line)
             try:
                 args.area = area_name(args.root, args.area)
