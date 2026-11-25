@@ -330,8 +330,11 @@ cmux list-buffers
 
 ## Browser limits
 
-The cmux browser (`browser_*` MCP tools, `--type browser` panes) reads, clicks,
-scrapes the DOM and runs in-page `fetch`. Two hard limits:
+For browser automation, prefer the [`browser`](../../browser/SKILL.md) skill: Playwright
+drives Chrome, or any Chromium with a local CDP address, outside cmux; its
+`references/from-cmux.md` maps the verbs below. The cmux browser (`browser_*` MCP tools,
+`--type browser` panes) reads, clicks, scrapes the DOM and runs in-page `fetch`. Two
+hard limits:
 
 - **No file downloads.** A `<a download>` click navigates the page to the `blob:`
   URL instead of saving a file. Use Playwright (`page.waitForEvent('download')`)
