@@ -504,6 +504,11 @@ jobs:
       - name: Run bridge-greeting suite
         run: python3 -m pytest skills/bridge-greeting/tests -q -rs
 
+      # The browser skill: target resolution, CDP address guard, snapshot refs and
+      # the check plan. Hermetic, no browser; the live test needs BROWSER_LIVE=1.
+      - name: Run browser suite
+        run: python3 -m pytest skills/browser/tests -q -rs
+
   # The cockpit demo (docs/cockpit-demo/) in a real browser: every page of the
   # page bar opens, in en and de, without a console error. Its own job, so the
   # browser download stays out of the script-suites job.
