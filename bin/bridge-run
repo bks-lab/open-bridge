@@ -6,13 +6,21 @@
 # them where they belong without moving the caller's own shell.
 #   <bridge>/bin/bridge-run python3 scripts/inbox.py list
 set -eu
-case "$0" in
-  */*) here=$(dirname "$0") ;;
-  *) echo "bridge-run: call it by its path, for example <bridge>/bin/bridge-run" >&2; exit 2 ;;
+self=$0
+case "$self" in
+  */*) ;;
+  *) self=$(command -v -- "$self") || { echo "bridge-run: cannot find myself" >&2; exit 2; } ;;
 esac
-root=$(cd "$here/.." && pwd -P)
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case "$link" in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+root=$(cd "$(dirname "$self")/.." && pwd -P)
 if [ "$#" -eq 0 ]; then
-  echo "usage: $here/bridge-run <command> [args...]" >&2
+  echo "usage: $root/bin/bridge-run <command> [args...]" >&2
   exit 2
 fi
 cd "$root"

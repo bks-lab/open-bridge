@@ -54,7 +54,6 @@ The context tag is the registry entry whose `github:` matches the repo's origin 
 
 Measured on 2026-11-27 with Claude Code 2.1.332, codex-cli 0.172.0 and Copilot CLI 1.0.116
 (Copilot only against a local recording endpoint, no model access on the test machine).
-The probe kits live outside the repo, in `.bridge/attach-probe/` of the instance that ran them.
 
 ## Why it is built this way
 

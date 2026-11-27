@@ -7,7 +7,19 @@
 #   <bridge>/bin/bridge-attach plan claude      # show what would run
 # Docs: docs/bridge-attach.md
 set -eu
-root=$(cd "$(dirname "$0")/.." && pwd -P)
+self=$0
+case "$self" in
+  */*) ;;
+  *) self=$(command -v -- "$self") || { echo "bridge-attach: cannot find myself" >&2; exit 2; } ;;
+esac
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case "$link" in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+root=$(cd "$(dirname "$self")/.." && pwd -P)
 if [ "$#" -eq 0 ]; then
   echo "usage: bridge-attach claude|codex|copilot [args...]   or   bridge-attach plan <tool>" >&2
   exit 2

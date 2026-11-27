@@ -40,6 +40,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -53,7 +54,7 @@ DEFAULT_MAX_CHARS = 6000
 HOOK_EVENTS = ("SessionStart", "SessionEnd", "Stop", "UserPromptSubmit", "PreCompact")
 # Terminal apps whose agent wrapper passes its own --settings (cmux and cmux-compatible apps).
 # Claude Code applies only the last --settings, so the launcher adds none inside them.
-WRAPPER_SURFACE_VARS = ("CMUX_SURFACE_ID", "K2A_DESKTOP_SURFACE_ID")
+WRAPPER_SURFACE_VARS = ("CMUX_SURFACE_ID",)
 KEEP_DAYS = 7
 
 
@@ -206,27 +207,38 @@ def inbox_items(root: Path) -> list[dict]:
 
 
 def _matches(item: dict, words: list[str]) -> bool:
+    """Whole-word match of the tag or folder name, so a short name ("ai") never
+    matches inside another word ("mail") and lets an unrelated private item through."""
     hay = " ".join(str(item.get(k, "")) for k in ("summary", "task", "area", "from", "context")).lower()
-    return any(w in hay for w in words)
+    return any(re.search(rf"(?<![\w-]){re.escape(w)}(?![\w-])", hay) for w in words)
 
 
-def log_rows(root: Path, tag: str, days: int = 2, limit: int = 8) -> list[str]:
-    text = _read(root / "work/log.md")
-    blocks = re.split(r"^## .*$", text, flags=re.M)[1:]
-    heads = re.findall(r"^## .*$", text, flags=re.M)
-    dated = []
-    for head, body in zip(heads, blocks):
-        m = re.search(r"(\d{1,2})\.(\d{1,2})", head)
-        dated.append(((int(m.group(2)), int(m.group(1))) if m else (0, 0), body))
-    dated.sort(key=lambda b: b[0])
+def _contexts(cell: str) -> set[str]:
+    """A log row's context cell may name several tags: "acme / widget", "a, b"."""
+    return {c.strip().lower() for c in re.split(r"[/,]", cell) if c.strip()}
+
+
+def log_rows(root: Path, tag: str, hours: int = 48, limit: int = 8) -> list[str]:
+    """Rows whose context cell names the tag, within `hours` of the newest row in
+    the log. Timestamps decide, not day headings: file order and year boundaries
+    do not matter."""
     rows = []
-    for _, body in dated[-days:]:
-        for line in body.splitlines():
-            cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            if len(cells) >= 4 and re.match(r"\d{4}-\d\d-\d\d \d\d:\d\d", cells[0]) and tag in cells[2].lower():
-                what = " | ".join(cells[3:])
-                rows.append(f"{cells[0][11:]} {what[:220]}")
-    return rows[-limit:]
+    newest = None
+    for line in _read(root / "work/log.md").splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 4:
+            continue
+        try:
+            at = datetime.strptime(cells[0], "%Y-%m-%d %H:%M")
+        except ValueError:
+            continue
+        newest = at if newest is None or at > newest else newest
+        if tag.lower() in _contexts(cells[2]):
+            rows.append((at, " | ".join(cells[3:])))
+    if newest is None:
+        return []
+    keep = sorted((r for r in rows if (newest - r[0]).total_seconds() <= hours * 3600), key=lambda r: r[0])
+    return [f"{at.strftime('%m-%d %H:%M')} {what[:220]}" for at, what in keep][-limit:]
 
 
 def board_counts(root: Path) -> str:
@@ -308,17 +320,28 @@ def render(root: Path, cwd: Path, max_chars: int = DEFAULT_MAX_CHARS, tag: str |
 
 # ---------------------------------------------------------------- plan
 
-def _bridge_hook_events(root: Path) -> dict[str, int]:
-    """Events the Bridge's own project settings hook, with the longest timeout."""
-    events: dict[str, int] = {}
+def _bridge_hooks(root: Path, event: str) -> list[tuple[str, dict]]:
+    """(matcher, hook) of every command hook the Bridge's project settings declare for
+    `event`, settings.json first, a command declared twice kept once (Claude Code dedupes too)."""
+    seen: set[str] = set()
+    out = []
     for s in _settings(root):
-        for event, groups in (s.get("hooks") or {}).items():
-            if event not in HOOK_EVENTS:
-                continue
-            for g in groups or []:
-                for h in g.get("hooks", []):
-                    if h.get("type") == "command":
-                        events[event] = max(events.get(event, 0), int(h.get("timeout", 60)))
+        for group in (s.get("hooks") or {}).get(event, []) or []:
+            for h in group.get("hooks", []):
+                cmd = h.get("command")
+                if h.get("type") == "command" and cmd and cmd not in seen:
+                    seen.add(cmd)
+                    out.append((group.get("matcher") or "", h))
+    return out
+
+
+def _bridge_hook_events(root: Path) -> dict[str, int]:
+    """Events the Bridge hooks, with the SUM of their timeouts: the replay runs them one after another."""
+    events = {}
+    for event in HOOK_EVENTS:
+        hooks = _bridge_hooks(root, event)
+        if hooks:
+            events[event] = sum(int(h.get("timeout", 60)) for _, h in hooks)
     return events
 
 
@@ -337,7 +360,8 @@ def _write_plugin(root: Path, run_dir: Path) -> Path | None:
     hooks = {
         event: [{"hooks": [{
             "type": "command",
-            "command": f"python3 {json.dumps(str(script))} replay-hooks {event} --root {json.dumps(str(root))}",
+            "command": " ".join(shlex.quote(a) for a in
+                                (sys.executable, str(script), "replay-hooks", event, "--root", str(root))),
             "timeout": timeout + 5,
         }]}]
         for event, timeout in sorted(events.items())
@@ -424,35 +448,76 @@ def plan(tool: str, root: Path, cwd: Path, args: list[str], env: dict, state_dir
 
 # ---------------------------------------------------------------- replay-hooks
 
+MATCH_FIELD = {"SessionStart": "source", "SessionEnd": "reason", "PreCompact": "trigger"}
+
+
+def _matcher_applies(matcher: str, value: str) -> bool:
+    if matcher in ("", "*") or not value:
+        return True
+    try:
+        return re.fullmatch(matcher, value) is not None
+    except re.error:
+        print(f"bridge-attach: hook matcher {matcher!r} is not a valid pattern, hook skipped", file=sys.stderr)
+        return False
+
+
+def _merge_outputs(outputs: list[str]) -> str:
+    """One hook's output passes unchanged. Several are merged into one JSON object:
+    additionalContext joined, plain text added to it, other keys from the first that sets them."""
+    outputs = [o for o in outputs if o.strip()]
+    if len(outputs) <= 1:
+        return outputs[0] if outputs else ""
+    merged: dict = {}
+    contexts = []
+    for o in outputs:
+        try:
+            obj = json.loads(o)
+        except ValueError:
+            obj = None
+        if not isinstance(obj, dict):
+            contexts.append(o.strip())
+            continue
+        spec = obj.get("hookSpecificOutput") or {}
+        if spec.get("additionalContext"):
+            contexts.append(str(spec["additionalContext"]))
+        for k, v in obj.items():
+            if k != "hookSpecificOutput":
+                merged.setdefault(k, v)
+        for k, v in spec.items():
+            if k != "additionalContext":
+                merged.setdefault("hookSpecificOutput", {}).setdefault(k, v)
+    if contexts:
+        merged.setdefault("hookSpecificOutput", {})["additionalContext"] = "\n\n".join(contexts)
+    return json.dumps(merged, ensure_ascii=False) + "\n"
+
+
 def replay_hooks(root: Path, event: str, payload: str) -> int:
-    """Run the Bridge's own project hooks for `event` with CLAUDE_PROJECT_DIR = the Bridge root.
-    Exit 2 of any hook is passed on (a blocking Stop hook keeps blocking)."""
+    """Run the Bridge's own project hooks for `event` as a Bridge session would: cwd and
+    CLAUDE_PROJECT_DIR = the Bridge root. Exit 2 of any hook is passed on (a blocking Stop
+    hook keeps blocking); the stderr of a failing hook is forwarded."""
     root = Path(root).resolve()
     try:
-        source = json.loads(payload or "{}").get("source", "")
-    except ValueError:
-        source = ""
+        value = str(json.loads(payload or "{}").get(MATCH_FIELD.get(event, ""), "") or "")
+    except (ValueError, AttributeError):
+        value = ""
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(root), "BRIDGE_ROOT": str(root)}
     rc = 0
-    for s in _settings(root):
-        for group in (s.get("hooks") or {}).get(event, []) or []:
-            matcher = group.get("matcher") or ""
-            if matcher and source and not re.fullmatch(matcher, source):
-                continue
-            for h in group.get("hooks", []):
-                if h.get("type") != "command":
-                    continue
-                try:
-                    out = subprocess.run(["bash", "-c", h["command"]], input=payload, env=env,
-                                         capture_output=True, text=True, timeout=int(h.get("timeout", 60)))
-                except subprocess.TimeoutExpired:
-                    print(f"bridge-attach: a Bridge {event} hook timed out", file=sys.stderr)
-                    continue
-                if out.stdout:
-                    sys.stdout.write(out.stdout)
-                if out.returncode == 2:
-                    sys.stderr.write(out.stderr)
-                    rc = 2
+    outputs = []
+    for matcher, h in _bridge_hooks(root, event):
+        if not _matcher_applies(matcher, value):
+            continue
+        try:
+            out = subprocess.run(["bash", "-c", h["command"]], input=payload, env=env, cwd=root,
+                                 capture_output=True, text=True, timeout=int(h.get("timeout", 60)))
+        except subprocess.TimeoutExpired:
+            print(f"bridge-attach: a Bridge {event} hook timed out", file=sys.stderr)
+            continue
+        outputs.append(out.stdout)
+        if out.returncode != 0 and out.stderr:
+            sys.stderr.write(out.stderr)
+        if out.returncode == 2:
+            rc = 2
+    sys.stdout.write(_merge_outputs(outputs))
     return rc
 
 
@@ -507,6 +572,9 @@ def main(argv: list[str] | None = None) -> int:
     for n in pl["notes"]:
         print(f"bridge-attach: {n}", file=sys.stderr)
     print(f"bridge-attach: {pl['tool']} with the Bridge at {pl['root']}, tag {pl['tag']}", file=sys.stderr)
+    if not shutil.which(pl["argv"][0]):
+        print(f"bridge-attach: refused, {pl['argv'][0]} not found on PATH", file=sys.stderr)
+        return 3
     os.chdir(pl["cwd"])
     os.execvpe(pl["argv"][0], pl["argv"], {**os.environ, **pl["env"]})
     return 0  # not reached

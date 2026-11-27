@@ -85,9 +85,9 @@ def make_repo(path, branch="main", origin=None):
 
 LOG = """# Work log
 
-## Freitag 27.11
+## Fri 27.11
 
-| Zeit | Typ | Kontext | Was |
+| Time | Type | Context | What |
 |---|---|---|---|
 | 2026-11-27 09:00 | 💻 | widget | fixed the widget parser |
 | 2026-11-27 10:00 | 💻 | other | unrelated private thing |
@@ -104,8 +104,8 @@ BOARD = """# Board
 
 INBOX = [
     {"id": "a1", "state": "open", "summary": "widget: release notes need a look", "area": "Acme"},
-    {"id": "a2", "state": "open", "summary": "Bank letter about the account", "area": "Privat"},
-    {"id": "a3", "state": "open", "summary": "Doctor appointment", "area": "Familie"},
+    {"id": "a2", "state": "open", "summary": "Bank letter about the account", "area": "Private"},
+    {"id": "a3", "state": "open", "summary": "Doctor appointment", "area": "Family"},
 ]
 
 
@@ -394,3 +394,161 @@ def test_bridge_run_executes_in_the_root(tmp_path):
     out = subprocess.run([str(run), "pwd", "-P"], cwd=tmp_path, capture_output=True, text=True)
     assert out.returncode == 0
     assert Path(out.stdout.strip()) == run.parents[1].resolve()
+
+
+# ---------------------------------------------------------------- review 2026-11-27
+
+def test_short_folder_name_does_not_leak_private_items(tmp_path):
+    inbox = [{"id": "p", "state": "open", "summary": "Bank mail about the loan", "area": "Private"},
+             {"id": "q", "state": "open", "summary": "Doctor appointment", "area": "Family"},
+             {"id": "r", "state": "open", "summary": "ai: rotate the token", "area": "Work"}]
+    root = make_bridge(tmp_path, inbox=inbox)
+    text = ba.render(root, make_repo(tmp_path / "ai"))
+    assert "Bank mail" not in text and "Doctor" not in text
+    assert "rotate the token" in text
+
+
+def test_log_rows_match_the_context_cell_not_a_substring(tmp_path):
+    root = make_bridge(tmp_path)
+    (root / "work/log.md").write_text(
+        "## Fri 27.11\n\n| Time | Type | Context | What |\n|---|---|---|---|\n"
+        "| 2026-11-27 09:00 | x | widget-tools | other tool |\n"
+        "| 2026-11-27 10:00 | x | acme / widget | the shared one |\n")
+    rows = ba.log_rows(root, "widget")
+    assert any("the shared one" in r for r in rows)
+    assert not any("other tool" in r for r in rows)
+
+
+def test_log_rows_survive_the_year_boundary(tmp_path):
+    root = make_bridge(tmp_path)
+    (root / "work/log.md").write_text(
+        "## Fri 01.01\n\n| 2027-01-01 08:00 | x | widget | new year row |\n\n"
+        "## Thu 31.12\n\n| 2026-12-31 20:00 | x | widget | last year row |\n\n"
+        "## Sun 20.12\n\n| 2026-12-20 10:00 | x | widget | old row |\n")
+    rows = ba.log_rows(root, "widget")
+    assert any("new year row" in r for r in rows)
+    assert any("last year row" in r for r in rows)
+    assert not any("old row" in r for r in rows)
+
+
+def write_settings(root, name, hooks):
+    path = root / ".claude" / name
+    path.parent.mkdir(exist_ok=True)
+    data = json.loads(path.read_text()) if path.exists() else {}
+    data["hooks"] = hooks
+    path.write_text(json.dumps(data))
+
+
+def test_replay_star_matcher_and_bad_regex(tmp_path, monkeypatch, capsys):
+    root = make_bridge(tmp_path)
+    log = tmp_path / "hook.log"
+    monkeypatch.setenv("HOOKLOG", str(log))
+    write_settings(root, "settings.local.json", {"SessionStart": [
+        {"matcher": "*", "hooks": [{"type": "command", "command": "echo star >> \"$HOOKLOG\""}]},
+        {"matcher": "(", "hooks": [{"type": "command", "command": "echo bad >> \"$HOOKLOG\""}]},
+    ]})
+    assert ba.replay_hooks(root, "SessionStart", '{"source": "startup"}') == 0
+    assert log.read_text().split() == ["star"]
+
+
+def test_replay_matcher_field_per_event(tmp_path, monkeypatch):
+    root = make_bridge(tmp_path)
+    log = tmp_path / "hook.log"
+    monkeypatch.setenv("HOOKLOG", str(log))
+    write_settings(root, "settings.local.json", {"PreCompact": [
+        {"matcher": "manual", "hooks": [{"type": "command", "command": "echo manual >> \"$HOOKLOG\""}]}]})
+    ba.replay_hooks(root, "PreCompact", '{"trigger": "auto"}')
+    assert not log.exists()
+    ba.replay_hooks(root, "PreCompact", '{"trigger": "manual"}')
+    assert log.read_text().split() == ["manual"]
+
+
+def test_replay_runs_in_the_bridge_root(tmp_path, monkeypatch):
+    root = make_bridge(tmp_path)
+    log = tmp_path / "hook.log"
+    monkeypatch.setenv("HOOKLOG", str(log))
+    monkeypatch.chdir(make_repo(tmp_path / "w"))
+    write_settings(root, "settings.local.json", {"Stop": [
+        {"hooks": [{"type": "command", "command": "pwd -P >> \"$HOOKLOG\""}]}]})
+    ba.replay_hooks(root, "Stop", "{}")
+    assert Path(log.read_text().strip()) == root.resolve()
+
+
+def test_replay_passes_exit_2_and_dedupes(tmp_path, monkeypatch, capsys):
+    root = make_bridge(tmp_path)
+    log = tmp_path / "hook.log"
+    monkeypatch.setenv("HOOKLOG", str(log))
+    same = {"hooks": [{"type": "command", "command": "echo once >> \"$HOOKLOG\""}]}
+    write_settings(root, "settings.json", {"Stop": [same]})
+    write_settings(root, "settings.local.json", {"Stop": [same, {"hooks": [
+        {"type": "command", "command": "echo blocked >&2; exit 2"}]}]})
+    assert ba.replay_hooks(root, "Stop", "{}") == 2
+    assert log.read_text().split() == ["once"]
+    assert "blocked" in capsys.readouterr().err
+
+
+def test_replay_forwards_stderr_of_a_failing_hook(tmp_path, capsys):
+    root = make_bridge(tmp_path)
+    write_settings(root, "settings.local.json", {"Stop": [{"hooks": [
+        {"type": "command", "command": "echo broken >&2; exit 1"}]}]})
+    assert ba.replay_hooks(root, "Stop", "{}") == 0
+    assert "broken" in capsys.readouterr().err
+
+
+def test_replay_merges_json_outputs(tmp_path, capsys):
+    root = make_bridge(tmp_path)
+    one = json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "A1"}})
+    two = json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "B2"}})
+    write_settings(root, "settings.local.json", {"SessionStart": [{"hooks": [
+        {"type": "command", "command": f"echo '{one}'"},
+        {"type": "command", "command": f"echo '{two}'"},
+        {"type": "command", "command": "echo plain C3"}]}]})
+    ba.replay_hooks(root, "SessionStart", '{"source": "startup"}')
+    out = json.loads(capsys.readouterr().out)
+    ctx = out["hookSpecificOutput"]["additionalContext"]
+    assert "A1" in ctx and "B2" in ctx and "C3" in ctx
+
+
+def test_plugin_timeout_is_the_sum_and_paths_are_shell_quoted(tmp_path):
+    root = make_bridge(tmp_path)
+    write_settings(root, "settings.local.json", {"Stop": [{"hooks": [
+        {"type": "command", "command": "true first", "timeout": 30},
+        {"type": "command", "command": "true second", "timeout": 40}]}]})
+    p = run_plan("claude", root, make_repo(tmp_path / "w"), tmp_path)
+    plugin = Path(p["argv"][p["argv"].index("--plugin-dir") + 1])
+    stop = json.loads((plugin / "hooks/hooks.json").read_text())["hooks"]["Stop"][0]["hooks"][0]
+    assert stop["timeout"] >= 70
+    import shlex
+    assert shlex.quote(str(root)) in stop["command"]
+    assert '"' not in stop["command"]
+
+
+def test_exec_with_a_missing_tool_exits_3(tmp_path, monkeypatch, capsys):
+    root = make_bridge(tmp_path)
+    repo = make_repo(tmp_path / "w")
+    empty = tmp_path / "emptybin"
+    empty.mkdir()
+    import shutil
+    (empty / "git").symlink_to(shutil.which("git"))
+    monkeypatch.setenv("PATH", str(empty))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    assert ba.main(["exec", "claude", "--root", str(root), "--cwd", str(repo)]) == 3
+    assert "not found" in capsys.readouterr().err
+
+
+def test_bridge_run_through_a_symlink(tmp_path):
+    run = Path(__file__).resolve().parents[2] / "bin" / "bridge-run"
+    link = tmp_path / "bridge-run"
+    link.symlink_to(run)
+    out = subprocess.run([str(link), "pwd", "-P"], cwd=tmp_path, capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    assert Path(out.stdout.strip()) == run.parents[1].resolve()
+
+
+def test_render_trims_sections_before_cutting(tmp_path):
+    many = [{"id": f"i{n}", "state": "open", "summary": f"widget item {n} " + "x" * 300} for n in range(80)]
+    root = make_bridge(tmp_path, inbox=many)
+    repo = make_repo(tmp_path / "w", origin="https://github.com/acme/widget")
+    text = ba.render(root, repo, max_chars=4000)
+    assert text.rstrip().endswith(")") or "more about `widget`" in text
+    assert "more about `widget`" in text
