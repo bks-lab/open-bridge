@@ -59,6 +59,10 @@ guide is about.
 Rule of thumb: to check out repos or subscribe to overlays, you want the first
 row; the other three only name or group things.
 
+The opposite direction, a session that starts in a repo and gets the Bridge, is
+[`docs/bridge-attach.md`](bridge-attach.md): it attaches the Bridge to that session and
+binds nothing.
+
 ## Quickstart
 
 A workspace goes from empty to a bound working set in a handful of commands. The

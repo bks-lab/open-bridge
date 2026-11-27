@@ -51,6 +51,7 @@ which ones is per-instance, so the live list is the skill listing itself.
 |---------|------------|---------------|--------|
 | `/bridge-onboard` | | `bridge-onboard` | New user setup or reconfiguration |
 | `/workspace` | | `workspace` | Bind code repos and config overlays into a named workspace: `create`, `subscribe`, `list`, `status`, `validate`, `unsubscribe` |
+| `/bridge-attach` | | `bridge-attach` | Attach this Bridge to a session in another repo: `bin/bridge-attach claude\|codex\|copilot` from the repo, or `/bridge-attach` in a running session ([docs/bridge-attach.md](bridge-attach.md)) |
 | `/bridge-overlay` | `/overlay` | `bridge-overlay` | Subscribe to org overlays and materialize `scope: org` content into the live tree (the downstream inverse of `/bridge-promote`) |
 | `/knowledge-repo-init` | | `knowledge-repo-init` | Connect or scaffold an optional knowledge or documentation repo |
 | `/calendar` | | `calendar` | Calendar entries: list, add, cancel, confirm, show, status |
