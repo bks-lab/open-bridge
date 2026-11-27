@@ -40,7 +40,15 @@ cd ~/Developer/some-repo
    `~/.bridge/attach/<bridge folder>/<time>-<pid>/` and are pruned after 7 days.
 
 The context tag is the registry entry whose `github:` matches the repo's origin or whose
-`local_path` matches its folder (`ecosystem*.yaml`), else the folder name.
+`local_path` matches its folder (`ecosystem*.yaml`), else the folder name. An inbox item is
+shown when it names, as a whole word, the tag, the folder name, or the stem (five letters or
+more) of an enclosing project key or display name: for `projects.contoso.repos.contoso-app`
+with `display_name: Contoso Logistics` that is `contoso-app` and `contoso`.
+
+**First start in an interactive session.** Claude Code asks once per session whether to add
+the Bridge directory ("This session hasn't worked here before"), unless a session was started
+in the Bridge folder itself and trusted there. A Bridge you work in already is trusted; a fresh
+one asks until then. A new repo folder gets the usual folder trust question once.
 
 ## Per tool
 
@@ -53,7 +61,10 @@ The context tag is the registry entry whose `github:` matches the repo's origin 
 | Write to the Bridge | add-dir is writable | `--add-dir <root>` makes it a writable root | `--add-dir <root>` |
 
 Measured on 2026-11-27 with Claude Code 2.1.332, codex-cli 0.172.0 and Copilot CLI 1.0.116
-(Copilot only against a local recording endpoint, no model access on the test machine).
+(Copilot only against a local recording endpoint, no model access on the test machine), end to
+end against a generated instance of open-bridge-testbed: knowledge, a Bridge command, a log row
+written from the repo (Claude Code and Codex), the skill in a running session, the text after
+`/compact` (print mode and interactive), auto memory, and the Bridge's hooks run in its root.
 
 ## Why it is built this way
 

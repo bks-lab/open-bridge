@@ -552,3 +552,48 @@ def test_render_trims_sections_before_cutting(tmp_path):
     text = ba.render(root, repo, max_chars=4000)
     assert text.rstrip().endswith(")") or "more about `widget`" in text
     assert "more about `widget`" in text
+
+
+# ---------------------------------------------------------------- testbed 2026-11-27: project words
+
+NESTED = """org: example
+projects:
+  contoso:
+    display_name: Contoso Logistics
+    type: customer
+    repos:
+      contoso-app:
+        github: example/contoso-app
+partners:
+  reinvent-lab:
+    display_name: "Acmecorp-IT (GitHub reinvent-lab)"
+    repos:
+      gui:
+        github: reinvent-lab/gui
+"""
+
+
+def test_context_words_add_the_project_stem_and_display_name(tmp_path):
+    root = make_bridge(tmp_path)
+    (root / "ecosystem.yaml").write_text(NESTED)
+    repo = make_repo(tmp_path / "c", origin="git@github.com:example/contoso-app.git")
+    assert ba.context_tag(root, repo) == "contoso-app"
+    words = ba.context_words(root, repo)
+    assert {"contoso-app", "contoso"} <= set(words)
+    gui = make_repo(tmp_path / "g", origin="git@github.com:reinvent-lab/gui.git")
+    words = ba.context_words(root, gui)
+    assert {"gui", "reinvent", "acmecorp"} <= set(words)
+    assert "github" not in words
+
+
+def test_inbox_matches_the_project_but_not_other_projects(tmp_path):
+    inbox = [{"id": "1", "state": "open", "summary": "Check the dashboard for Contoso Logistics"},
+             {"id": "2", "state": "open", "summary": "Plan the backup check for Rivera household"},
+             {"id": "3", "state": "open", "summary": "Doctor appointment", "area": "Family"},
+             {"id": "4", "state": "open", "summary": "Open a GitHub issue for the router"}]
+    root = make_bridge(tmp_path, inbox=inbox)
+    (root / "ecosystem.yaml").write_text(NESTED)
+    text = ba.render(root, make_repo(tmp_path / "c", origin="git@github.com:example/contoso-app.git"))
+    assert "Contoso Logistics" in text
+    assert "Rivera" not in text and "Doctor" not in text and "router" not in text
+    assert "3 other open items" in text

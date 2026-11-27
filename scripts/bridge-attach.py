@@ -112,12 +112,18 @@ def _registry_files(root: Path) -> list[Path]:
     return sorted(p for p in root.glob("ecosystem*.yaml") if p.name != "ecosystem.example.yaml")
 
 
+STRUCTURAL_KEYS = {"projects", "partners", "repos", "repositories", "packages", "workspaces", "infra",
+                   "customers", "members", "children"}
+STOP_WORDS = {"github", "gitlab", "internal", "customer", "partner", "project", "repo", "main", "the"}
+
+
 def _registry_entries(root: Path) -> list[dict]:
-    """(name, github, local_path) per entry, without a YAML dependency: the
-    nearest enclosing key of a `github:` or `local_path:` line names the entry."""
-    entries: dict[tuple[str, str], dict] = {}
+    """One dict per entry that has `github:` or `local_path:`: its name, those two values and
+    `ancestors`, the enclosing keys and display names outermost first. No YAML dependency."""
+    entries: list[dict] = []
     for path in _registry_files(root):
-        stack: list[tuple[int, str]] = []
+        stack: list[dict] = []   # {"indent", "key", "attrs"}
+        nodes: list[dict] = []
         for raw in _read(path).splitlines():
             line = raw.split(" #", 1)[0].rstrip()
             if not line.strip() or line.lstrip().startswith(("#", "-")):
@@ -126,15 +132,59 @@ def _registry_entries(root: Path) -> list[dict]:
             m = re.match(r"^\s*([A-Za-z0-9_.-]+):\s*(.*)$", line)
             if not m:
                 continue
-            key, value = m.group(1), m.group(2).strip()
-            while stack and stack[-1][0] >= indent:
+            key, value = m.group(1), m.group(2).strip().strip("'\"")
+            while stack and stack[-1]["indent"] >= indent:
                 stack.pop()
-            if key in ("github", "local_path") and stack:
-                owner = stack[-1][1]
-                entries.setdefault((path.name, owner), {"name": owner})[key] = value.strip("'\"")
-            elif not value:
-                stack.append((indent, key))
-    return list(entries.values())
+            if value:
+                if stack:
+                    stack[-1]["attrs"][key] = value
+                continue
+            node = {"indent": indent, "key": key, "attrs": {}, "parents": [n for n in stack]}
+            stack.append(node)
+            nodes.append(node)
+        for n in nodes:
+            a = n["attrs"]
+            if a.get("github") or a.get("local_path"):
+                entries.append({
+                    "name": n["key"], "github": a.get("github", ""), "local_path": a.get("local_path", ""),
+                    "ancestors": [(p["key"], p["attrs"].get("display_name", "")) for p in n["parents"]
+                                  if p["key"] not in STRUCTURAL_KEYS],
+                })
+    return entries
+
+
+def _find_entry(root: Path, cwd: Path) -> tuple[dict | None, Path]:
+    cwd = Path(cwd)
+    top = Path(_git(cwd, "rev-parse", "--show-toplevel") or cwd)
+    slug = _origin_slug(top)
+    entries = _registry_entries(Path(root))
+    for e in entries:
+        if slug and e.get("github", "").lower() == slug:
+            return e, top
+    for e in entries:
+        if e.get("local_path") and _expand(e["local_path"]).resolve() == top.resolve():
+            return e, top
+    return None, top
+
+
+def _stem(word: str) -> str:
+    """The first part of a key or a display name, kept only when it is specific enough:
+    "reinvent-lab" -> "reinvent", "Contoso Logistics" -> "contoso"; short or generic -> ""."""
+    first = re.split(r"[\s\-_(/,]+", word.strip().lower(), maxsplit=1)[0]
+    first = re.sub(r"[^\w]", "", first)
+    return first if len(first) >= 5 and first not in STOP_WORDS else ""
+
+
+def context_words(root: Path, cwd: Path) -> list[str]:
+    """Words an inbox item must contain (as a whole word) to be shown in this repo's session:
+    the tag, the folder name, and the stem of each enclosing project key and display name."""
+    entry, top = _find_entry(root, cwd)
+    words = {top.name.lower()}
+    if entry:
+        words.add(entry["name"].lower())
+        for key, display in entry["ancestors"]:
+            words |= {_stem(key), _stem(display)}
+    return sorted(w for w in words if w)
 
 
 def _origin_slug(repo: Path) -> str:
@@ -144,17 +194,8 @@ def _origin_slug(repo: Path) -> str:
 
 
 def context_tag(root: Path, cwd: Path) -> str:
-    cwd = Path(cwd)
-    top = Path(_git(cwd, "rev-parse", "--show-toplevel") or cwd)
-    slug = _origin_slug(top)
-    entries = _registry_entries(Path(root))
-    for e in entries:
-        if slug and e.get("github", "").lower() == slug:
-            return e["name"]
-    for e in entries:
-        if e.get("local_path") and _expand(e["local_path"]).resolve() == top.resolve():
-            return e["name"]
-    return top.name.lower()
+    entry, top = _find_entry(root, cwd)
+    return entry["name"] if entry else top.name.lower()
 
 
 # ---------------------------------------------------------------- slices
@@ -257,7 +298,7 @@ def render(root: Path, cwd: Path, max_chars: int = DEFAULT_MAX_CHARS, tag: str |
     run = root / "bin/bridge-run"
     mem = memory_dir(root)
     lang = conversation_language(root)
-    words = sorted({tag, cwd.name.lower()} - {""})
+    words = sorted(set(context_words(root, cwd)) | {tag})
 
     head = [
         f"# Bridge attached: {name}",
