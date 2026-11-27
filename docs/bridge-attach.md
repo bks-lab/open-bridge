@@ -1,5 +1,5 @@
 ---
-summary: "bridge-attach: a session in any repo gets exactly one Bridge (skills, an attach text, the Bridge's hooks and memory) through one launcher for Claude Code, Codex and Copilot CLI. What each tool supports, what was measured, and the limits that stay."
+summary: "bridge-attach: the skill /bridge-attach gives a session in any repo exactly one Bridge (an attach text from Phase 0 and Phase 1, at start or later); the shortcut bin/bridge-attach adds the Bridge's hooks and memory at start, also for Codex and Copilot CLI. What each way brings, what was measured, the limits that stay."
 type: guide
 last_updated: 2026-11-27
 related:
@@ -15,14 +15,29 @@ related:
 
 A Bridge session starts in the Bridge folder. The work happens in repos. `/workspace` covers
 one direction (the Bridge first, repos as members). bridge-attach covers the other: a session
-that starts in a repo gets the Bridge.
+that starts in a repo gets the Bridge, at start or in the middle of the work.
+
+## Three ways in
+
+| Way | How | What comes along |
+|---|---|---|
+| 1 · in the session | `/bridge-attach` (the session was started with `--add-dir <bridge>`, or `/add-dir <bridge>` first) | the attach text as conversation content |
+| 2 · at start | `claude --add-dir <bridge> "/bridge-attach"`, or the shortcut `<bridge>/bin/bridge-attach claude` | the shortcut also brings the text as system prompt, the Bridge's hooks and its memory; `codex` and `copilot` too |
+| 3 · automatic | not built, see [Why it is built this way](#why-it-is-built-this-way) | |
+
+The skill is the core: [`skills/bridge-attach/SKILL.md`](../skills/bridge-attach/SKILL.md) runs
+`scripts/bridge-attach.py slice` and puts its output into the session. Text that a skill puts
+into a session is conversation content, so after `/compact` the most recent skill output
+survives up to 5,000 tokens, and a skill cannot add hooks or settings to a running session.
+The shortcut exists for exactly that:
 
 ```bash
 cd ~/Developer/some-repo
 <bridge>/bin/bridge-attach claude      # or codex, copilot; args after it go to the tool
+<bridge>/bin/bridge-attach plan claude # print what would run, start nothing
 ```
 
-## What the launcher does
+## What the script does
 
 1. **Phase 0 against the Bridge root**, read-only (`git -C <root>`), never against the
    repo. Only state NORMAL (a `user/*` branch with `bridge-config.yaml`) attaches. Every other
@@ -35,7 +50,7 @@ cd ~/Developer/some-repo
    Inbox items that do not match are counted, never shown, so private items stay out of repo
    sessions. Statements are factual, not imperative: the Claude Code docs warn that text framed
    as system commands can trigger prompt-injection defenses.
-3. **The tool**, with the environment `BRIDGE_ROOT`, `BRIDGE_ATTACH=1`, `BRIDGE_ATTACH_TAG` for
+3. **The tool** (shortcut only), with the environment `BRIDGE_ROOT`, `BRIDGE_ATTACH=1`, `BRIDGE_ATTACH_TAG` for
    that process only. Nothing is written into the repo. Run files live in
    `~/.bridge/attach/<bridge folder>/<time>-<pid>/` and are pruned after 7 days.
 
