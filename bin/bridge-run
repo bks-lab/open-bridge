@@ -1,0 +1,27 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Run one Bridge command in the Bridge root, whatever the caller's cwd.
+# An attached session (scripts/bridge-attach.py) works in another repo; skill
+# steps name Bridge-relative paths (python3 scripts/inbox.py ...). This runs
+# them where they belong without moving the caller's own shell.
+#   <bridge>/bin/bridge-run python3 scripts/inbox.py list
+set -eu
+self=$0
+case "$self" in
+  */*) ;;
+  *) self=$(command -v -- "$self") || { echo "bridge-run: cannot find myself" >&2; exit 2; } ;;
+esac
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case "$link" in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+root=$(cd "$(dirname "$self")/.." && pwd -P)
+if [ "$#" -eq 0 ]; then
+  echo "usage: $root/bin/bridge-run <command> [args...]" >&2
+  exit 2
+fi
+cd "$root"
+exec "$@"

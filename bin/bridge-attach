@@ -1,0 +1,33 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Start an agent in the current repo with this Bridge attached.
+#   <bridge>/bin/bridge-attach claude [claude args...]
+#   <bridge>/bin/bridge-attach codex  [codex args...]
+#   <bridge>/bin/bridge-attach copilot [copilot args...]
+#   <bridge>/bin/bridge-attach plan claude      # show what would run
+# Docs: docs/bridge-attach.md
+set -eu
+self=$0
+case "$self" in
+  */*) ;;
+  *) self=$(command -v -- "$self") || { echo "bridge-attach: cannot find myself" >&2; exit 2; } ;;
+esac
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case "$link" in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+root=$(cd "$(dirname "$self")/.." && pwd -P)
+if [ "$#" -eq 0 ]; then
+  echo "usage: bridge-attach claude|codex|copilot [args...]   or   bridge-attach plan <tool>" >&2
+  exit 2
+fi
+if [ "$1" = "plan" ]; then
+  shift
+  tool=${1:?tool}; shift
+  exec python3 "$root/scripts/bridge-attach.py" plan "$tool" --root "$root" --cwd "$PWD" -- "$@"
+fi
+tool=$1; shift
+exec python3 "$root/scripts/bridge-attach.py" exec "$tool" --root "$root" --cwd "$PWD" -- "$@"

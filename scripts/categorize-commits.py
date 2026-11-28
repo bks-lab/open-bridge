@@ -280,6 +280,7 @@ _SCOPE_MAP = {**_BASE_SCOPE_MAP, **_instance_scope_aliases()}
 # is an irreversible push into a public MIT repo.
 SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/bin/gh",
+    "scripts/bridge-attach.py",
     "scripts/categorize-commits.py",
     "scripts/check-all.py",
     "scripts/check-commands-doc.py",
@@ -733,6 +734,7 @@ SCRIPTS_CORE_ALLOWLIST = frozenset({
     "scripts/tests/test_cockpit_costs_contract.py",
     "scripts/lib/bridge_cockpit/server.py",
     "scripts/tests/test_bridge_cockpit.py",
+    "scripts/tests/test_bridge_attach.py",
     "scripts/tests/test_bridge_cockpit_core.py",
     "scripts/tests/test_bridge_cockpit_jev.py",
     "scripts/web/index.html",

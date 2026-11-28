@@ -1,0 +1,110 @@
+---
+summary: "bridge-attach: the skill /bridge-attach gives a session in any repo exactly one Bridge (an attach text from Phase 0 and Phase 1, at start or later); the shortcut bin/bridge-attach adds the Bridge's hooks and memory at start, also for Codex and Copilot CLI. What each way brings, what was measured, the limits that stay."
+type: guide
+last_updated: 2026-11-27
+related:
+  - ../skills/bridge-attach/SKILL.md
+  - ../scripts/bridge-attach.py
+  - ../scripts/tests/test_bridge_attach.py
+  - workspaces.md
+  - multi-instance.md
+  - tool-mapping.md
+---
+
+# bridge-attach
+
+A Bridge session starts in the Bridge folder. The work happens in repos. `/workspace` covers
+one direction (the Bridge first, repos as members). bridge-attach covers the other: a session
+that starts in a repo gets the Bridge, at start or in the middle of the work.
+
+## Three ways in
+
+| Way | How | What comes along |
+|---|---|---|
+| 1 · in the session | `/bridge-attach` (the session was started with `--add-dir <bridge>`, or `/add-dir <bridge>` first) | the attach text as conversation content |
+| 2 · at start | `claude --add-dir <bridge> "/bridge-attach"`, or the shortcut `<bridge>/bin/bridge-attach claude` | the shortcut also brings the text as system prompt, the Bridge's hooks and its memory; `codex` and `copilot` too |
+| 3 · automatic | not built, see [Why it is built this way](#why-it-is-built-this-way) | |
+
+The skill is the core: [`skills/bridge-attach/SKILL.md`](../skills/bridge-attach/SKILL.md) runs
+`scripts/bridge-attach.py slice` and puts its output into the session. Text that a skill puts
+into a session is conversation content, so after `/compact` the most recent skill output
+survives up to 5,000 tokens, and a skill cannot add hooks or settings to a running session.
+The shortcut exists for exactly that:
+
+```bash
+cd ~/Developer/some-repo
+<bridge>/bin/bridge-attach claude      # or codex, copilot; args after it go to the tool
+<bridge>/bin/bridge-attach plan claude # print what would run, start nothing
+```
+
+## What the script does
+
+1. **Phase 0 against the Bridge root**, read-only (`git -C <root>`), never against the
+   repo. Only state NORMAL (a `user/*` branch with `bridge-config.yaml`) attaches. Every other
+   state exits 3 with the reason. Phase 0 read in a repo would misroute: a repo on a feature
+   branch reads as CORE DEV, one on its default branch as NEW USER (onboarding in the wrong repo).
+2. **The attach text** (`scripts/bridge-attach.py slice`), about 4,500 characters on a real
+   instance: the Bridge's name and root, the context tag of the repo, where the manual is, how
+   Bridge commands run, how a log row is written, the memory, and the state of this repo's
+   context (matching inbox items, board counts, the last two days of log rows for the tag).
+   Inbox items that do not match are counted, never shown, so private items stay out of repo
+   sessions. Statements are factual, not imperative: the Claude Code docs warn that text framed
+   as system commands can trigger prompt-injection defenses.
+3. **The tool** (shortcut only), with the environment `BRIDGE_ROOT`, `BRIDGE_ATTACH=1`, `BRIDGE_ATTACH_TAG` for
+   that process only. Nothing is written into the repo. Run files live in
+   `~/.bridge/attach/<bridge folder>/<time>-<pid>/` and are pruned after 7 days.
+
+The context tag is the registry entry whose `github:` matches the repo's origin or whose
+`local_path` matches its folder (`ecosystem*.yaml`), else the folder name. An inbox item is
+shown when it names, as a whole word, the tag, the folder name, or the stem (five letters or
+more) of an enclosing project key or display name: for `projects.contoso.repos.contoso-app`
+with `display_name: Contoso Logistics` that is `contoso-app` and `contoso`.
+
+**First start in an interactive session.** Claude Code asks once per session whether to add
+the Bridge directory ("This session hasn't worked here before"), unless a session was started
+in the Bridge folder itself and trusted there. A Bridge you work in already is trusted; a fresh
+one asks until then. A new repo folder gets the usual folder trust question once.
+
+## Per tool
+
+| | Claude Code | Codex | Copilot CLI |
+|---|---|---|---|
+| Bridge skills | `--add-dir <root>` (with subagents and commands) | no: an added dir contributes no skills | `--add-dir <root>` (`.github/skills`) |
+| Attach text | `--append-system-prompt-file`: no size cap, survives compaction | `-c developer_instructions=<text>`: additive, arrives whole | `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` → generated `.github/instructions/bridge.instructions.md` |
+| Bridge hooks | generated plugin (`--plugin-dir`) that replays the Bridge's own `.claude/settings*.json` hooks with `CLAUDE_PROJECT_DIR=<root>` | not replayed | not replayed |
+| Bridge memory | `--settings {"autoMemoryDirectory"}`, except inside a cmux-style terminal or when the caller passes `--settings` | the text names the memory folder | the text names the memory folder |
+| Write to the Bridge | add-dir is writable | `--add-dir <root>` makes it a writable root | `--add-dir <root>` |
+
+Measured on 2026-11-27 with Claude Code 2.1.332, codex-cli 0.172.0 and Copilot CLI 1.0.116
+(Copilot only against a local recording endpoint, no model access on the test machine), end to
+end against a generated instance of open-bridge-testbed: knowledge, a Bridge command, a log row
+written from the repo (Claude Code and Codex), the skill in a running session, the text after
+`/compact` (print mode and interactive), auto memory, and the Bridge's hooks run in its root.
+
+## Why it is built this way
+
+- **No SessionStart hook for the text.** A hook's text above 10,000 characters is replaced by a
+  2,000-character preview and a file path the model does not read on its own. A lean slice of a
+  real instance with the manual measured 26,600 characters.
+- **No `--settings` for hooks.** Claude Code applies only the last `--settings`, without a
+  warning. A cmux-style terminal wrapper passes its own and drops its hooks when the caller
+  passes one. Plugin hooks merge, so the Bridge hooks come as a plugin; `--settings` carries only the
+  memory folder, and is left out inside such a terminal (until the wrapper merges settings).
+- **No hook in the user's global settings.** It would fire in every headless `claude -p` run on
+  the machine, and some of them already export `BRIDGE_ROOT`.
+- **AGENTS.md by pointer.** An `AGENTS.md` in an added directory never loads (Claude Code,
+  Codex and Copilot alike). The text names it and the model reads it when it needs it.
+- **Bridge commands through `bin/bridge-run`.** Most skills name Bridge-relative paths
+  (`python3 scripts/...`). Written as they are, they fail in a repo's folder; `bin/bridge-run`
+  runs them in the Bridge root without moving the session's shell. Skills meant to act on the
+  current repo (dashboard, bridge-greeting) run without it.
+
+## Limits that stay
+
+- Codex lists no Bridge skills. Their SKILL.md files stay readable under the root.
+- The Bridge's log check (Stop hook) checks the Bridge's tree, not the repo's changes.
+- A running session attached with the skill (`/bridge-attach`) gets no hooks and no memory
+  setting, and its attach text is conversation content that compaction may shorten.
+- Exactly one Bridge per session. Which Bridge a workspace uses is the launcher's choice; a
+  terminal app that starts agents per workspace can call `bridge-attach.py plan` and merge the
+  result into its own wrapper.
